@@ -10,12 +10,12 @@ See: `.planning/PROJECT.md`, `.planning/REQUIREMENTS.md`, `.planning/v1.1-MILEST
 
 ## Current Position
 
-Milestone: v1.2 (Phases 8-9). v1.1 (Phases 6-7) shipped `v1.1.0-open.1` with 6 UAT pending; v1.0 (Phases 1-5) with 20 UAT pending. None archived.
-Phase: 8 (backend) and 9 (frontend form) planned; implementation next.
-Status: Milestone defined from a source-verified branding design + adversarial threat model (verdict design_sound, ship-P1-first). Planning docs written; code next.
-Last activity: 2026-07-11 - Ran a 6-agent branding investigation (seam already wired, image serve exists but no upload, SVG serve-XSS risk), chose the text/color slice and deferred image upload to v1.3.
+Milestone: v1.2 (Phases 8-9) shipped `v1.2.0-open.1`. v1.1 shipped `v1.1.0-open.1` (6 UAT pending); v1.0 (20 UAT pending). None archived.
+Phase: 8 (backend) and 9 (frontend form) implemented, automatically verified, released.
+Status: `gaps_found` — implementation + all automated gates complete; 4 human UAT items (2 per phase) pending on a VPS/browser. Milestone not archived. Image upload deferred to v1.3.
+Last activity: 2026-07-11 - Built and independently inspected `v1.2.0-open.1` from source revision `8f9e18fe44fdfe98767937e38ca7e3b2cf05cabd`.
 
-Progress: v1.0 [##########] gates done (0/5 accepted). v1.1 [##########] released (0/2 accepted). v1.2 [#---------] planned, implementation pending.
+Progress: v1.0 [##########] gates done (0/5 accepted). v1.1 [##########] released (0/2 accepted). v1.2 [##########] released (0/2 accepted, 4 UAT pending).
 
 ## Repository Snapshot
 
@@ -44,14 +44,13 @@ Progress: v1.0 [##########] gates done (0/5 accepted). v1.1 [##########] release
 
 ## Next Actions
 
-1. Implement Phase 8 (backend branding wiring); run `go test ./core/app/service` + full core regression.
-2. Implement Phase 9 (community branding form); run `npm run build:pro` + ESLint.
-3. Write SUMMARY/VERIFICATION/HUMAN-UAT for phases 8-9; build `v1.2.0-open.1`; roadmap note; v1.2 audit.
-4. Carry forward the pending UAT: v1.1 (6 items) + v1.0 (20 items) still need a VPS.
-5. v1.3 = image branding upload (honor the threat model in `BRANDING-DESIGN.md`).
+1. v1.3 = image branding upload (logo/favicon/loginImage): implement under the threat model in `research/BRANDING-DESIGN.md` — serve-side SVG hardening (`router.go:133`), `MaxBytesReader` + `image.DecodeConfig` caps, fixed-enum filenames, CSRF verification on the write routes, `.ico` decision. May fold in login welcome/subtitle/copyright text (P2).
+2. Carry forward pending UAT on a VPS/browser: v1.2 (4), v1.1 (6), v1.0 (20).
+3. Gotcha: do not run full core `go test ./...` before a release without reverting `x-log.json` (swagger_test.go side-effect); the release script uses focused/compile-only tests.
+4. Later: v1.4 threat-modeled secure multi-node (keystone; needs a second VPS).
 
 ## Session Continuity
 
-Last session: 2026-07-10
-Stopped at: v1.1 implemented, automatically verified, and released as v1.1.0-open.1 (revision 21d19773c); 6 human UAT items pending.
+Last session: 2026-07-11
+Stopped at: v1.2 implemented, automatically verified, and released as v1.2.0-open.1 (revision 8f9e18fe4); 4 human UAT items pending. Next milestone is v1.3 image branding upload under the captured threat model.
 Resume file: None

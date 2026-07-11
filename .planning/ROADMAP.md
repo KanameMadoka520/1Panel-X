@@ -148,8 +148,10 @@ Release: `v1.1.0-open.1` built from `21d19773c` (dual-layer checksums verified, 
 
 The safe, fully CI-verifiable slice of branding — text and login colors, **no file upload** — wiring already-declared, already-frontend-consumed enhancement fields and adding the missing community form. Chosen after a source-verified design + adversarial threat model (`.planning/v1.2-MILESTONE-DECISION.md`, `.planning/research/BRANDING-DESIGN.md`).
 
-- [ ] **Phase 8: Branding Backend Wiring** - `Title`, `MasterAlias`, `LoginBgType`, `LoginBackground`(color), `LoginBtnLinkColor` through the enhancement seam, with server-side XSS controls and a strict anonymous subset. [BRAND-01]
-- [ ] **Phase 9: Community Branding Form** - a minimal open settings form for those fields; login renders them pre-auth. [BRAND-02]
+- [x] **Phase 8: Branding Backend Wiring** - implemented and automatically verified; browser/API UAT persists separately. [BRAND-01]
+- [x] **Phase 9: Community Branding Form** - implemented and automatically verified; browser UAT persists separately. [BRAND-02]
+
+Release: `v1.2.0-open.1` built from `8f9e18fe4` (dual-layer checksums verified, `dirty=false`, VPS `not_run`; agent binary byte-identical to v1.1). Milestone audit: `gaps_found` — 4 human UAT items pending, not archived.
 
 ## Future Milestone Themes
 
