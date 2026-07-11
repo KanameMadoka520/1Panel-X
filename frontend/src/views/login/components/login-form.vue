@@ -1,6 +1,14 @@
 <template>
     <div v-loading="loading" class="w-full h-full flex items-center justify-center px-8">
         <div class="w-full flex-grow flex flex-col login-form">
+            <div v-if="themeConfig.loginWelcome || themeConfig.loginSubtitle" class="login-brand-head mb-6">
+                <div v-if="themeConfig.loginWelcome" class="text-2xl font-semibold text-gray-900">
+                    {{ themeConfig.loginWelcome }}
+                </div>
+                <div v-if="themeConfig.loginSubtitle" class="text-sm text-gray-500 mt-1">
+                    {{ themeConfig.loginSubtitle }}
+                </div>
+            </div>
             <div v-if="mfaShow">
                 <el-form @submit.prevent>
                     <div class="flex flex-col justify-center items-center mb-6">
@@ -235,6 +243,10 @@
                     </span>
                 </template>
             </DialogPro>
+
+            <div v-if="themeConfig.copyright" class="login-copyright text-xs text-gray-400 text-center mt-6">
+                {{ themeConfig.copyright }}
+            </div>
         </div>
     </div>
 </template>

@@ -161,6 +161,9 @@ export async function getXpackSettingForTheme(authenticated = false) {
         globalStore.themeConfig.loginBgType = res2.data?.loginBgType;
         globalStore.themeConfig.loginBackground = res2.data?.loginBackground;
         globalStore.themeConfig.loginBtnLinkColor = res2.data?.loginBtnLinkColor;
+        globalStore.themeConfig.loginWelcome = res2.data?.loginWelcome;
+        globalStore.themeConfig.loginSubtitle = res2.data?.loginSubtitle;
+        globalStore.themeConfig.copyright = res2.data?.copyright;
         globalStore.themeConfig.themeColor = res2.data?.themeColor;
         globalStore.masterAlias = res2.data.masterAlias;
         if (res2.data?.theme) {

@@ -13,6 +13,9 @@ export const useLogo = async () => {
         themeConfig.value.loginBgType = res.data?.loginBgType;
         themeConfig.value.loginBackground = res.data?.loginBackground;
         themeConfig.value.loginBtnLinkColor = res.data?.loginBtnLinkColor;
+        themeConfig.value.loginWelcome = res.data?.loginWelcome;
+        themeConfig.value.loginSubtitle = res.data?.loginSubtitle;
+        themeConfig.value.copyright = res.data?.copyright;
         themeConfig.value.favicon = res.data.favicon;
         watermarkShow.value = res.data.watermarkShow === 'Enable';
         try {

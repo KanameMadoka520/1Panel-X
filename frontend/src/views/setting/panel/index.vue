@@ -165,6 +165,34 @@
                                 />
                             </el-form-item>
 
+                            <el-form-item :label="$t('setting.loginWelcomeLabel')" prop="loginWelcome">
+                                <el-input
+                                    class="sm:!w-1/2 !w-full"
+                                    v-model="form.loginWelcome"
+                                    maxlength="128"
+                                    @change="onSaveBranding('LoginWelcome', form.loginWelcome)"
+                                />
+                            </el-form-item>
+
+                            <el-form-item :label="$t('setting.loginSubtitleLabel')" prop="loginSubtitle">
+                                <el-input
+                                    class="sm:!w-1/2 !w-full"
+                                    v-model="form.loginSubtitle"
+                                    maxlength="128"
+                                    @change="onSaveBranding('LoginSubtitle', form.loginSubtitle)"
+                                />
+                            </el-form-item>
+
+                            <el-form-item :label="$t('setting.copyrightLabel')" prop="copyright">
+                                <el-input
+                                    class="sm:!w-1/2 !w-full"
+                                    v-model="form.copyright"
+                                    maxlength="200"
+                                    @change="onSaveBranding('Copyright', form.copyright)"
+                                />
+                                <span class="input-help">{{ $t('setting.copyrightHelper') }}</span>
+                            </el-form-item>
+
                             <el-form-item v-for="asset in brandAssets" :key="asset.key" :label="$t(asset.label)">
                                 <div class="brand-asset">
                                     <img
@@ -355,6 +383,9 @@ const form = reactive({
     loginBgType: '',
     loginBackground: '',
     loginBtnLinkColor: '',
+    loginWelcome: '',
+    loginSubtitle: '',
+    copyright: '',
     logo: '',
     logoWithText: '',
     favicon: '',
@@ -455,6 +486,9 @@ const search = async () => {
         form.loginBgType = xpackRes.data.loginBgType || '';
         form.loginBackground = xpackRes.data.loginBackground || '';
         form.loginBtnLinkColor = xpackRes.data.loginBtnLinkColor || '';
+        form.loginWelcome = xpackRes.data.loginWelcome || '';
+        form.loginSubtitle = xpackRes.data.loginSubtitle || '';
+        form.copyright = xpackRes.data.copyright || '';
         form.logo = xpackRes.data.logo || '';
         form.logoWithText = xpackRes.data.logoWithText || '';
         form.favicon = xpackRes.data.favicon || '';

@@ -27,6 +27,9 @@ const GlobalStore = defineStore('GlobalState', {
             loginBackground: '',
             loginBgType: '',
             loginBtnLinkColor: '',
+            loginWelcome: '',
+            loginSubtitle: '',
+            copyright: '',
         },
         // ui
         isFullScreen: false,
