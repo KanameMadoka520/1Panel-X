@@ -76,42 +76,136 @@ func TestDefaultEnhancementValuesAreValid(t *testing.T) {
 	}
 }
 
-func TestPublicEnhancementSettingExcludesWatermark(t *testing.T) {
+// TestPublicEnhancementSettingIsStrictSubset is the anonymous-surface control
+// (threat T8): the pre-auth payload exposes exactly the cosmetic set and never
+// watermark, image bytes/paths, or any key absent from the authenticated DTO.
+func TestPublicEnhancementSettingIsStrictSubset(t *testing.T) {
 	setupEnhancementTestDB(t)
-	if err := settingRepo.UpdateOrCreate("Theme", "dark"); err != nil {
-		t.Fatalf("store theme: %v", err)
+	stored := map[string]string{
+		"Theme":             "dark",
+		"ThemeColor":        `{"light":"#112233","dark":"#445566"}`,
+		"Watermark":         `{"lightColor":"#000000","darkColor":"#ffffff","fontSize":16,"content":"internal-node","rotate":0,"gap":100}`,
+		"WatermarkShow":     "Enable",
+		"Title":             "Acme Cloud",
+		"MasterAlias":       "HQ",
+		"LoginBgType":       "color",
+		"LoginBackground":   "#101828",
+		"LoginBtnLinkColor": "rgb(0, 94, 235)",
 	}
-	if err := settingRepo.UpdateOrCreate("ThemeColor", `{"light":"#112233","dark":"#445566"}`); err != nil {
-		t.Fatalf("store theme color: %v", err)
-	}
-	watermark := `{"lightColor":"#000000","darkColor":"#ffffff","fontSize":16,"content":"internal-node","rotate":0,"gap":100}`
-	if err := settingRepo.UpdateOrCreate("Watermark", watermark); err != nil {
-		t.Fatalf("store watermark: %v", err)
-	}
-	if err := settingRepo.UpdateOrCreate("WatermarkShow", "Enable"); err != nil {
-		t.Fatalf("store watermark status: %v", err)
+	for k, v := range stored {
+		if err := settingRepo.UpdateOrCreate(k, v); err != nil {
+			t.Fatalf("store %s: %v", k, err)
+		}
 	}
 
-	publicSetting, err := NewIEnhancementService().GetPublicSettingInfo()
+	svc := NewIEnhancementService()
+	publicSetting, err := svc.GetPublicSettingInfo()
 	if err != nil {
 		t.Fatalf("get public enhancement setting: %v", err)
 	}
-	data, err := json.Marshal(publicSetting)
+	authedSetting, err := svc.GetSettingInfo()
 	if err != nil {
-		t.Fatalf("marshal public enhancement setting: %v", err)
+		t.Fatalf("get authed enhancement setting: %v", err)
+	}
+
+	publicFields := jsonKeySet(t, publicSetting)
+	authedFields := jsonKeySet(t, authedSetting)
+
+	wantPublic := map[string]bool{
+		"theme": true, "themeColor": true, "title": true, "masterAlias": true,
+		"loginBgType": true, "loginBackground": true, "loginBtnLinkColor": true,
+	}
+	for k := range publicFields {
+		if !wantPublic[k] {
+			t.Fatalf("public payload exposed unexpected key %q", k)
+		}
+		if _, ok := authedFields[k]; !ok {
+			t.Fatalf("public key %q is not a subset of the authenticated DTO", k)
+		}
+	}
+	for k := range wantPublic {
+		if _, ok := publicFields[k]; !ok {
+			t.Fatalf("public payload missing expected cosmetic key %q", k)
+		}
+	}
+	for _, forbidden := range []string{"watermark", "watermarkShow", "logo", "logoWithText", "favicon", "loginImage"} {
+		if _, exists := publicFields[forbidden]; exists {
+			t.Fatalf("public response exposed forbidden key %q", forbidden)
+		}
+	}
+	if publicSetting.Title != "Acme Cloud" || publicSetting.LoginBackground != "#101828" {
+		t.Fatalf("public branding values not returned: %+v", publicSetting)
+	}
+}
+
+func jsonKeySet(t *testing.T, v interface{}) map[string]struct{} {
+	t.Helper()
+	data, err := json.Marshal(v)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
 	}
 	var fields map[string]interface{}
 	if err := json.Unmarshal(data, &fields); err != nil {
-		t.Fatalf("decode public enhancement setting: %v", err)
+		t.Fatalf("decode: %v", err)
 	}
-	if len(fields) != 2 || fields["theme"] != "dark" {
-		t.Fatalf("unexpected public fields: %s", data)
+	set := make(map[string]struct{}, len(fields))
+	for k := range fields {
+		set[k] = struct{}{}
 	}
-	if _, exists := fields["watermark"]; exists {
-		t.Fatalf("public response exposed watermark: %s", data)
+	return set
+}
+
+func TestValidateEnhancementBrandingFields(t *testing.T) {
+	valid := []struct{ key, value string }{
+		{"Title", ""}, {"Title", "Acme Cloud 面板"},
+		{"MasterAlias", "HQ-Node"},
+		{"LoginBgType", ""}, {"LoginBgType", "image"}, {"LoginBgType", "color"},
+		{"LoginBackground", ""}, {"LoginBackground", "#0a0a0a"}, {"LoginBackground", "rgba(0,0,0,0.5)"},
+		{"LoginBtnLinkColor", "#005eeb"},
 	}
-	if _, exists := fields["watermarkShow"]; exists {
-		t.Fatalf("public response exposed watermark status: %s", data)
+	for _, c := range valid {
+		if err := validateEnhancementSetting(c.key, c.value); err != nil {
+			t.Fatalf("expected %s=%q valid, got %v", c.key, c.value, err)
+		}
+	}
+
+	invalid := []struct {
+		name, key, value string
+	}{
+		{"title angle bracket", "Title", "<img src=x onerror=alert(1)>"},
+		{"title control char", "Title", "brand\x00name"},
+		{"title too long", "Title", strings.Repeat("a", 65)},
+		{"alias angle bracket", "MasterAlias", "a<b"},
+		{"bgtype bad enum", "LoginBgType", "video"},
+		{"background not color", "LoginBackground", "javascript:alert(1)"},
+		{"background bad word", "LoginBackground", "red"},
+		{"btncolor not color", "LoginBtnLinkColor", "url(x)"},
+	}
+	for _, c := range invalid {
+		if err := validateEnhancementSetting(c.key, c.value); err == nil {
+			t.Fatalf("%s: expected %s=%q to be rejected", c.name, c.key, c.value)
+		}
+	}
+}
+
+func TestEnhancementBrandingStoredValueFallsBack(t *testing.T) {
+	setupEnhancementTestDB(t)
+	// A corrupt stored branding value must fall back to empty, never surface markup.
+	if err := settingRepo.UpdateOrCreate("Title", "<script>evil</script>"); err != nil {
+		t.Fatalf("store corrupt title: %v", err)
+	}
+	if err := settingRepo.UpdateOrCreate("LoginBackground", "expression(alert(1))"); err != nil {
+		t.Fatalf("store corrupt background: %v", err)
+	}
+	info, err := NewIEnhancementService().GetSettingInfo()
+	if err != nil {
+		t.Fatalf("get setting info: %v", err)
+	}
+	if info.Title != "" {
+		t.Fatalf("corrupt title did not fall back: %q", info.Title)
+	}
+	if info.LoginBackground != "" {
+		t.Fatalf("corrupt background did not fall back: %q", info.LoginBackground)
 	}
 }
 
