@@ -93,36 +93,50 @@ const onImgError = (event: any) => {
     imgLoaded.value = true;
 };
 
-onMounted(async () => {
-    await getStatus();
-    const loginImageUrl = `/api/v2/images/loginImage?t=${Date.now()}`;
-    const backgroundImageUrl = `/api/v2/images/loginBackground?t=${Date.now()}`;
-    if (themeConfig.value.loginImage === 'loginImage') {
-        loadedLoginImage.value = await preloadImage(loginImageUrl);
+// Apply the custom login image / background. Runs reactively (watch below)
+// because themeConfig is populated asynchronously from the public settings
+// AFTER mount; a one-shot onMounted read would miss the uploaded assets and
+// fall back to the defaults.
+// brandingRun guards against overlapping reactive runs: a stale async callback
+// (image preload / img.onload) from an earlier run must not clobber the result
+// of the latest run (e.g. a slow default-bg onload overwriting a configured
+// solid color).
+let brandingRun = 0;
+const applyLoginBranding = async () => {
+    const run = ++brandingRun;
+    const { loginImage, loginBgType, loginBackground } = themeConfig.value;
+    if (loginImage === 'loginImage') {
+        const src = await preloadImage(`/api/v2/images/loginImage?t=${Date.now()}`);
+        if (run === brandingRun) loadedLoginImage.value = src;
     }
-    if (themeConfig.value.loginBgType === 'image' && themeConfig.value.loginBackground === 'loginBackground') {
-        loadedBackgroundImage.value = await preloadImage(backgroundImageUrl);
+    if (loginBgType === 'image' && loginBackground === 'loginBackground') {
+        const src = await preloadImage(`/api/v2/images/loginBackground?t=${Date.now()}`);
+        if (run === brandingRun) loadedBackgroundImage.value = src;
     }
-    if (themeConfig.value.loginBgType === 'color') {
-        backgroundStyle.value = {
-            backgroundColor: themeConfig.value.loginBackground,
-        };
+    if (loginBgType === 'color') {
+        backgroundStyle.value = { backgroundColor: loginBackground };
     } else {
-        const img = new Image();
         const url = loadImage('loginBackground');
+        const img = new Image();
         img.onload = () => {
-            backgroundStyle.value = {
-                backgroundImage: `url(${url})`,
-            };
+            if (run === brandingRun) backgroundStyle.value = { backgroundImage: `url(${url})` };
         };
         img.onerror = () => {
-            backgroundStyle.value = {
-                backgroundImage: `url(${defaultLoginBgImage})`,
-            };
+            if (run === brandingRun) backgroundStyle.value = { backgroundImage: `url(${defaultLoginBgImage})` };
         };
         img.src = url;
     }
+};
+
+onMounted(async () => {
+    await getStatus();
 });
+
+watch(
+    () => [themeConfig.value.loginImage, themeConfig.value.loginBgType, themeConfig.value.loginBackground],
+    () => applyLoginBranding(),
+    { immediate: true },
+);
 
 const FIXED_WIDTH = 1000;
 const FIXED_HEIGHT = 415;
