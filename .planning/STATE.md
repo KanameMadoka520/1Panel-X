@@ -5,17 +5,17 @@
 See: `.planning/PROJECT.md`, `.planning/REQUIREMENTS.md`, `.planning/v1.1-MILESTONE-DECISION.md`, `.planning/research/CAPABILITY-MATRIX.md` (updated 2026-07-10)
 
 **Core value:** Deliver a complete, security-conscious, fully open server panel without proprietary code or license bypasses.
-**Current milestone:** v1.2 Open Branding Text & Login Colors
-**Current focus:** Ship the safe text/color slice of branding (no file upload) — wire the already-declared, frontend-consumed enhancement fields with server-side XSS controls and a strict anonymous subset, plus a minimal community edit form. Image upload deferred to v1.3.
+**Current milestone:** v1.3 Open Image Branding Upload
+**Current focus:** Ship the high-risk image-upload surface deferred from v1.2 — an authenticated upload/reset endpoint with fixed-enum atomic writes and full decode/size validation, PLUS serve-side SVG hardening of the anonymous image route, presence-sentinel storage, a widened-but-strict anon subset, and a community upload form. All under the captured threat model (T1–T10).
 
 ## Current Position
 
-Milestone: v1.2 (Phases 8-9) shipped `v1.2.0-open.1`. v1.1 shipped `v1.1.0-open.1` (6 UAT pending); v1.0 (20 UAT pending). None archived.
-Phase: 8 (backend) and 9 (frontend form) implemented, automatically verified, released.
-Status: `gaps_found` — implementation + all automated gates complete; 4 human UAT items (2 per phase) pending on a VPS/browser. Milestone not archived. Image upload deferred to v1.3.
-Last activity: 2026-07-11 - Built and independently inspected `v1.2.0-open.1` from source revision `8f9e18fe44fdfe98767937e38ca7e3b2cf05cabd`.
+Milestone: v1.3 (Phases 10-11) implemented + automatically verified; adversarial security review + release pending. v1.2 shipped `v1.2.0-open.1` (4 UAT pending); v1.1 `v1.1.0-open.1` (6 UAT pending); v1.0 (20 UAT pending). None archived.
+Phase: 10 (backend upload + serve hardening) and 11 (frontend form) implemented; gofmt/vet clean, focused Go tests pass, `build:pro` + changed-file ESLint pass.
+Status: implementation + automated gates complete; adversarial security-review workflow over the diff in progress; release `v1.3.0-open.1` not yet built. Human UAT (browser/API/pre-auth render) will remain pending without a VPS. Milestone will be `gaps_found`, not archived.
+Last activity: 2026-07-11 - Implemented v1.3 backend + frontend; ran the T1–T10 adversarial security review workflow before release.
 
-Progress: v1.0 [##########] gates done (0/5 accepted). v1.1 [##########] released (0/2 accepted). v1.2 [##########] released (0/2 accepted, 4 UAT pending).
+Progress: v1.0 [##########] gates done (0/5 accepted). v1.1 [##########] released (0/2 accepted). v1.2 [##########] released (0/2 accepted, 4 UAT). v1.3 [########--] implemented + verified, review/release in progress.
 
 ## Repository Snapshot
 

@@ -131,6 +131,33 @@ Acceptance criteria:
 3. No image-upload control is present.
 4. `npm run build:pro` and changed-file ESLint pass; browser rendering is recorded as human UAT.
 
+## v1.3 Requirements (current milestone: Open Image Branding Upload)
+
+**Note:** v1.0's 20, v1.1's 6, and v1.2's 4 human UAT items remain pending. v1.3 adds the high-risk image-upload surface deferred from v1.2, under the captured threat model. Rationale: `.planning/v1.3-MILESTONE-DECISION.md`, threat model `.planning/research/BRANDING-DESIGN.md`.
+
+### Branding Image Upload (backend + serve hardening)
+
+- [ ] **BRAND-IMG-01**: A community build can upload, validate, store, and serve branding images (logo, logo-with-text, favicon, login image, login background image) safely, with the anonymous image-serve route hardened against stored-XSS.
+
+Acceptance criteria:
+
+1. The image-serve route (`RegisterImages`) serves only the fixed asset enum, sets Content-Type from a raster allowlist (never `image/svg+xml`/HTML), always sends `X-Content-Type-Options: nosniff`, and no longer force-serves `<svg>` bodies as SVG (T1/T2).
+2. Upload accepts only PNG/JPEG/GIF/WEBP raster images (favicon PNG-only, T10); rejects SVG/XML/HTML by magic-byte scan; bounds dimensions (≤16 MP) via `DecodeConfig` before full decode (T5); enforces per-asset byte caps (2 MB / 256 KB favicon) with `MaxBytesReader` before parse (T4).
+3. Filenames are a fixed server-side enum (never the client filename), written atomically (temp+rename) inside `uploads/theme` with a prefix assertion (T3/T6); reset removes the exact file and clears the setting.
+4. Settings store only a presence sentinel (never bytes or paths); the widened anonymous subset exposes only those cosmetic presence flags and still never watermark/paths/versions/secrets, proven by the subset test (T8). The write routes are behind SessionAuth + the global CSRF guard (T9); image keys are not settable through the text update endpoint.
+5. Focused Go tests (serve allowlist, format/SVG/pixel-bomb/size/favicon rejection, atomic write + sentinel, reset, enum) and full core regression pass; an adversarial security review of the diff is recorded; browser/API acceptance is human UAT.
+
+### Community Branding Image Form
+
+- [ ] **BRAND-IMG-02**: A community administrator can upload and reset branding images from the open settings form; the login page and sidebar render them.
+
+Acceptance criteria:
+
+1. The settings form offers upload + reset for each of the five images, gated so the login-background image control appears only when the login background type is image.
+2. Uploads use the open asset endpoint via multipart with automatic CSRF; a client-side size/type hint is shown but the server remains authoritative.
+3. Image references are fixed served paths; no branding value is `v-html`'d; previews cache-bust after upload/reset.
+4. `npm run build:pro` and changed-file ESLint pass; browser set/persist and pre-auth render are recorded as human UAT.
+
 ## Future Requirements
 
 The following areas are acknowledged but are not committed to v1.0, v1.1, or v1.2 and do not map to current phases:
@@ -184,16 +211,18 @@ Each current requirement maps to exactly one phase.
 | RELEASE-01 | Phase 5 | Human UAT Pending |
 | ALERT-SEC-01 | Phase 6 | Human UAT Pending (v1.1) |
 | AGENT-02 | Phase 7 | Human UAT Pending (v1.1) |
-| BRAND-01 | Phase 8 | Active (v1.2) |
-| BRAND-02 | Phase 9 | Active (v1.2) |
+| BRAND-01 | Phase 8 | Human UAT Pending (v1.2) |
+| BRAND-02 | Phase 9 | Human UAT Pending (v1.2) |
+| BRAND-IMG-01 | Phase 10 | Active (v1.3) |
+| BRAND-IMG-02 | Phase 11 | Active (v1.3) |
 
 **Coverage:**
 
-- v1.0: 5; v1.1: 2; v1.2: 2 total
-- Mapped to exactly one phase: 9
+- v1.0: 5; v1.1: 2; v1.2: 2; v1.3: 2 total
+- Mapped to exactly one phase: 11
 - Unmapped: 0
 - Mapped more than once: 0
 
 ---
 *Requirements defined: 2026-07-10*
-*Last updated: 2026-07-10 after defining milestone v1.1 (ALERT-SEC-01, AGENT-02) from the source-verified capability inventory*
+*Last updated: 2026-07-11 after defining milestone v1.3 (BRAND-IMG-01, BRAND-IMG-02) — image branding upload under the captured threat model*

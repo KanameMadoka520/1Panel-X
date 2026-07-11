@@ -144,7 +144,7 @@ Release: `v1.1.0-open.1` built from `21d19773c` (dual-layer checksums verified, 
 
 **Plans:** 07-01 defined.
 
-## Current Milestone: v1.2 Open Branding Text & Login Colors
+## Prior Milestone: v1.2 Open Branding Text & Login Colors (shipped v1.2.0-open.1)
 
 The safe, fully CI-verifiable slice of branding — text and login colors, **no file upload** — wiring already-declared, already-frontend-consumed enhancement fields and adding the missing community form. Chosen after a source-verified design + adversarial threat model (`.planning/v1.2-MILESTONE-DECISION.md`, `.planning/research/BRANDING-DESIGN.md`).
 
@@ -153,11 +153,47 @@ The safe, fully CI-verifiable slice of branding — text and login colors, **no 
 
 Release: `v1.2.0-open.1` built from `8f9e18fe4` (dual-layer checksums verified, `dirty=false`, VPS `not_run`; agent binary byte-identical to v1.1). Milestone audit: `gaps_found` — 4 human UAT items pending, not archived.
 
+## Current Milestone: v1.3 Open Image Branding Upload
+
+The high-risk item deferred from v1.2: uploading branding images (logo, logo-with-text, favicon, login image, login background image), built entirely under the captured threat model. This is the project's first from-scratch multipart file-write surface, so serve-side SVG hardening ships in the same change. Decision: `.planning/v1.3-MILESTONE-DECISION.md`.
+
+- [x] **Phase 10: Branding Image Upload (backend + serve hardening)** - implemented and automatically verified (serve allowlist + nosniff, SVG/pixel-bomb/size/format rejection, fixed-enum atomic write, presence sentinels, CSRF via global guard); adversarial security review recorded; browser/API UAT persists separately. [BRAND-IMG-01]
+- [x] **Phase 11: Community Branding Image Form** - implemented and automatically verified (upload + reset controls, multipart with auto-CSRF, no `v-html`); browser UAT persists separately. [BRAND-IMG-02]
+
+### Phase 10: Branding Image Upload (backend + serve hardening)
+
+**Goal:** A community build uploads/validates/stores/serves branding images safely, with the anonymous serve route hardened against stored-XSS.
+**Depends on:** v1.2 (branding text/colors, enhancement seam), already implemented.
+**Requirements:** [BRAND-IMG-01]
+**Success Criteria:**
+
+1. Serve route: fixed-enum only, raster-allowlist Content-Type, `nosniff`, no `<svg>` override (T1/T2).
+2. Upload: PNG/JPEG/GIF/WEBP (favicon PNG-only, T10); SVG/XML/HTML rejected; `DecodeConfig` dimension cap before full decode (T5); `MaxBytesReader` + per-asset byte cap (T4).
+3. Fixed-enum atomic write inside `uploads/theme` with prefix assert (T3/T6); reset removes exact file + clears sentinel.
+4. Presence-sentinel storage; strict anon subset (T8); authed + global CSRF on write routes (T9); image keys absent from the text `oneof`.
+5. Focused tests + full core regression pass; adversarial review recorded; browser/API is human UAT.
+
+**Plans:** 10-01 defined.
+
+### Phase 11: Community Branding Image Form
+
+**Goal:** A community administrator uploads/resets branding images from the open settings form.
+**Depends on:** Phase 10.
+**Requirements:** [BRAND-IMG-02]
+**Success Criteria:**
+
+1. Upload + reset controls for the five images; login-background image control gated on bg-type = image.
+2. Multipart via the open endpoint with automatic CSRF; client size/type hint, server authoritative.
+3. Fixed served-path image srcs; no `v-html`; previews cache-bust after upload/reset.
+4. `npm run build:pro` + changed-file ESLint pass; browser set/persist + pre-auth render are human UAT.
+
+**Plans:** 11-01 defined.
+
 ## Future Milestone Themes
 
-These themes are intentionally outside v1.0–v1.2. They have no current phase number and must not be described as implemented. Ordering reflects the dependency graph and risk ranking in `.planning/research/CAPABILITY-MATRIX.md`:
+These themes are intentionally outside v1.0–v1.3. They have no current phase number and must not be described as implemented. Ordering reflects the dependency graph and risk ranking in `.planning/research/CAPABILITY-MATRIX.md`:
 
-1. **v1.3 Image branding upload** - logo/favicon/login image: the high-risk file-upload item, built with the captured threat model (serve-side SVG hardening, `MaxBytesReader` + `DecodeConfig` caps, fixed-enum filenames, CSRF verification, `.ico` resolution). May also include login welcome/subtitle/copyright text (P2).
+1. **Login welcome/subtitle/copyright text (P2)** - the remaining branding slice: new login-page text fields rendered as interpolation (never `v-html`), server-side reject-`<>`. A small phase, foldable after v1.3 accepts.
 2. **v1.4 Secure multi-node** - the keystone 15+ capabilities depend on; needs a full threat model (identity, enrollment token, mutual mTLS, rotation, replay, audit, failure consistency) and a second VPS to accept.
 
 1. Advanced WAF and website request monitoring.
