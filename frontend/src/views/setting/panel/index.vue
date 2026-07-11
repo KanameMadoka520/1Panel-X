@@ -85,6 +85,54 @@
                                 </el-input>
                             </el-form-item>
 
+                            <el-form-item :label="$t('setting.brandText')" prop="title">
+                                <el-input
+                                    class="sm:!w-1/2 !w-full"
+                                    v-model="form.title"
+                                    maxlength="64"
+                                    @change="onSaveBranding('Title', form.title)"
+                                />
+                                <span class="input-help">{{ $t('setting.brandTextHelper') }}</span>
+                            </el-form-item>
+
+                            <el-form-item :label="$t('setting.masterAlias')" prop="masterAlias">
+                                <el-input
+                                    class="sm:!w-1/2 !w-full"
+                                    v-model="form.masterAlias"
+                                    maxlength="64"
+                                    @change="onSaveBranding('MasterAlias', form.masterAlias)"
+                                />
+                            </el-form-item>
+
+                            <el-form-item :label="$t('setting.loginBgTypeLabel')" prop="loginBgType">
+                                <el-select
+                                    class="sm:!w-1/2 !w-full"
+                                    v-model="form.loginBgType"
+                                    @change="onSaveBranding('LoginBgType', form.loginBgType)"
+                                >
+                                    <el-option value="image" :label="$t('setting.loginBgTypeImage')" />
+                                    <el-option value="color" :label="$t('setting.loginBgTypeColor')" />
+                                </el-select>
+                            </el-form-item>
+
+                            <el-form-item
+                                v-if="form.loginBgType === 'color'"
+                                :label="$t('setting.loginBackgroundColor')"
+                                prop="loginBackground"
+                            >
+                                <el-color-picker
+                                    v-model="form.loginBackground"
+                                    @change="onSaveBranding('LoginBackground', form.loginBackground)"
+                                />
+                            </el-form-item>
+
+                            <el-form-item :label="$t('setting.loginBtnLinkColorLabel')" prop="loginBtnLinkColor">
+                                <el-color-picker
+                                    v-model="form.loginBtnLinkColor"
+                                    @change="onSaveBranding('LoginBtnLinkColor', form.loginBtnLinkColor)"
+                                />
+                            </el-form-item>
+
                             <el-form-item :label="$t('setting.language')" prop="language">
                                 <el-select
                                     class="sm:!w-1/2 !w-full"
@@ -241,6 +289,11 @@ const form = reactive({
     theme: '',
     watermark: '',
     watermarkShow: '',
+    title: '',
+    masterAlias: '',
+    loginBgType: '',
+    loginBackground: '',
+    loginBtnLinkColor: '',
     themeColor: {} as ThemeColor,
     menuTabs: '',
     menuAccordion: '',
@@ -332,6 +385,11 @@ const search = async () => {
         themeConfig.value.theme = form.theme;
         form.watermark = xpackRes.data.watermark;
         form.watermarkShow = xpackRes.data.watermarkShow;
+        form.title = xpackRes.data.title || '';
+        form.masterAlias = xpackRes.data.masterAlias || '';
+        form.loginBgType = xpackRes.data.loginBgType || '';
+        form.loginBackground = xpackRes.data.loginBackground || '';
+        form.loginBtnLinkColor = xpackRes.data.loginBtnLinkColor || '';
         try {
             watermark.value = JSON.parse(xpackRes.data.watermark);
         } catch {
@@ -428,6 +486,18 @@ const handleThemeChange = async (val: string) => {
     themeConfig.value.primary = color;
     setPrimaryColor(color);
 };
+const onSaveBranding = async (key: string, val: string) => {
+    loading.value = true;
+    try {
+        await updateXpackSettingByKey(key, (val ?? '') + '');
+        MsgSuccess(i18n.global.t('commons.msg.operationSuccess'));
+    } catch (error) {
+        await search();
+    } finally {
+        loading.value = false;
+    }
+};
+
 const onSave = async (key: string, val: any) => {
     loading.value = true;
     let param = {
