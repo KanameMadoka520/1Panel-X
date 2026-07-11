@@ -8,6 +8,9 @@
                     {{ $t('commons.button.create') }}
                 </el-button>
                 <EnterpriseBatchInstall @success="search" @task="openTaskLog" />
+                <el-button v-permission @click="openLimit">
+                    {{ $t('aiTools.agents.agentLimitSetting') }}
+                </el-button>
             </template>
             <template #rightToolBar>
                 <TableSearch v-model:searchName="searchName" @search="search" />
@@ -225,6 +228,7 @@
             </template>
         </LayoutContent>
         <AddDialog ref="addRef" @search="search" @task="openTaskLog" />
+        <AgentLimitDialog ref="limitRef" />
         <TaskLog ref="taskLogRef" @close="search" />
         <DeleteDialog ref="deleteRef" @close="search" />
         <AppResources ref="checkRef" @close="search" />
@@ -253,6 +257,7 @@ import { newUUID } from '@/utils/id';
 import { MsgSuccess } from '@/utils/message';
 
 import AddDialog from '@/views/ai/agents/agent/add/index.vue';
+import AgentLimitDialog from '@/views/ai/agents/agent/limit/index.vue';
 import DeleteDialog from '@/views/ai/agents/agent/delete/index.vue';
 import AppResources from '@/views/app-store/installed/check/index.vue';
 import ConfigDrawer from '@/views/ai/agents/agent/config/index.vue';
@@ -289,6 +294,7 @@ const EnterpriseBatchInstall = defineAsyncComponent(() =>
 const items = ref<AI.AgentItem[]>([]);
 const loading = ref(false);
 const addRef = ref();
+const limitRef = ref();
 const taskLogRef = ref();
 const deleteRef = ref();
 const checkRef = ref();
@@ -435,6 +441,10 @@ const getAgentTypeIcon = (agentType: AI.AgentType) => {
         default:
             return openclawIcon;
     }
+};
+
+const openLimit = () => {
+    limitRef.value.acceptParams();
 };
 
 const openCreate = (agentType?: AI.AgentType) => {

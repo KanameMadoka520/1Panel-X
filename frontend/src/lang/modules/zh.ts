@@ -656,6 +656,13 @@ const message = {
     aiTools: {
         agents: {
             agent: '智能体',
+            agentLimitSetting: '数量上限',
+            agentLimitTitle: 'AI 智能体数量上限',
+            agentLimitLabel: '最大数量',
+            agentLimitPlaceholder: '0 表示不限制',
+            agentLimitHelper:
+                '0 表示不限制智能体数量；数量不限不代表主机 CPU、内存、磁盘、端口或 Docker 容量无限。',
+            agentLimitRangeError: '请输入 0 到 1000 之间的整数',
             account: '模型账号',
             batchOperation: '批量操作',
             operationType: '操作类型',

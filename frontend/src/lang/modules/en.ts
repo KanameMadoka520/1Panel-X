@@ -690,6 +690,13 @@ const message = {
     aiTools: {
         agents: {
             agent: 'Agent',
+            agentLimitSetting: 'Count Limit',
+            agentLimitTitle: 'AI Agent Count Limit',
+            agentLimitLabel: 'Max Count',
+            agentLimitPlaceholder: '0 = unlimited',
+            agentLimitHelper:
+                '0 means no count limit. An unlimited count does not mean unlimited host CPU, memory, disk, ports, or Docker capacity.',
+            agentLimitRangeError: 'Enter an integer from 0 to 1000',
             account: 'Model Account',
             batchOperation: 'Batch Operation',
             operationType: 'Operation Type',
