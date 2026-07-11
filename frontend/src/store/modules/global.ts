@@ -163,7 +163,10 @@ const GlobalStore = defineStore('GlobalState', {
             return this.masterAlias || i18n.global.t('xpack.node.master');
         },
     },
-    persist: piniaPersistConfig('GlobalState'),
+    persist: {
+        ...piniaPersistConfig('GlobalState'),
+        omit: ['watermark', 'watermarkShow'],
+    },
 }) as StoreDefinition<'GlobalState', GlobalState, any, any>;
 
 export default GlobalStore;

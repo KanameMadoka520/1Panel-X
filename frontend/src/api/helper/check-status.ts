@@ -2,6 +2,7 @@ import i18n from '@/lang';
 import router from '@/routers';
 import { MsgError } from '@/utils/message';
 import { useGlobalStore } from '@/composables/useGlobalStore';
+import { resetXSetting } from '@/utils/xpack';
 
 export const checkStatus = (status: number, msg: string): void => {
     const { entrance, isLogin } = useGlobalStore();
@@ -14,6 +15,7 @@ export const checkStatus = (status: number, msg: string): void => {
             break;
         case 403:
             isLogin.value = false;
+            resetXSetting();
             router.replace({ name: 'entrance', params: { code: entrance.value } });
             MsgError(msg ? msg : i18n.global.t('commons.res.forbidden'));
             break;

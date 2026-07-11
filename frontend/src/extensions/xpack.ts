@@ -1,3 +1,9 @@
+import {
+    getOpenEnhancementSetting,
+    getPublicOpenEnhancementSetting,
+    updateOpenEnhancementSetting,
+} from '@/api/modules/enhancement';
+
 type XpackSettingModule = {
     searchXSetting?: () => Promise<any>;
     getXProxyDocker?: () => Promise<any>;
@@ -29,10 +35,10 @@ function getXpackSettingModule(): XpackSettingModule | null {
     return findModule(xpackModules, '/api/modules/setting.ts');
 }
 
-export async function searchXpackSetting() {
+export async function searchXpackSetting(authenticated = false) {
     const module = getXpackSettingModule();
     if (!module?.searchXSetting) {
-        return null;
+        return authenticated ? getOpenEnhancementSetting() : getPublicOpenEnhancementSetting();
     }
     return module.searchXSetting();
 }
@@ -48,7 +54,7 @@ export async function getXpackProxyDocker() {
 export async function updateXpackSettingByKey(key: string, value: string) {
     const module = getXpackSettingModule();
     if (!module?.updateXSettingByKey) {
-        return null;
+        return updateOpenEnhancementSetting(key, value);
     }
     return module.updateXSettingByKey(key, value);
 }

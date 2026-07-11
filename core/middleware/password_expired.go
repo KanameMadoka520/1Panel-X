@@ -27,15 +27,7 @@ func PasswordExpired() gin.HandlerFunc {
 			c.Next()
 			return
 		}
-		if strings.HasPrefix(c.Request.URL.Path, "/api/v2/core/auth") ||
-			c.Request.URL.Path == "/api/v2/core/settings/search" ||
-			c.Request.URL.Path == "/api/v2/core/settings/search/base" ||
-			c.Request.URL.Path == "/api/v2/core/xpack/settings/search" ||
-			c.Request.URL.Path == "/api/v2/core/xapp/verifyQRCode" ||
-			c.Request.URL.Path == "/api/v2/core/enterprise/users/info" ||
-			c.Request.URL.Path == "/api/v2/core/enterprise/licenses/info" ||
-			c.Request.URL.Path == "/api/v2/core/enterprise/licenses/status" ||
-			c.Request.URL.Path == "/api/v2/core/enterprise/licenses/upload" {
+		if isPasswordExpiredPublicPath(c.Request.URL.Path) {
 			c.Next()
 			return
 		}
@@ -90,5 +82,25 @@ func PasswordExpired() gin.HandlerFunc {
 			return
 		}
 		c.Next()
+	}
+}
+
+func isPasswordExpiredPublicPath(requestPath string) bool {
+	if strings.HasPrefix(requestPath, "/api/v2/core/auth") {
+		return true
+	}
+	switch requestPath {
+	case "/api/v2/core/settings/search",
+		"/api/v2/core/settings/search/base",
+		"/api/v2/core/settings/enhancements/public",
+		"/api/v2/core/xpack/settings/search",
+		"/api/v2/core/xapp/verifyQRCode",
+		"/api/v2/core/enterprise/users/info",
+		"/api/v2/core/enterprise/licenses/info",
+		"/api/v2/core/enterprise/licenses/status",
+		"/api/v2/core/enterprise/licenses/upload":
+		return true
+	default:
+		return false
 	}
 }

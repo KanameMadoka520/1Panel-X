@@ -176,6 +176,10 @@ func (u *SettingService) Update(c *gin.Context, key, value string) error {
 	}
 	sessionLifeTime := 0
 	switch key {
+	case "Theme":
+		if err := validateEnhancementSetting(key, value); err != nil {
+			return err
+		}
 	case "SessionTimeout":
 		sessionLifeTime, err = strconv.Atoi(value)
 		if err != nil {

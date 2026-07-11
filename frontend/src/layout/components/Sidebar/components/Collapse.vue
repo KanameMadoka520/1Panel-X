@@ -102,7 +102,7 @@ import { computed, onMounted, ref } from 'vue';
 import bus from '@/global/bus';
 import { logOutApi } from '@/api/modules/auth';
 import router from '@/routers';
-import { loadProductProFromDB } from '@/utils/xpack';
+import { loadProductProFromDB, resetXSetting } from '@/utils/xpack';
 import { routerToNameWithQuery } from '@/utils/router';
 import { changeToLocal, listNodes, setDefaultNodeInfo } from '@/utils/node';
 import { Login } from '@/api/interface/auth';
@@ -280,6 +280,7 @@ const logout = () => {
             await logOutApi();
             globalStore.setLogStatus(false);
             globalStore.clearAuthInfo();
+            resetXSetting();
             router.push({ name: 'entrance', params: { code: entrance.value } });
             MsgSuccess(i18n.global.t('commons.msg.operationSuccess'));
         })

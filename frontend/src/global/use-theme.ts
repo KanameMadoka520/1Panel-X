@@ -4,7 +4,7 @@ import { setPrimaryColor } from '@/utils/theme';
 let themeListenerInitialized = false;
 
 export const useTheme = () => {
-    const { isXpackOrEE, themeConfig } = useGlobalStore();
+    const { themeConfig } = useGlobalStore();
 
     const switchTheme = () => {
         const rawTheme = themeConfig.value.theme;
@@ -14,7 +14,7 @@ export const useTheme = () => {
             itemTheme = prefersDark ? 'dark' : 'light';
         }
         document.documentElement.className = itemTheme === 'dark' ? 'dark' : 'light';
-        if (isXpackOrEE.value && themeConfig.value.themeColor) {
+        if (themeConfig.value.themeColor) {
             try {
                 const themeColor = JSON.parse(themeConfig.value.themeColor);
                 const color = itemTheme === 'dark' ? themeColor.dark : themeColor.light;

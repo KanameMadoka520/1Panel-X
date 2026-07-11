@@ -36,7 +36,6 @@
                                     </div>
                                     <div>
                                         <el-button
-                                            v-if="isXpackOrEE"
                                             @click="onChangeThemeColor"
                                             icon="Setting"
                                             class="!h-[32px] sm:!h-[33.5px]"
@@ -58,7 +57,7 @@
                                 </el-radio-group>
                             </el-form-item>
 
-                            <el-form-item :label="$t('setting.watermark')" v-if="isXpackOrEE" prop="watermark">
+                            <el-form-item :label="$t('setting.watermark')" prop="watermark">
                                 <el-radio-group class="w-full" @change="onChangeWatermark" v-model="form.watermarkShow">
                                     <el-radio-button value="Enable">
                                         <span>{{ $t('commons.button.enable') }}</span>
@@ -217,7 +216,6 @@ const {
     isEnterprise,
     isIntl,
     isMobile,
-    isXpackOrEE,
     menuAccordion,
     openMenuTabs,
     themeConfig,
@@ -321,30 +319,26 @@ const search = async () => {
     form.developerMode = res.data.developerMode;
     form.hideMenu = res.data.hideMenu;
 
-    if (isXpackOrEE.value) {
-        const [xpackRes, proxyDockerRes] = await Promise.all([
-            getXpackSetting(),
-            getXpackProxyDocker().catch(() => null),
-        ]);
-        if (xpackRes) {
-            form.theme = xpackRes.data.theme || themeConfig.value.theme || 'light';
-            form.themeColor = JSON.parse(xpackRes.data.themeColor || '{"light":"#005eeb","dark":"#F0BE96"}');
-            themeConfig.value.themeColor = xpackRes.data.themeColor
-                ? xpackRes.data.themeColor
-                : '{"light":"#005eeb","dark":"#F0BE96"}';
-            themeConfig.value.theme = form.theme;
-            form.watermark = xpackRes.data.watermark;
-            form.watermarkShow = xpackRes.data.watermarkShow;
-            try {
-                watermark.value = JSON.parse(xpackRes.data.watermark);
-            } catch {
-                watermark.value = null;
-            }
-        }
-        form.proxyDocker = proxyDockerRes?.data?.proxyDocker || '';
-    } else {
+    const [xpackRes, proxyDockerRes] = await Promise.all([
+        getXpackSetting(true),
+        getXpackProxyDocker().catch(() => null),
+    ]);
+    if (xpackRes) {
+        form.theme = xpackRes.data.theme || themeConfig.value.theme || 'light';
+        form.themeColor = JSON.parse(xpackRes.data.themeColor || '{"light":"#005eeb","dark":"#F0BE96"}');
+        themeConfig.value.themeColor = xpackRes.data.themeColor
+            ? xpackRes.data.themeColor
+            : '{"light":"#005eeb","dark":"#F0BE96"}';
         themeConfig.value.theme = form.theme;
+        form.watermark = xpackRes.data.watermark;
+        form.watermarkShow = xpackRes.data.watermarkShow;
+        try {
+            watermark.value = JSON.parse(xpackRes.data.watermark);
+        } catch {
+            watermark.value = null;
+        }
     }
+    form.proxyDocker = proxyDockerRes?.data?.proxyDocker || '';
 };
 
 const onChangeTitle = () => {
@@ -422,19 +416,17 @@ const handleThemeChange = async (val: string) => {
     localStorage.removeItem(codeEditorThemeStorageKey);
     themeConfig.value.theme = val;
     switchTheme();
-    if (isXpackOrEE.value) {
-        await updateXpackSettingByKey('Theme', val);
-        let color: string;
-        const themeColor: ThemeColor = JSON.parse(themeConfig.value.themeColor);
-        if (val === 'auto') {
-            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)');
-            color = prefersDark.matches ? themeColor.dark : themeColor.light;
-        } else {
-            color = val === 'dark' ? themeColor.dark : themeColor.light;
-        }
-        themeConfig.value.primary = color;
-        setPrimaryColor(color);
+    await updateXpackSettingByKey('Theme', val);
+    let color: string;
+    const themeColor: ThemeColor = JSON.parse(themeConfig.value.themeColor);
+    if (val === 'auto') {
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)');
+        color = prefersDark.matches ? themeColor.dark : themeColor.light;
+    } else {
+        color = val === 'dark' ? themeColor.dark : themeColor.light;
     }
+    themeConfig.value.primary = color;
+    setPrimaryColor(color);
 };
 const onSave = async (key: string, val: any) => {
     loading.value = true;
@@ -443,11 +435,12 @@ const onSave = async (key: string, val: any) => {
         value: val + '',
     };
     try {
-        await updateSetting(param);
+        if (key === 'Theme') {
+            await handleThemeChange(val);
+        } else {
+            await updateSetting(param);
+        }
         switch (key) {
-            case 'Theme':
-                handleThemeChange(val);
-                break;
             case 'MenuTabs':
                 openMenuTabs.value = val === 'Enable';
                 break;

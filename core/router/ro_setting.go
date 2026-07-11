@@ -11,6 +11,11 @@ type SettingRouter struct{}
 func (s *SettingRouter) InitRouter(Router *gin.RouterGroup) {
 	baseApi := v2.ApiGroupApp.BaseApi
 
+	publicRouter := Router.Group("settings")
+	{
+		publicRouter.GET("/enhancements/public", baseApi.GetPublicEnhancementSetting)
+	}
+
 	authRouter := Router.Group("settings").
 		Use(middleware.SessionAuth())
 	{
@@ -25,6 +30,8 @@ func (s *SettingRouter) InitRouter(Router *gin.RouterGroup) {
 		settingRouter.POST("/terminal/search", baseApi.GetTerminalSettingInfo)
 		settingRouter.GET("/search/available", baseApi.GetSystemAvailable)
 		settingRouter.POST("/update", baseApi.UpdateSetting)
+		settingRouter.GET("/enhancements/search", baseApi.GetEnhancementSetting)
+		settingRouter.POST("/enhancements/update", baseApi.UpdateEnhancementSetting)
 		settingRouter.POST("/terminal/update", baseApi.UpdateTerminalSetting)
 		settingRouter.GET("/interface", baseApi.LoadInterfaceAddr)
 		settingRouter.POST("/menu/update", baseApi.UpdateMenu)

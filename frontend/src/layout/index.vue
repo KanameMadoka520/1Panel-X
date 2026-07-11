@@ -24,15 +24,14 @@
         </div>
 
         <el-watermark
-            v-if="isXpackOrEE && watermarkShow && watermark"
-            :content="loadContent()"
+            :content="watermarkShow && watermark ? loadContent() : ''"
             :font="{
-                fontSize: watermark.fontSize,
-                color: isDarkTheme ? watermark.darkColor : watermark.lightColor,
+                fontSize: watermark?.fontSize || 16,
+                color: watermark ? (isDarkTheme ? watermark.darkColor : watermark.lightColor) : 'transparent',
                 textBaseline: 'top',
             }"
-            :rotate="watermark.rotate"
-            :gap="[watermark.gap, watermark.gap]"
+            :rotate="watermark?.rotate ?? -22"
+            :gap="[watermark?.gap ?? 100, watermark?.gap ?? 100]"
         >
             <div class="main-container">
                 <mobile-header v-if="classObj.mobile" />
@@ -41,12 +40,6 @@
                 <Footer class="app-footer" v-if="!isFullScreen" />
             </div>
         </el-watermark>
-        <div class="main-container" v-else>
-            <mobile-header v-if="classObj.mobile" />
-            <Tabs v-if="classObj.openMenuTabs" />
-            <app-main :keep-alive="classObj.openMenuTabs ? tabsStore.cachedTabs : null" class="app-main" />
-            <Footer class="app-footer" v-if="!isFullScreen" />
-        </div>
         <TaskList ref="taskListRef" />
     </div>
 </template>
@@ -58,7 +51,7 @@ import useResize from './hooks/useResize';
 import { MenuStore, TabsStore } from '@/store';
 import { getSystemAvailable } from '@/api/modules/setting';
 import { useRoute, useRouter } from 'vue-router';
-import { loadMasterProductProFromDB, loadProductProFromDB } from '@/utils/xpack';
+import { getXpackSettingForTheme, loadMasterProductProFromDB, loadProductProFromDB } from '@/utils/xpack';
 import { useTheme } from '@/global/use-theme';
 import TaskList from '@/components/task-list/index.vue';
 import i18n from '@/lang';
@@ -73,7 +66,6 @@ const {
     isFullScreen,
     isLoading,
     isMobile,
-    isXpackOrEE,
     loadingText: globalLoadingText,
     openMenuTabs,
     watermark,
@@ -193,6 +185,7 @@ onMounted(() => {
     loadStatus();
     loadProductProFromDB();
     loadMasterProductProFromDB();
+    getXpackSettingForTheme(true).catch(() => undefined);
     isFullScreen.value = false;
 
     const mqList = window.matchMedia('(prefers-color-scheme: dark)');

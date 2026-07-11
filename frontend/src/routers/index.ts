@@ -3,7 +3,7 @@ import NProgress from '@/config/nprogress';
 import { useGlobalStore } from '@/composables/useGlobalStore';
 import { AxiosCanceler } from '@/api/helper/axios-cancel';
 import { hasRouteAccess } from '@/utils/rbac';
-import { loadProductProFromDB } from '@/utils/xpack';
+import { loadProductProFromDB, resetXSetting } from '@/utils/xpack';
 import i18n from '@/lang';
 import { MsgError } from '@/utils/message';
 
@@ -23,6 +23,7 @@ const clearLoginStatus = () => {
     const { globalStore } = useGlobalStore();
     globalStore.setLogStatus(false);
     globalStore.clearAuthInfo();
+    resetXSetting();
     clearLicenseStatus();
 };
 

@@ -11,6 +11,23 @@ function findModule<T>(modules: Record<string, T>, suffix: string): T | null {
     return null;
 }
 
+function setOpenPrimaryColor(color: string) {
+    if (typeof document === 'undefined') {
+        return;
+    }
+    const root = document.documentElement;
+    const mixTarget = root.classList.contains('dark') ? '#141414' : '#ffffff';
+    root.style.setProperty('--panel-color-primary', color);
+    root.style.setProperty('--el-color-primary', color);
+    root.style.setProperty('--el-color-primary-dark-2', `color-mix(in srgb, ${color} 80%, #000000)`);
+    for (let index = 1; index <= 9; index += 1) {
+        const primaryWeight = 100 - index * 10;
+        const mixed = `color-mix(in srgb, ${color} ${primaryWeight}%, ${mixTarget})`;
+        root.style.setProperty(`--panel-color-primary-light-${index}`, mixed);
+        root.style.setProperty(`--el-color-primary-light-${index}`, mixed);
+    }
+}
+
 export function loadXpackStyles() {
     const xpackModules = import.meta.glob('@/xpack/styles/index.scss');
     const xpackLoader = findModule(xpackModules, '/styles/index.scss');
@@ -22,6 +39,7 @@ export function loadXpackStyles() {
 }
 
 export function setXpackPrimaryColor(color: string) {
+    setOpenPrimaryColor(color);
     const xpackModules = import.meta.glob('@/xpack/utils/theme/tool.ts', { eager: true }) as Record<
         string,
         XpackThemeModule

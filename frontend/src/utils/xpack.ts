@@ -68,8 +68,8 @@ export async function initFavicon() {
     }
 }
 
-export async function getXpackSetting() {
-    const res = await searchXpackSetting();
+export async function getXpackSetting(authenticated = false) {
+    const res = await searchXpackSetting(authenticated);
     if (!res) {
         initFavicon();
         resetXSetting();
@@ -149,9 +149,9 @@ export async function loadMasterProductProFromDB() {
     loadDataFromDB();
 }
 
-export async function getXpackSettingForTheme() {
+export async function getXpackSettingForTheme(authenticated = false) {
     const globalStore = GlobalStore();
-    const res2 = await searchXpackSetting();
+    const res2 = await searchXpackSetting(authenticated);
     if (res2) {
         globalStore.themeConfig.title = res2.data?.title;
         globalStore.themeConfig.logo = res2.data?.logo;
