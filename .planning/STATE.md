@@ -5,17 +5,17 @@
 See: `.planning/PROJECT.md`, `.planning/REQUIREMENTS.md`, `.planning/v1.1-MILESTONE-DECISION.md`, `.planning/research/CAPABILITY-MATRIX.md` (updated 2026-07-10)
 
 **Core value:** Deliver a complete, security-conscious, fully open server panel without proprietary code or license bypasses.
-**Current milestone:** v1.3 Open Image Branding Upload
-**Current focus:** Ship the high-risk image-upload surface deferred from v1.2 — an authenticated upload/reset endpoint with fixed-enum atomic writes and full decode/size validation, PLUS serve-side SVG hardening of the anonymous image route, presence-sentinel storage, a widened-but-strict anon subset, and a community upload form. All under the captured threat model (T1–T10).
+**Current milestone:** v1.4 Open Login-Page Text (branding cluster complete)
+**Current focus:** Ship the last deferred branding slice (P2 login welcome/subtitle/copyright text, interpolation-render + server-side reject-`<>`/control/bidi) and the `LOGIN-HERO-RENDER` fix (reactive login image/background preload) found in the v1.3 live VPS UAT.
 
 ## Current Position
 
-Milestone: v1.3 (Phases 10-11) shipped `v1.3.0-open.1`. v1.2 shipped `v1.2.0-open.1` (4 UAT pending); v1.1 `v1.1.0-open.1` (6 UAT pending); v1.0 (20 UAT pending). None archived.
-Phase: 10 (backend upload + serve hardening) and 11 (frontend form) implemented, automatically verified, adversarially security-reviewed, and released.
-Status: `gaps_found` — implementation + all automated gates + a 0-confirmed-defect adversarial security review complete. **Live VPS UAT executed 2026-07-11** (Japan CN2 VPS, our binaries on official v2.2.3, Docker-free): BRAND-IMG-01 **verified live** (serve hardening, upload rejection, anon presence-only, reset, CSRF); BRAND-IMG-02 form/API **verified live**, but the community login-page hero image/background do not display the uploaded loginImage/loginBackground (upstream `login/index.vue` preload-timing gap — favicon + button color + backend serving all confirmed). One follow-up (`LOGIN-HERO-RENDER`) recorded; milestone still not archived.
-Last activity: 2026-07-11 - Live VPS UAT of `v1.3.0-open.1` (revision `39c0a51db`); recorded results in `10/11-HUMAN-UAT.md` and the v1.3 audit.
+Milestone: v1.4 (Phase 12) shipped `v1.4.0-open.1`. v1.3 shipped `v1.3.0-open.1` (BRAND-IMG-01 verified live; image-form visual pending); v1.2 (4 UAT), v1.1 (6 UAT), v1.0 (20 UAT). None archived.
+Phase: 12 (login-page text + login-hero fix) implemented, automatically verified, adversarially security-reviewed (0 confirmed defects), and released.
+Status: `gaps_found` — implementation + all automated gates + a 0-confirmed-defect adversarial security review complete. The `LOGIN-HERO-RENDER` gap from the v1.3 live UAT is FIXED here (reactive preload). Two v1.4 human UAT items (login-text render; hero-fix visual) pending on a VPS/browser. Milestone not archived.
+Last activity: 2026-07-11 - Built and verified `v1.4.0-open.1` (revision `3692325f8`, dual-layer checksums 8/8+7/7, dirty=false; agent binary byte-identical to v1.1/v1.2/v1.3).
 
-Progress: v1.0 [##########] gates done (0/5 accepted). v1.1 [##########] released (0/2 accepted). v1.2 [##########] released (0/2 accepted, 4 UAT). v1.3 [##########] released (0/2 accepted, 5 UAT pending).
+Progress: v1.0 [##########] gates done. v1.1 [##########] released. v1.2 [##########] released. v1.3 [##########] released (BRAND-IMG-01 verified live). v1.4 [##########] released (0/1 accepted, 2 UAT pending). Branding cluster (v1.2–v1.4) feature-complete.
 
 ## Repository Snapshot
 
@@ -44,9 +44,10 @@ Progress: v1.0 [##########] gates done (0/5 accepted). v1.1 [##########] release
 
 ## Next Actions
 
-1. **`LOGIN-HERO-RENDER` follow-up (frontend-only):** make `frontend/src/views/login/index.vue` preload the uploaded loginImage/loginBackground reactively (watch `themeConfig`) instead of a one-shot `onMounted` check, so an uploaded login image/background actually shows on the community login page. Discovered in the 2026-07-11 live UAT. Would ship as v1.3.1 or fold into P2.
-2. Remaining carry-forward UAT: v1.3 login-hero visual (after the fix), v1.1 (webhook on-disk ciphertext, AI-limit concurrency — needs Docker), v1.0 (ClamAV EICAR, etc.). v1.3 BRAND-IMG-01 + text/form items are now verified live.
-3. Next milestone candidate: login welcome/subtitle/copyright text (P2) — new login-page text fields, server-side reject-`<>`, rendered as interpolation (never `v-html`); its own small phase.
+1. **Next major milestone: v1.5 secure multi-node** — the keystone the 15+ commercial capabilities depend on. Needs a full threat model (identity, enrollment token, mutual mTLS, rotation, replay, audit, failure consistency) and a **second VPS** to accept. The branding cluster (v1.2–v1.4) is now feature-complete, so this is the next domain.
+2. Carry-forward VPS/browser UAT: v1.4 (2 — login-text render, hero-fix visual), v1.3 image-form visual, v1.1 (webhook on-disk ciphertext, AI-limit concurrency — needs Docker), v1.0 (ClamAV EICAR, etc.).
+3. Gotcha: do not run full core `go test ./...` before a release without reverting `x-log.json` (swagger side-effect); the release script uses focused/compile-only tests.
+4. Release toolchain: run from a script file with a `/tmp/relbin` shim (node/npm/go), `sed 's/\r$'"'"'/' | bash` — `export PATH` doesn't survive `wsl.exe -- bash -c` and bash skips the codex npm symlink. See `scratchpad/run-release-v14.sh`.
 3. Gotcha: do not run full core `go test ./...` before a release without reverting `x-log.json` (swagger_test.go side-effect); the release script uses focused/compile-only tests.
 4. Toolchain gotcha (release): `export PATH` does not survive the `wsl.exe -- bash -c` boundary and bash skips the codex npm symlink; run the release from a script file with a `/tmp/relbin` shim (node/npm/go) piped `sed 's/\r$//' | bash`. See `scratchpad/run-release-v13.sh`.
 5. Later: v1.4 threat-modeled secure multi-node (keystone; needs a second VPS).
@@ -54,5 +55,5 @@ Progress: v1.0 [##########] gates done (0/5 accepted). v1.1 [##########] release
 ## Session Continuity
 
 Last session: 2026-07-11
-Stopped at: v1.3 implemented, automatically verified, adversarially security-reviewed (0 confirmed defects), and released as v1.3.0-open.1 (revision 39c0a51db); 5 human UAT items pending. Next candidate is login welcome/subtitle/copyright text (P2).
+Stopped at: v1.4 (login-page text + LOGIN-HERO fix) implemented, automatically verified, adversarially security-reviewed (0 confirmed defects), and released as v1.4.0-open.1 (revision 3692325f8); 2 human UAT items pending. Branding cluster v1.2–v1.4 feature-complete. Next major milestone is v1.5 secure multi-node (needs a 2nd VPS + full threat model).
 Resume file: None
