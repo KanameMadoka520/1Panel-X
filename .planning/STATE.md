@@ -12,8 +12,8 @@ See: `.planning/PROJECT.md`, `.planning/REQUIREMENTS.md`, `.planning/v1.1-MILEST
 
 Milestone: v1.3 (Phases 10-11) shipped `v1.3.0-open.1`. v1.2 shipped `v1.2.0-open.1` (4 UAT pending); v1.1 `v1.1.0-open.1` (6 UAT pending); v1.0 (20 UAT pending). None archived.
 Phase: 10 (backend upload + serve hardening) and 11 (frontend form) implemented, automatically verified, adversarially security-reviewed, and released.
-Status: `gaps_found` — implementation + all automated gates + a 0-confirmed-defect adversarial security review complete; 5 human UAT items (Phase 10: 3, Phase 11: 2) pending on a VPS/browser. Milestone not archived.
-Last activity: 2026-07-11 - Built and independently inspected `v1.3.0-open.1` from source revision `39c0a51db33ba5cc99157603c1d19f23777eb742` (dual-layer checksums 8/8 + 7/7, `dirty=false`; agent binary byte-identical to v1.1/v1.2).
+Status: `gaps_found` — implementation + all automated gates + a 0-confirmed-defect adversarial security review complete. **Live VPS UAT executed 2026-07-11** (Japan CN2 VPS, our binaries on official v2.2.3, Docker-free): BRAND-IMG-01 **verified live** (serve hardening, upload rejection, anon presence-only, reset, CSRF); BRAND-IMG-02 form/API **verified live**, but the community login-page hero image/background do not display the uploaded loginImage/loginBackground (upstream `login/index.vue` preload-timing gap — favicon + button color + backend serving all confirmed). One follow-up (`LOGIN-HERO-RENDER`) recorded; milestone still not archived.
+Last activity: 2026-07-11 - Live VPS UAT of `v1.3.0-open.1` (revision `39c0a51db`); recorded results in `10/11-HUMAN-UAT.md` and the v1.3 audit.
 
 Progress: v1.0 [##########] gates done (0/5 accepted). v1.1 [##########] released (0/2 accepted). v1.2 [##########] released (0/2 accepted, 4 UAT). v1.3 [##########] released (0/2 accepted, 5 UAT pending).
 
@@ -44,8 +44,9 @@ Progress: v1.0 [##########] gates done (0/5 accepted). v1.1 [##########] release
 
 ## Next Actions
 
-1. Carry forward pending UAT on a VPS/browser: v1.3 (5 — serve Content-Type+nosniff, upload rejection, anon presence-only, form set/persist/reset, pre-auth image render), v1.2 (4), v1.1 (6), v1.0 (20).
-2. Next milestone candidate: login welcome/subtitle/copyright text (P2) — new login-page text fields, server-side reject-`<>`, rendered as interpolation (never `v-html`); its own small phase.
+1. **`LOGIN-HERO-RENDER` follow-up (frontend-only):** make `frontend/src/views/login/index.vue` preload the uploaded loginImage/loginBackground reactively (watch `themeConfig`) instead of a one-shot `onMounted` check, so an uploaded login image/background actually shows on the community login page. Discovered in the 2026-07-11 live UAT. Would ship as v1.3.1 or fold into P2.
+2. Remaining carry-forward UAT: v1.3 login-hero visual (after the fix), v1.1 (webhook on-disk ciphertext, AI-limit concurrency — needs Docker), v1.0 (ClamAV EICAR, etc.). v1.3 BRAND-IMG-01 + text/form items are now verified live.
+3. Next milestone candidate: login welcome/subtitle/copyright text (P2) — new login-page text fields, server-side reject-`<>`, rendered as interpolation (never `v-html`); its own small phase.
 3. Gotcha: do not run full core `go test ./...` before a release without reverting `x-log.json` (swagger_test.go side-effect); the release script uses focused/compile-only tests.
 4. Toolchain gotcha (release): `export PATH` does not survive the `wsl.exe -- bash -c` boundary and bash skips the codex npm symlink; run the release from a script file with a `/tmp/relbin` shim (node/npm/go) piped `sed 's/\r$//' | bash`. See `scratchpad/run-release-v13.sh`.
 5. Later: v1.4 threat-modeled secure multi-node (keystone; needs a second VPS).
