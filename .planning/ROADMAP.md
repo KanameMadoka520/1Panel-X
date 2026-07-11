@@ -111,8 +111,10 @@ All five implementation plans and automated gates are complete. The milestone re
 
 Chosen from a source-verified 53-capability inventory (`.planning/research/CAPABILITY-MATRIX.md`) that found **no** commercial capability which is merely a UI/license gate over a complete OSS backend (`uiGateOnly = ∅`). Rather than build new attack surface on top of two disclosed debts, v1.1 pays them down first, as two independent single-node phases that are fully CI-testable without a VPS. Decision record: `.planning/v1.1-MILESTONE-DECISION.md`.
 
-- [ ] **Phase 6: Webhook Secret At-Rest Encryption** - Encrypt the bot webhook URL at rest with the panel's existing `encrypt` helper; transparent migration; no delivery/masking/validation regression. [ALERT-SEC-01]
-- [ ] **Phase 7: Atomic AI Agent Limit + UI** - Race-free `AIAgentLimit` via mutex-guarded slot reservation; dedicated management control on the existing setting endpoint. [AGENT-02]
+- [x] **Phase 6: Webhook Secret At-Rest Encryption** - Implemented and automatically verified; real-robot / DB-inspection UAT persists separately. [ALERT-SEC-01]
+- [x] **Phase 7: Atomic AI Agent Limit + UI** - Implemented and automatically verified; live-capacity / browser UAT persists separately. [AGENT-02]
+
+Release: `v1.1.0-open.1` built from `21d19773c` (dual-layer checksums verified, `dirty=false`, VPS acceptance `not_run`). Milestone audit: `gaps_found` — 6 human UAT items pending, not archived.
 
 ### Phase 6: Webhook Secret At-Rest Encryption
 
