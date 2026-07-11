@@ -153,12 +153,33 @@ The safe, fully CI-verifiable slice of branding — text and login colors, **no 
 
 Release: `v1.2.0-open.1` built from `8f9e18fe4` (dual-layer checksums verified, `dirty=false`, VPS `not_run`; agent binary byte-identical to v1.1). Milestone audit: `gaps_found` — 4 human UAT items pending, not archived.
 
-## Current Milestone: v1.3 Open Image Branding Upload
+## Prior Milestone: v1.3 Open Image Branding Upload (shipped v1.3.0-open.1)
 
-The high-risk item deferred from v1.2: uploading branding images (logo, logo-with-text, favicon, login image, login background image), built entirely under the captured threat model. This is the project's first from-scratch multipart file-write surface, so serve-side SVG hardening ships in the same change. Decision: `.planning/v1.3-MILESTONE-DECISION.md`.
+The high-risk item deferred from v1.2: uploading branding images (logo, logo-with-text, favicon, login image, login background image), built entirely under the captured threat model. First from-scratch multipart file-write surface, so serve-side SVG hardening shipped in the same change. **BRAND-IMG-01 verified live on a VPS 2026-07-11** (Docker-free); BRAND-IMG-02 form/API verified live, login-hero render gap fixed in v1.4. Decision: `.planning/v1.3-MILESTONE-DECISION.md`; audit: `.planning/v1.3-MILESTONE-AUDIT.md`.
 
-- [x] **Phase 10: Branding Image Upload (backend + serve hardening)** - implemented and automatically verified (serve allowlist + nosniff, SVG/pixel-bomb/size/format rejection, fixed-enum atomic write, presence sentinels, CSRF via global guard); adversarial security review recorded; browser/API UAT persists separately. [BRAND-IMG-01]
-- [x] **Phase 11: Community Branding Image Form** - implemented and automatically verified (upload + reset controls, multipart with auto-CSRF, no `v-html`); browser UAT persists separately. [BRAND-IMG-02]
+- [x] **Phase 10: Branding Image Upload (backend + serve hardening)** - verified live (serve allowlist + nosniff, SVG/pixel-bomb/size/format rejection, fixed-enum atomic write, presence sentinels, CSRF). [BRAND-IMG-01]
+- [x] **Phase 11: Community Branding Image Form** - form/API verified live; login-hero render fixed in v1.4. [BRAND-IMG-02]
+
+## Current Milestone: v1.4 Open Login-Page Text
+
+The last deferred branding slice (P2): operator-authored login-page welcome/subtitle/copyright text, wired through the enhancement seam and rendered on the community login page as interpolation (never `v-html`). Bundles the `LOGIN-HERO-RENDER` fix found in the v1.3 live UAT. Decision: `.planning/v1.4-MILESTONE-DECISION.md`.
+
+- [x] **Phase 12: Open Login-Page Text (+ login-hero fix)** - implemented and automatically verified (server-side reject-`<>`/control-chars + rune caps T7, strict anon subset T8, interpolation render, community form; reactive login-image/background preload fix); adversarial security review recorded; live login render persists as human UAT. [LOGIN-TEXT-01]
+
+### Phase 12: Open Login-Page Text (+ login-hero fix)
+
+**Goal:** A community build sets login welcome/subtitle/copyright text (rendered safely), and an uploaded login image/background actually displays on the login page.
+**Depends on:** v1.2 (enhancement text seam) + v1.3 (login image upload), implemented.
+**Requirements:** [LOGIN-TEXT-01]
+**Success Criteria:**
+
+1. `LoginWelcome`/`LoginSubtitle` (≤128) and `Copyright` (≤200) writable via update + readable via authed/anon getters; fail-closed default preserved.
+2. Server-side reject `<>`/control chars + rune caps (T7); login page renders via interpolation, never `v-html`.
+3. Anon endpoint stays a strict subset (cosmetic text only; no watermark/paths/bytes), proven by the subset test (T8).
+4. `login/index.vue` preloads loginImage/loginBackground reactively so uploads display (fixes `LOGIN-HERO-RENDER`).
+5. Focused + full Go tests pass; ESLint + `build:pro` pass; adversarial review recorded; live login render is human UAT.
+
+**Plans:** 12-01 defined.
 
 ### Phase 10: Branding Image Upload (backend + serve hardening)
 
@@ -193,8 +214,7 @@ The high-risk item deferred from v1.2: uploading branding images (logo, logo-wit
 
 These themes are intentionally outside v1.0–v1.3. They have no current phase number and must not be described as implemented. Ordering reflects the dependency graph and risk ranking in `.planning/research/CAPABILITY-MATRIX.md`:
 
-1. **Login welcome/subtitle/copyright text (P2)** - the remaining branding slice: new login-page text fields rendered as interpolation (never `v-html`), server-side reject-`<>`. A small phase, foldable after v1.3 accepts.
-2. **v1.4 Secure multi-node** - the keystone 15+ capabilities depend on; needs a full threat model (identity, enrollment token, mutual mTLS, rotation, replay, audit, failure consistency) and a second VPS to accept.
+1. **v1.5 Secure multi-node** - the keystone the 15+ commercial capabilities depend on; needs a full threat model (identity, enrollment token, mutual mTLS, rotation, replay, audit, failure consistency) and a second VPS to accept. The branding cluster (v1.2–v1.4) is complete, so this is the next major domain.
 
 1. Advanced WAF and website request monitoring.
 2. Secure multi-node enrollment, synchronization, overview, and RBAC.

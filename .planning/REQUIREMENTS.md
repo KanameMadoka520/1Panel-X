@@ -158,6 +158,22 @@ Acceptance criteria:
 3. Image references are fixed served paths; no branding value is `v-html`'d; previews cache-bust after upload/reset.
 4. `npm run build:pro` and changed-file ESLint pass; browser set/persist and pre-auth render are recorded as human UAT.
 
+## v1.4 Requirements (current milestone: Open Login-Page Text)
+
+**Note:** v1.0–v1.3 human UAT debt persists (v1.3 BRAND-IMG-01 verified live 2026-07-11). v1.4 ships the last deferred branding slice (P2 login text) plus the `LOGIN-HERO-RENDER` fix found in the v1.3 live UAT. Rationale: `.planning/v1.4-MILESTONE-DECISION.md`.
+
+### Open Login-Page Text
+
+- [ ] **LOGIN-TEXT-01**: A community build can set login-page welcome, subtitle, and copyright text, rendered safely on the login page; and an uploaded login image/background now actually displays on the community login page.
+
+Acceptance criteria:
+
+1. `LoginWelcome`, `LoginSubtitle` (≤128 runes) and `Copyright` (≤200 runes) are writable via the existing update endpoint and readable via the authenticated + anonymous getters; the fail-closed validator still rejects unknown keys.
+2. Each rejects `<`/`>` and control characters and caps length (server-side XSS control, T7); the login page renders them as interpolation (`{{ }}`), never `v-html`.
+3. The anonymous endpoint stays a strict subset of the authenticated DTO (the three text fields are cosmetic; no watermark/paths/bytes/versions), proven by the subset test.
+4. `login/index.vue` preloads the uploaded loginImage/loginBackground reactively (watch `themeConfig`), so an uploaded login image/background displays on the community login page (fixes `LOGIN-HERO-RENDER`).
+5. Focused Go tests + full core regression pass; changed-file ESLint + `npm run build:pro` pass; an adversarial security review of the diff is recorded; live login-page render is human UAT.
+
 ## Future Requirements
 
 The following areas are acknowledged but are not committed to v1.0, v1.1, or v1.2 and do not map to current phases:
@@ -213,16 +229,17 @@ Each current requirement maps to exactly one phase.
 | AGENT-02 | Phase 7 | Human UAT Pending (v1.1) |
 | BRAND-01 | Phase 8 | Human UAT Pending (v1.2) |
 | BRAND-02 | Phase 9 | Human UAT Pending (v1.2) |
-| BRAND-IMG-01 | Phase 10 | Active (v1.3) |
-| BRAND-IMG-02 | Phase 11 | Active (v1.3) |
+| BRAND-IMG-01 | Phase 10 | Verified live (v1.3) |
+| BRAND-IMG-02 | Phase 11 | Human UAT Pending (v1.3) |
+| LOGIN-TEXT-01 | Phase 12 | Active (v1.4) |
 
 **Coverage:**
 
-- v1.0: 5; v1.1: 2; v1.2: 2; v1.3: 2 total
-- Mapped to exactly one phase: 11
+- v1.0: 5; v1.1: 2; v1.2: 2; v1.3: 2; v1.4: 1 total
+- Mapped to exactly one phase: 12
 - Unmapped: 0
 - Mapped more than once: 0
 
 ---
 *Requirements defined: 2026-07-10*
-*Last updated: 2026-07-11 after defining milestone v1.3 (BRAND-IMG-01, BRAND-IMG-02) — image branding upload under the captured threat model*
+*Last updated: 2026-07-11 after defining milestone v1.4 (LOGIN-TEXT-01) — login-page text + the LOGIN-HERO-RENDER fix from the v1.3 live UAT*
