@@ -115,9 +115,20 @@ func RegisterImages(rootRouter *gin.RouterGroup) {
 	staticDir := filepath.Join(global.CONF.Base.InstallDir, "1panel/uploads/theme")
 	rootRouter.GET("/api/v2/images/*filename", func(c *gin.Context) {
 		fileName := filepath.Base(c.Param("filename"))
+		// Serve only the fixed set of branding assets, never a stray or
+		// traversal-derived name (T3/T6).
+		if !service.IsBrandingAssetFileName(fileName) {
+			c.AbortWithStatus(http.StatusNotFound)
+			return
+		}
 		filePath := filepath.Join(staticDir, fileName)
 		if !strings.HasPrefix(filePath, staticDir) {
 			c.AbortWithStatus(http.StatusForbidden)
+			return
+		}
+		fi, err := os.Lstat(filePath)
+		if err != nil || !fi.Mode().IsRegular() {
+			c.Status(http.StatusNotFound)
 			return
 		}
 		f, err := os.Open(filePath)
@@ -128,15 +139,35 @@ func RegisterImages(rootRouter *gin.RouterGroup) {
 		defer f.Close()
 		buf := make([]byte, 512)
 		n, _ := f.Read(buf)
-		content := buf[:n]
-		mimeType := http.DetectContentType(buf[:n])
-		if strings.Contains(string(content), "<svg") {
-			mimeType = "image/svg+xml"
+		// Constrain the served type to a raster-image allowlist and forbid
+		// content sniffing. The prior <svg>-forcing override is removed, so a
+		// stored (or stray) body can never be served as image/svg+xml, HTML, or
+		// any other active-content type (T1/T2).
+		mimeType := sniffImageContentType(buf[:n])
+		if _, err := f.Seek(0, io.SeekStart); err != nil {
+			c.Status(http.StatusInternalServerError)
+			return
 		}
-		_, _ = f.Seek(0, io.SeekStart)
 		c.Header("Content-Type", mimeType)
+		c.Header("X-Content-Type-Options", "nosniff")
+		c.Header("Cache-Control", "no-cache")
 		_, _ = io.Copy(c.Writer, f)
 	})
+}
+
+// sniffImageContentType returns the content type of a served branding asset,
+// collapsing anything that is not one of the raster formats the upload path
+// accepts (png/jpeg/gif/webp) to a non-renderable octet-stream, so a mislabeled
+// or stray body is never served as SVG, HTML, or another active-content type.
+// The set is kept identical to the upload whitelist so serve and upload cannot
+// drift.
+func sniffImageContentType(head []byte) string {
+	switch detected := http.DetectContentType(head); detected {
+	case "image/png", "image/jpeg", "image/gif", "image/webp":
+		return detected
+	default:
+		return "application/octet-stream"
+	}
 }
 
 func setStaticResource(rootRouter *gin.RouterGroup) {

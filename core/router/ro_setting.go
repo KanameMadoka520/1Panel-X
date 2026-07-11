@@ -32,6 +32,8 @@ func (s *SettingRouter) InitRouter(Router *gin.RouterGroup) {
 		settingRouter.POST("/update", baseApi.UpdateSetting)
 		settingRouter.GET("/enhancements/search", baseApi.GetEnhancementSetting)
 		settingRouter.POST("/enhancements/update", baseApi.UpdateEnhancementSetting)
+		settingRouter.POST("/enhancements/asset", baseApi.UploadEnhancementAsset)
+		settingRouter.POST("/enhancements/asset/reset", baseApi.ResetEnhancementAsset)
 		settingRouter.POST("/terminal/update", baseApi.UpdateTerminalSetting)
 		settingRouter.GET("/interface", baseApi.LoadInterfaceAddr)
 		settingRouter.POST("/menu/update", baseApi.UpdateMenu)

@@ -44,6 +44,8 @@ type IEnhancementService interface {
 	GetSettingInfo() (*dto.EnhancementSettingInfo, error)
 	GetPublicSettingInfo() (*dto.PublicEnhancementSettingInfo, error)
 	UpdateSetting(key, value string) error
+	SaveAsset(assetKey string, data []byte) error
+	ResetAsset(assetKey string) error
 }
 
 func NewIEnhancementService() IEnhancementService {
@@ -61,6 +63,10 @@ func (u *EnhancementService) GetSettingInfo() (*dto.EnhancementSettingInfo, erro
 		LoginBgType:       loadValidatedEnhancementValue("LoginBgType", ""),
 		LoginBackground:   loadValidatedEnhancementValue("LoginBackground", ""),
 		LoginBtnLinkColor: loadValidatedEnhancementValue("LoginBtnLinkColor", ""),
+		Logo:              loadValidatedEnhancementValue("Logo", ""),
+		LogoWithText:      loadValidatedEnhancementValue("LogoWithText", ""),
+		Favicon:           loadValidatedEnhancementValue("Favicon", ""),
+		LoginImage:        loadValidatedEnhancementValue("LoginImage", ""),
 	}, nil
 }
 
@@ -73,6 +79,13 @@ func (u *EnhancementService) GetPublicSettingInfo() (*dto.PublicEnhancementSetti
 		LoginBgType:       loadValidatedEnhancementValue("LoginBgType", ""),
 		LoginBackground:   loadValidatedEnhancementValue("LoginBackground", ""),
 		LoginBtnLinkColor: loadValidatedEnhancementValue("LoginBtnLinkColor", ""),
+		// Presence sentinels only — the images they gate are already anonymously
+		// fetchable at /api/v2/images/*, so a sentinel leaks nothing new, while
+		// the login page needs them to render custom branding before auth (T8).
+		Logo:         loadValidatedEnhancementValue("Logo", ""),
+		LogoWithText: loadValidatedEnhancementValue("LogoWithText", ""),
+		Favicon:      loadValidatedEnhancementValue("Favicon", ""),
+		LoginImage:   loadValidatedEnhancementValue("LoginImage", ""),
 	}, nil
 }
 
@@ -164,14 +177,51 @@ func validateEnhancementSetting(key, value string) error {
 		if value != "" && value != "image" && value != "color" {
 			return fmt.Errorf("unsupported login background type %q", value)
 		}
-	case "LoginBackground", "LoginBtnLinkColor":
-		if value != "" && !isSafeCSSColor(value) {
-			return fmt.Errorf("%s must be empty or a hex, rgb, or rgba value", key)
+	case "LoginBackground":
+		// Dual-use: a CSS color (bg-type=color) or the image presence sentinel
+		// (bg-type=image, set only by the asset upload).
+		if value == "" || value == "loginBackground" {
+			return nil
 		}
+		if !isSafeCSSColor(value) {
+			return fmt.Errorf("LoginBackground must be empty or a hex, rgb, or rgba value")
+		}
+	case "LoginBtnLinkColor":
+		if value != "" && !isSafeCSSColor(value) {
+			return fmt.Errorf("LoginBtnLinkColor must be empty or a hex, rgb, or rgba value")
+		}
+	case "Logo", "LogoWithText", "Favicon", "LoginImage":
+		// Image fields hold only a fixed presence sentinel (the asset key). The
+		// bytes live under uploads/theme and are written solely by the asset
+		// upload service, never through the text/update path.
+		return validateBrandingAssetSentinel(key, value)
 	default:
 		return fmt.Errorf("unsupported enhancement setting %q", key)
 	}
 	return nil
+}
+
+// validateBrandingAssetSentinel accepts only empty (unset) or the exact
+// lower-camel presence sentinel matching the image setting key (e.g. "Logo" ->
+// "logo"). It guarantees a stored image reference can never carry markup, a
+// path, or an unexpected value.
+func validateBrandingAssetSentinel(key, value string) error {
+	if value == "" {
+		return nil
+	}
+	if value != lowerFirstRune(key) {
+		return fmt.Errorf("unsupported %s value %q", key, value)
+	}
+	return nil
+}
+
+func lowerFirstRune(s string) string {
+	if s == "" {
+		return s
+	}
+	runes := []rune(s)
+	runes[0] = unicode.ToLower(runes[0])
+	return string(runes)
 }
 
 // validateBrandingText bounds an operator-authored branding string that renders
