@@ -83,13 +83,7 @@
                             </el-button>
                         </template>
                     </el-table-column>
-                    <el-table-column
-                        v-if="isProductPro"
-                        :label="$t('commons.table.status')"
-                        :min-width="70"
-                        prop="status"
-                        sortable
-                    >
+                    <el-table-column :label="$t('commons.table.status')" :min-width="70" prop="status" sortable>
                         <template #default="{ row }">
                             <Status
                                 v-if="row.status === 'Enable'"
@@ -104,15 +98,10 @@
                             <span v-if="row.status === ''">-</span>
                         </template>
                     </el-table-column>
-                    <el-table-column
-                        v-if="isProductPro"
-                        :label="$t('cronjob.cronSpec')"
-                        show-overflow-tooltip
-                        :min-width="120"
-                    >
+                    <el-table-column :label="$t('cronjob.cronSpec')" show-overflow-tooltip :min-width="120">
                         <template #default="{ row }">
                             <span>
-                                {{ row.spec !== '' ? transSpecToStr(row.spec) : '-' }}
+                                {{ formatSpec(row.spec) }}
                             </span>
                         </template>
                     </el-table-column>
@@ -202,8 +191,16 @@ import { routerToFileWithPath, routerToName } from '@/utils/router';
 const loading = ref();
 const selects = ref<any>([]);
 
-const { docsUrl, isFxplay, isProductPro } = useGlobalStore();
+const { docsUrl, isFxplay } = useGlobalStore();
 const data = ref();
+const formatSpec = (spec: string) => {
+    if (!spec) return '-';
+    try {
+        return transSpecToStr(spec) || spec;
+    } catch {
+        return spec;
+    }
+};
 const paginationConfig = reactive({
     cacheSizeKey: 'clam-page-size',
     currentPage: 1,

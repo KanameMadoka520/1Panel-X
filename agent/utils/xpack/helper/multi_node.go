@@ -8,8 +8,8 @@ import (
 
 	"github.com/1Panel-dev/1Panel/agent/app/dto"
 	"github.com/1Panel-dev/1Panel/agent/app/model"
-	"github.com/1Panel-dev/1Panel/agent/buserr"
 	"github.com/1Panel-dev/1Panel/agent/global"
+	clamUtil "github.com/1Panel-dev/1Panel/agent/utils/clam"
 	"github.com/1Panel-dev/1Panel/agent/utils/common"
 	"github.com/1Panel-dev/1Panel/agent/utils/xpack/providers"
 	"github.com/gin-gonic/gin"
@@ -23,8 +23,9 @@ func NewIMultiNodeProvider() providers.MultiNodeProvider {
 
 func (m *multiNodeHelper) RemoveTamper(website string) {}
 
-func (m *multiNodeHelper) StartClam(startClam *model.Clam, isUpdate bool) (int, error) {
-	return 0, buserr.New("ErrXpackNotFound")
+func (m *multiNodeHelper) StartClam(startClam *model.Clam, _ bool) (int, error) {
+	entryID, err := clamUtil.StartSchedule(startClam)
+	return int(entryID), err
 }
 
 func (m *multiNodeHelper) LoadNodeInfo(isBase bool) (model.NodeInfo, error) {

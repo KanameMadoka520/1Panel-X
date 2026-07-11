@@ -83,6 +83,9 @@ func Run() {
 			global.LOG.Errorf("update cronjob %s %s failed, err: %v", cronJobs[i].Type, cronJobs[i].Name, err)
 		}
 	}
+	if err := service.RestoreClamSchedules(); err != nil {
+		global.LOG.Errorf("restore clam schedules failed: %v", err)
+	}
 	global.Cron.Start()
 }
 

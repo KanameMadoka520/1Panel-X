@@ -2,10 +2,11 @@ package service
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
-	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -18,13 +19,12 @@ import (
 	"github.com/1Panel-dev/1Panel/agent/constant"
 	"github.com/1Panel-dev/1Panel/agent/global"
 	"github.com/1Panel-dev/1Panel/agent/utils/alert_push"
-	"github.com/1Panel-dev/1Panel/agent/utils/clam"
+	clamUtil "github.com/1Panel-dev/1Panel/agent/utils/clam"
 	"github.com/1Panel-dev/1Panel/agent/utils/cmd"
 	"github.com/1Panel-dev/1Panel/agent/utils/common"
 	"github.com/1Panel-dev/1Panel/agent/utils/controller"
 	"github.com/1Panel-dev/1Panel/agent/utils/xpack"
 	"github.com/jinzhu/copier"
-	"github.com/robfig/cron/v3"
 )
 
 type ClamService struct {
@@ -50,7 +50,144 @@ type IClamService interface {
 }
 
 func NewIClamService() IClamService {
-	return &ClamService{}
+	service := &ClamService{}
+	clamUtil.RegisterScheduleHandler(service.HandleOnce)
+	return service
+}
+
+func RestoreClamSchedules() error {
+	NewIClamService()
+	clams, err := clamRepo.List(repo.WithByStatus(constant.StatusEnable))
+	if err != nil {
+		return fmt.Errorf("load enabled clam schedules failed: %w", err)
+	}
+
+	var restoreErrs []error
+	for i := range clams {
+		item := &clams[i]
+		normalizedName, err := clamUtil.NormalizeRuleName(item.Name)
+		if err != nil {
+			if updateErr := clamRepo.Update(item.ID, map[string]interface{}{
+				"status":   constant.StatusDisable,
+				"entry_id": 0,
+			}); updateErr != nil {
+				restoreErrs = append(restoreErrs, fmt.Errorf("disable invalid clam rule %d failed: %w", item.ID, updateErr))
+			}
+			restoreErrs = append(restoreErrs, fmt.Errorf("restore clam rule %d failed: %w", item.ID, err))
+			continue
+		}
+		item.Name = normalizedName
+		normalizedPath, normalizedInfectedDir, err := normalizeClamRulePaths(item.Path, item.InfectedStrategy, item.InfectedDir)
+		if err != nil {
+			if updateErr := clamRepo.Update(item.ID, map[string]interface{}{
+				"status":   constant.StatusDisable,
+				"entry_id": 0,
+			}); updateErr != nil {
+				restoreErrs = append(restoreErrs, fmt.Errorf("disable invalid clam rule %d failed: %w", item.ID, updateErr))
+			}
+			restoreErrs = append(restoreErrs, fmt.Errorf("restore clam rule %d failed: %w", item.ID, err))
+			continue
+		}
+		item.Path = normalizedPath
+		item.InfectedDir = normalizedInfectedDir
+		if err := clamUtil.ValidateSchedule(item.Spec); err != nil {
+			if updateErr := clamRepo.Update(item.ID, map[string]interface{}{
+				"status":   constant.StatusDisable,
+				"entry_id": 0,
+			}); updateErr != nil {
+				restoreErrs = append(restoreErrs, fmt.Errorf("disable invalid clam schedule %d failed: %w", item.ID, updateErr))
+			}
+			restoreErrs = append(restoreErrs, fmt.Errorf("restore clam schedule %d failed: %w", item.ID, err))
+			continue
+		}
+
+		entryID, err := xpack.MultiNodeProvider.StartClam(item, true)
+		if err != nil {
+			_ = clamRepo.Update(item.ID, map[string]interface{}{"status": constant.StatusDisable, "entry_id": 0})
+			restoreErrs = append(restoreErrs, fmt.Errorf("restore clam schedule %d failed: %w", item.ID, err))
+			continue
+		}
+		if err := clamRepo.Update(item.ID, map[string]interface{}{
+			"name":         item.Name,
+			"path":         item.Path,
+			"infected_dir": item.InfectedDir,
+			"entry_id":     entryID,
+		}); err != nil {
+			clamUtil.RemoveSchedule(entryID)
+			restoreErrs = append(restoreErrs, fmt.Errorf("persist restored clam schedule %d failed: %w", item.ID, err))
+		}
+	}
+	return errors.Join(restoreErrs...)
+}
+
+func normalizeClamRulePaths(scanPath, infectedStrategy, infectedDir string) (string, string, error) {
+	normalizedScanPath, err := normalizeClamDirectory(scanPath, "scan")
+	if err != nil {
+		return "", "", err
+	}
+
+	switch infectedStrategy {
+	case "none", "remove":
+		return normalizedScanPath, "", nil
+	case "move", "copy":
+	default:
+		return "", "", fmt.Errorf("unsupported infected file strategy %q", infectedStrategy)
+	}
+
+	normalizedInfectedDir, err := normalizeClamDirectory(infectedDir, "infected")
+	if err != nil {
+		return "", "", err
+	}
+	quarantineRoot := filepath.Join(normalizedInfectedDir, "1panel-infected")
+	if pathWithin(normalizedScanPath, quarantineRoot) || pathWithin(quarantineRoot, normalizedScanPath) {
+		return "", "", fmt.Errorf("clam scan and infected directories must not overlap")
+	}
+	return normalizedScanPath, normalizedInfectedDir, nil
+}
+
+func normalizeClamDirectory(rawPath, label string) (string, error) {
+	cleanedPath := filepath.Clean(strings.TrimSpace(rawPath))
+	if cleanedPath == "." || !filepath.IsAbs(cleanedPath) {
+		return "", fmt.Errorf("clam %s path must be absolute", label)
+	}
+	absPath, err := filepath.Abs(cleanedPath)
+	if err != nil {
+		return "", fmt.Errorf("resolve clam %s path %q failed: %w", label, rawPath, err)
+	}
+	resolvedPath, err := filepath.EvalSymlinks(absPath)
+	if err != nil {
+		return "", fmt.Errorf("resolve clam %s path %q failed: %w", label, rawPath, err)
+	}
+	resolvedPath = filepath.Clean(resolvedPath)
+	if isFilesystemRoot(resolvedPath) {
+		return "", fmt.Errorf("clam %s path cannot be a filesystem root", label)
+	}
+	info, err := os.Stat(resolvedPath)
+	if err != nil {
+		return "", fmt.Errorf("stat clam %s path %q failed: %w", label, resolvedPath, err)
+	}
+	if !info.IsDir() {
+		return "", fmt.Errorf("clam %s path %q is not a directory", label, resolvedPath)
+	}
+	return resolvedPath, nil
+}
+
+func isFilesystemRoot(path string) bool {
+	cleanedPath := filepath.Clean(path)
+	volume := filepath.VolumeName(cleanedPath)
+	root := volume + string(filepath.Separator)
+	if volume == "" {
+		root = string(filepath.Separator)
+	}
+	return cleanedPath == root
+}
+
+func pathWithin(parent, candidate string) bool {
+	relativePath, err := filepath.Rel(parent, candidate)
+	if err != nil {
+		return false
+	}
+	return relativePath == "." || (relativePath != ".." && !strings.HasPrefix(relativePath, ".."+string(filepath.Separator)))
 }
 
 func (c *ClamService) LoadBaseInfo() (dto.ClamBaseInfo, error) {
@@ -97,7 +234,7 @@ func (c *ClamService) LoadBaseInfo() (dto.ClamBaseInfo, error) {
 			}
 		}
 	} else {
-		_ = clam.CheckWithStopAll(false, clamRepo)
+		_ = clamUtil.CheckWithStopAll(false, clamRepo)
 	}
 	if baseInfo.FreshIsActive {
 		version, err := cmdMgr.RunWithStdout("freshclam", "--version")
@@ -166,6 +303,17 @@ func (c *ClamService) SearchWithPage(req dto.SearchClamWithPage) (int64, interfa
 }
 
 func (c *ClamService) Create(req dto.ClamCreate, operator string) error {
+	normalizedName, err := clamUtil.NormalizeRuleName(req.Name)
+	if err != nil {
+		return err
+	}
+	req.Name = normalizedName
+	req.Spec = strings.TrimSpace(req.Spec)
+	if req.Spec != "" {
+		if err := clamUtil.ValidateSchedule(req.Spec); err != nil {
+			return err
+		}
+	}
 	clam, _ := clamRepo.Get(repo.WithByName(req.Name))
 	if clam.ID != 0 {
 		return buserr.New("ErrRecordExist")
@@ -173,22 +321,36 @@ func (c *ClamService) Create(req dto.ClamCreate, operator string) error {
 	if cmd.CheckIllegal(req.Path) {
 		return buserr.New("ErrCmdIllegal")
 	}
+	normalizedPath, normalizedInfectedDir, err := normalizeClamRulePaths(req.Path, req.InfectedStrategy, req.InfectedDir)
+	if err != nil {
+		return err
+	}
+	req.Path = normalizedPath
+	req.InfectedDir = normalizedInfectedDir
 	if err := copier.Copy(&clam, &req); err != nil {
 		return buserr.WithDetail("ErrStructTransform", err.Error(), nil)
 	}
 	if clam.InfectedStrategy == "none" || clam.InfectedStrategy == "remove" {
 		clam.InfectedDir = ""
 	}
-	if len(req.Spec) != 0 {
-		entryID, err := xpack.MultiNodeProvider.StartClam(&clam, false)
-		if err != nil {
-			return err
-		}
-		clam.EntryID = entryID
+	if req.Spec != "" {
 		clam.Status = constant.StatusEnable
 	}
 	if err := clamRepo.Create(&clam); err != nil {
 		return err
+	}
+	if req.Spec != "" {
+		entryID, err := xpack.MultiNodeProvider.StartClam(&clam, false)
+		if err != nil {
+			rollbackErr := clamRepo.Delete(repo.WithByID(clam.ID))
+			return errors.Join(err, rollbackErr)
+		}
+		if err := clamRepo.Update(clam.ID, map[string]interface{}{"entry_id": entryID}); err != nil {
+			clamUtil.RemoveSchedule(entryID)
+			rollbackErr := clamRepo.Delete(repo.WithByID(clam.ID))
+			return errors.Join(err, rollbackErr)
+		}
+		clam.EntryID = entryID
 	}
 	if req.AlertCount != 0 && req.AlertTitle != "" && req.AlertMethod != "" {
 		createAlert := dto.AlertCreate{
@@ -208,50 +370,78 @@ func (c *ClamService) Create(req dto.ClamCreate, operator string) error {
 }
 
 func (c *ClamService) Update(req dto.ClamUpdate, operator string) error {
+	normalizedName, err := clamUtil.NormalizeRuleName(req.Name)
+	if err != nil {
+		return err
+	}
+	req.Name = normalizedName
+	req.Spec = strings.TrimSpace(req.Spec)
+	if req.Spec != "" {
+		if err := clamUtil.ValidateSchedule(req.Spec); err != nil {
+			return err
+		}
+	}
 	if cmd.CheckIllegal(req.Path) {
 		return buserr.New("ErrCmdIllegal")
 	}
-	clam, _ := clamRepo.Get(repo.WithByName(req.Name))
+	clam, _ := clamRepo.Get(repo.WithByID(req.ID))
 	if clam.ID == 0 {
 		return buserr.New("ErrRecordNotFound")
+	}
+	if clam.IsExecuting {
+		return buserr.New("TaskIsExecuting")
+	}
+	if sameName, _ := clamRepo.Get(repo.WithByName(req.Name)); sameName.ID != 0 && sameName.ID != clam.ID {
+		return buserr.New("ErrRecordExist")
 	}
 	if req.InfectedStrategy == "none" || req.InfectedStrategy == "remove" {
 		req.InfectedDir = ""
 	}
+	normalizedPath, normalizedInfectedDir, err := normalizeClamRulePaths(req.Path, req.InfectedStrategy, req.InfectedDir)
+	if err != nil {
+		return err
+	}
+	req.Path = normalizedPath
+	req.InfectedDir = normalizedInfectedDir
 	var clamItem model.Clam
 	if err := copier.Copy(&clamItem, &req); err != nil {
 		return buserr.WithDetail("ErrStructTransform", err.Error(), nil)
 	}
-	clamItem.EntryID = clam.EntryID
-	upMap := map[string]interface{}{}
-	if len(clam.Spec) != 0 && clam.EntryID != 0 {
-		global.Cron.Remove(cron.EntryID(clamItem.EntryID))
-		upMap["entry_id"] = 0
+	clamItem.ID = clam.ID
+	targetStatus := clam.Status
+	if req.Spec == "" {
+		targetStatus = ""
+	} else if clam.Spec == "" || targetStatus == "" {
+		targetStatus = constant.StatusEnable
 	}
-	if len(req.Spec) == 0 {
-		upMap["status"] = ""
-		upMap["entry_id"] = 0
-	}
-	if len(req.Spec) != 0 && clam.Status != constant.StatusDisable {
-		newEntryID, err := xpack.MultiNodeProvider.StartClam(&clamItem, true)
+	clamItem.Status = targetStatus
+
+	newEntryID := 0
+	if req.Spec != "" && targetStatus != constant.StatusDisable {
+		entryID, err := xpack.MultiNodeProvider.StartClam(&clamItem, true)
 		if err != nil {
 			return err
 		}
-		upMap["entry_id"] = newEntryID
-	}
-	if len(clam.Spec) == 0 && len(req.Spec) != 0 {
-		upMap["status"] = constant.StatusEnable
+		newEntryID = entryID
 	}
 
-	upMap["name"] = req.Name
-	upMap["path"] = req.Path
-	upMap["infected_dir"] = req.InfectedDir
-	upMap["infected_strategy"] = req.InfectedStrategy
-	upMap["spec"] = req.Spec
-	upMap["timeout"] = req.Timeout
-	upMap["description"] = req.Description
+	upMap := map[string]interface{}{
+		"name":              req.Name,
+		"path":              req.Path,
+		"infected_dir":      req.InfectedDir,
+		"infected_strategy": req.InfectedStrategy,
+		"spec":              req.Spec,
+		"timeout":           req.Timeout,
+		"description":       req.Description,
+		"status":            targetStatus,
+		"entry_id":          newEntryID,
+	}
 	if err := clamRepo.Update(req.ID, upMap); err != nil {
+		clamUtil.RemoveSchedule(newEntryID)
 		return err
+	}
+	if clam.EntryID != 0 && clam.EntryID != newEntryID {
+		clamUtil.RemoveSchedule(clam.EntryID)
 	}
 	updateAlert := dto.AlertCreate{
 		Title:     req.AlertTitle,
@@ -260,7 +450,7 @@ func (c *ClamService) Update(req dto.ClamUpdate, operator string) error {
 		Type:      "clams",
 		Project:   strconv.Itoa(int(clam.ID)),
 	}
-	err := NewIAlertService().ExternalUpdateAlert(updateAlert, operator)
+	err = NewIAlertService().ExternalUpdateAlert(updateAlert, operator)
 	if err != nil {
 		return err
 	}
@@ -272,39 +462,63 @@ func (c *ClamService) UpdateStatus(id uint, status string) error {
 	if clam.ID == 0 {
 		return buserr.New("ErrRecordNotFound")
 	}
-	var (
-		entryID int
-		err     error
-	)
+	if clam.IsExecuting {
+		return buserr.New("TaskIsExecuting")
+	}
+	if status != constant.StatusEnable && status != constant.StatusDisable {
+		return fmt.Errorf("unsupported clam schedule status %q", status)
+	}
+	if status == clam.Status && (status == constant.StatusDisable || clam.EntryID != 0) {
+		return nil
+	}
+
+	entryID := 0
 	if status == constant.StatusEnable {
-		entryID, err = xpack.MultiNodeProvider.StartClam(&clam, true)
+		if err := clamUtil.ValidateSchedule(clam.Spec); err != nil {
+			return err
+		}
+		newEntryID, err := xpack.MultiNodeProvider.StartClam(&clam, true)
 		if err != nil {
 			return err
 		}
-	} else {
-		global.Cron.Remove(cron.EntryID(clam.EntryID))
-		global.LOG.Infof("stop cronjob entryID: %v", clam.EntryID)
+		entryID = newEntryID
 	}
 
-	return clamRepo.Update(clam.ID, map[string]interface{}{"status": status, "entry_id": entryID})
+	if err := clamRepo.Update(clam.ID, map[string]interface{}{"status": status, "entry_id": entryID}); err != nil {
+		clamUtil.RemoveSchedule(entryID)
+		return err
+	}
+	if clam.EntryID != 0 && clam.EntryID != entryID {
+		clamUtil.RemoveSchedule(clam.EntryID)
+		global.LOG.Infof("stop clam schedule entryID: %v", clam.EntryID)
+	}
+	return nil
 }
 
 func (c *ClamService) Delete(req dto.ClamDelete) error {
+	clams := make([]model.Clam, 0, len(req.Ids))
 	for _, id := range req.Ids {
-		clam, _ := clamRepo.Get(repo.WithByID(id))
-		if clam.ID == 0 {
+		item, _ := clamRepo.Get(repo.WithByID(id))
+		if item.ID == 0 {
 			continue
 		}
-		if len(clam.Spec) != 0 {
-			global.Cron.Remove(cron.EntryID(clam.EntryID))
+		if item.IsExecuting {
+			return buserr.New("TaskIsExecuting")
 		}
+		clams = append(clams, item)
+	}
+	for _, clam := range clams {
 		_ = c.CleanRecord(clam.ID)
-		if req.RemoveInfected {
-			_ = os.RemoveAll(path.Join(clam.InfectedDir, "1panel-infected", clam.Name))
+		if req.RemoveInfected && clam.InfectedDir != "" &&
+			(clam.InfectedStrategy == "move" || clam.InfectedStrategy == "copy") {
+			if err := clamUtil.RemoveInfectedDirectory(clam.InfectedDir, clam.Name); err != nil {
+				return err
+			}
 		}
-		if err := clamRepo.Delete(repo.WithByID(id)); err != nil {
+		if err := clamRepo.Delete(repo.WithByID(clam.ID)); err != nil {
 			return err
 		}
+		clamUtil.RemoveSchedule(clam.EntryID)
 		err := alertRepo.Delete(alertRepo.WithByProject(strconv.Itoa(int(clam.ID))), alertRepo.WithByType("clams"))
 		if err != nil {
 			return err
@@ -314,19 +528,26 @@ func (c *ClamService) Delete(req dto.ClamDelete) error {
 }
 
 func (c *ClamService) HandleOnce(id uint) error {
-	if active := clam.CheckWithStopAll(true, clamRepo); !active {
+	if active := clamUtil.CheckWithStopAll(true, clamRepo); !active {
 		return buserr.New("ErrClamdscanNotFound")
 	}
 	clamItem, _ := clamRepo.Get(repo.WithByID(id))
 	if clamItem.ID == 0 {
 		return buserr.New("ErrRecordNotFound")
 	}
+	if clamItem.IsExecuting {
+		return buserr.New("TaskIsExecuting")
+	}
+	if err := claimClamExecution(clamItem.ID); err != nil {
+		return err
+	}
 	record := clamRepo.StartRecords(clamItem.ID)
 	taskItem, err := task.NewTaskWithOps("clam-"+clamItem.Name, task.TaskScan, task.TaskScopeClam, record.TaskID, clamItem.ID)
 	if err != nil {
+		_ = clamRepo.Update(clamItem.ID, map[string]interface{}{"is_executing": false})
 		return fmt.Errorf("new task for exec shell failed, err: %v", err)
 	}
-	clam.AddScanTask(taskItem, clamItem, record.StartTime.Format(constant.DateTimeSlimLayout))
+	clamUtil.AddScanTask(taskItem, clamItem, record.StartTime.Format(constant.DateTimeSlimLayout))
 	go func() {
 		err := taskItem.Execute()
 		taskRepo := repo.NewITaskRepo()
@@ -338,10 +559,23 @@ func (c *ClamService) HandleOnce(id uint) error {
 			clamRepo.EndRecords(record, constant.StatusFailed, err.Error())
 			return
 		}
-		clam.AnalysisFromLog(taskItem.LogFile, &record)
+		clamUtil.AnalysisFromLog(taskItem.LogFile, &record)
 		clamRepo.EndRecords(record, constant.StatusDone, "")
 		handleAlert(record.InfectedFiles, clamItem.Name, clamItem.ID)
 	}()
+	return nil
+}
+
+func claimClamExecution(id uint) error {
+	claim := global.DB.Model(&model.Clam{}).
+		Where("id = ? AND is_executing = ?", id, false).
+		Update("is_executing", true)
+	if claim.Error != nil {
+		return claim.Error
+	}
+	if claim.RowsAffected == 0 {
+		return buserr.New("TaskIsExecuting")
+	}
 	return nil
 }
 

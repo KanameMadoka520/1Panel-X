@@ -56,7 +56,7 @@
                     <el-form-item prop="hasSpec">
                         <el-checkbox v-model="dialogData.rowData!.hasSpec" :label="$t('toolbox.clam.cron')" />
                     </el-form-item>
-                    <el-form-item prop="spec" v-if="dialogData.rowData!.hasSpec && isProductPro">
+                    <el-form-item prop="spec" v-if="dialogData.rowData!.hasSpec">
                         <div class="grid sm:grid-cols-4 gap-4 grid-cols-1">
                             <el-select v-model="dialogData.rowData!.specObj.specType" @change="changeSpecType()">
                                 <el-option
@@ -132,9 +132,7 @@
                             <el-checkbox v-model="dialogData.rowData!.hasAlert" :label="$t('xpack.alert.isAlert')" />
                             <span class="input-help">{{ $t('xpack.alert.clamHelper') }}</span>
                         </el-form-item>
-                        <el-form-item
-                            v-if="(dialogData.rowData!.hasAlert || dialogData.rowData!.hasSpec) && !isProductPro"
-                        >
+                        <el-form-item v-if="dialogData.rowData!.hasAlert && !isProductPro">
                             <span class="input-help logText">
                                 {{ $t('toolbox.clam.alertHelper') }}
                                 <el-link class="link" type="primary" @click="toUpload">
