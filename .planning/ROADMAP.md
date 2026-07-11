@@ -107,7 +107,7 @@ All five implementation plans and automated gates are complete. The milestone re
 | 4. AI Agent Soft Limit | AGENT-01 | 1/1 | Human UAT pending | 2026-07-10 |
 | 5. Reproducible Release and VPS Handoff | RELEASE-01 | 1/1 | Human UAT pending | 2026-07-10 |
 
-## Current Milestone: v1.1 Open Enhancement Hardening
+## Prior Milestone: v1.1 Open Enhancement Hardening (shipped v1.1.0-open.1)
 
 Chosen from a source-verified 53-capability inventory (`.planning/research/CAPABILITY-MATRIX.md`) that found **no** commercial capability which is merely a UI/license gate over a complete OSS backend (`uiGateOnly = ∅`). Rather than build new attack surface on top of two disclosed debts, v1.1 pays them down first, as two independent single-node phases that are fully CI-testable without a VPS. Decision record: `.planning/v1.1-MILESTONE-DECISION.md`.
 
@@ -144,12 +144,19 @@ Release: `v1.1.0-open.1` built from `21d19773c` (dual-layer checksums verified, 
 
 **Plans:** 07-01 defined.
 
+## Current Milestone: v1.2 Open Branding Text & Login Colors
+
+The safe, fully CI-verifiable slice of branding — text and login colors, **no file upload** — wiring already-declared, already-frontend-consumed enhancement fields and adding the missing community form. Chosen after a source-verified design + adversarial threat model (`.planning/v1.2-MILESTONE-DECISION.md`, `.planning/research/BRANDING-DESIGN.md`).
+
+- [ ] **Phase 8: Branding Backend Wiring** - `Title`, `MasterAlias`, `LoginBgType`, `LoginBackground`(color), `LoginBtnLinkColor` through the enhancement seam, with server-side XSS controls and a strict anonymous subset. [BRAND-01]
+- [ ] **Phase 9: Community Branding Form** - a minimal open settings form for those fields; login renders them pre-auth. [BRAND-02]
+
 ## Future Milestone Themes
 
-These themes are intentionally outside v1.0 and v1.1. They have no current phase number and must not be described as implemented. Ordering reflects the dependency graph and risk ranking in `.planning/research/CAPABILITY-MATRIX.md`:
+These themes are intentionally outside v1.0–v1.2. They have no current phase number and must not be described as implemented. Ordering reflects the dependency graph and risk ranking in `.planning/research/CAPABILITY-MATRIX.md`:
 
-0. **v1.2 Branding / white-label / custom-login** - depends only on the open enhancement-setting seam; single-node; introduces file-upload and pre-auth rendering (needs a negative-path harness and a pre-login safe subset).
-0b. **v1.3 Secure multi-node** - the keystone 15+ capabilities depend on; needs a full threat model (identity, enrollment token, mutual mTLS, rotation, replay, audit, failure consistency) and a second VPS to accept.
+1. **v1.3 Image branding upload** - logo/favicon/login image: the high-risk file-upload item, built with the captured threat model (serve-side SVG hardening, `MaxBytesReader` + `DecodeConfig` caps, fixed-enum filenames, CSRF verification, `.ico` resolution). May also include login welcome/subtitle/copyright text (P2).
+2. **v1.4 Secure multi-node** - the keystone 15+ capabilities depend on; needs a full threat model (identity, enrollment token, mutual mTLS, rotation, replay, audit, failure consistency) and a second VPS to accept.
 
 1. Advanced WAF and website request monitoring.
 2. Secure multi-node enrollment, synchronization, overview, and RBAC.

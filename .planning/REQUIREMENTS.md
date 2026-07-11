@@ -104,9 +104,36 @@ Acceptance criteria:
 4. A UI control (0 = unlimited) reads and writes `AIAgentLimit` through the existing validated setting endpoint, with a hint that unlimited count is not unlimited host resources.
 5. A concurrency focused test proves the cap holds; `npm run build:pro` and changed-file ESLint pass; live multi-request and resource observation are recorded as human UAT.
 
+## v1.2 Requirements (current milestone: Open Branding Text & Login Colors)
+
+**Note:** v1.0's 20 and v1.1's 6 human UAT items remain pending. v1.2 delivers the safe text/color slice of branding; image upload is deferred to v1.3. Rationale: `.planning/v1.2-MILESTONE-DECISION.md`, threat model `.planning/research/BRANDING-DESIGN.md`.
+
+### Branding Backend Wiring
+
+- [ ] **BRAND-01**: A community build can persist and serve brand text and login colors through the enhancement seam, with server-side XSS controls and a strict anonymous subset, and no image-upload surface.
+
+Acceptance criteria:
+
+1. `Title`, `MasterAlias`, `LoginBgType`, `LoginBackground`, `LoginBtnLinkColor` are writable via the existing update endpoint and readable via the authenticated getter; each unknown key still fails closed.
+2. Text fields reject `<`/`>` and control characters and cap length; colors validate via the existing safe-CSS-color check; `LoginBgType` is a strict enum; empty means unset.
+3. The anonymous endpoint exposes exactly the cosmetic subset (theme, themeColor, title, masterAlias, loginBgType, loginBackground, loginBtnLinkColor) and never watermark, image bytes/paths, versions, or secrets — proven by a subset-assertion test.
+4. Corrupt stored values fall back to safe defaults; no license state is touched; no new route or file write is added.
+5. Focused Go tests and full core regression pass.
+
+### Community Branding Form
+
+- [ ] **BRAND-02**: A community administrator can set the branding text and login colors from an open settings form; the login page renders them pre-authentication.
+
+Acceptance criteria:
+
+1. A community form loads current values (authenticated getter) and saves each field through the open update endpoint; backend validation errors are surfaced.
+2. Text renders as textContent/interpolation, never `v-html`.
+3. No image-upload control is present.
+4. `npm run build:pro` and changed-file ESLint pass; browser rendering is recorded as human UAT.
+
 ## Future Requirements
 
-The following areas are acknowledged but are not committed to v1.0 or v1.1 and do not map to current phases:
+The following areas are acknowledged but are not committed to v1.0, v1.1, or v1.2 and do not map to current phases:
 
 ### Security and Monitoring
 
@@ -155,13 +182,15 @@ Each current requirement maps to exactly one phase.
 | CLAM-01 | Phase 3 | Human UAT Pending |
 | AGENT-01 | Phase 4 | Human UAT Pending |
 | RELEASE-01 | Phase 5 | Human UAT Pending |
-| ALERT-SEC-01 | Phase 6 | Active (v1.1) |
-| AGENT-02 | Phase 7 | Active (v1.1) |
+| ALERT-SEC-01 | Phase 6 | Human UAT Pending (v1.1) |
+| AGENT-02 | Phase 7 | Human UAT Pending (v1.1) |
+| BRAND-01 | Phase 8 | Active (v1.2) |
+| BRAND-02 | Phase 9 | Active (v1.2) |
 
 **Coverage:**
 
-- v1.0 requirements: 5 total; v1.1 requirements: 2 total
-- Mapped to exactly one phase: 7
+- v1.0: 5; v1.1: 2; v1.2: 2 total
+- Mapped to exactly one phase: 9
 - Unmapped: 0
 - Mapped more than once: 0
 

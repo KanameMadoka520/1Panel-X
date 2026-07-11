@@ -14,15 +14,19 @@ Deliver a complete, security-conscious, fully open server panel whose enhanced c
 
 **Status:** Release candidate `v1.0.0-open.1` built and automatically verified; 20 human UAT items remain pending. Not archived. Delivered four independently implemented features (open theme/watermark, WeCom/DingTalk/Feishu webhook alerts, durable ClamAV schedules, AI Agent soft limit) plus a reproducible Linux AMD64 release with dual-layer checksums.
 
-## Current Milestone: v1.1 Open Enhancement Hardening
+## Prior Milestone: v1.1 Open Enhancement Hardening
 
-**Goal:** Pay down the two source-verified security/correctness debts of the shipped v1.0 features before adding new attack surface — delivered as two independent, single-node, fully CI-testable phases. Chosen after a source-verified 53-capability inventory found no "UI-gate-only" commercial capability (`uiGateOnly = ∅`); see `.planning/v1.1-MILESTONE-DECISION.md` and `.planning/research/CAPABILITY-MATRIX.md`.
+**Status:** Released `v1.1.0-open.1` (revision `21d19773c`); implementation + automated gates complete, 6 human UAT pending. Encrypted the webhook bot URL at rest (ALERT-SEC-01) and made `AIAgentLimit` race-free + added its UI (AGENT-02).
+
+## Current Milestone: v1.2 Open Branding Text & Login Colors
+
+**Goal:** Deliver the safe, fully CI-verifiable slice of the branding/custom-login capability — text and login colors, **no file upload** — by wiring the already-declared, already-frontend-consumed enhancement fields end to end and adding the missing community edit form. Chosen after a source-verified design + adversarial threat model (`.planning/v1.2-MILESTONE-DECISION.md`, `.planning/research/BRANDING-DESIGN.md`) that recommended shipping the text/color slice first.
 
 **Target features:**
-- Encrypt the webhook bot URL at rest using the panel's existing `encrypt` helper, with a transparent migration for existing plaintext rows (ALERT-SEC-01).
-- Make `AIAgentLimit` enforcement race-free via a mutex-guarded slot reservation, and add the missing management UI (AGENT-02).
+- Wire `Title`, `MasterAlias`, `LoginBgType`, `LoginBackground` (color), `LoginBtnLinkColor` through the enhancement seam with server-side XSS controls and a strict anonymous subset (BRAND-01).
+- A minimal community branding settings form for those fields (BRAND-02).
 
-**Deliberately sequenced next (not this milestone):** v1.2 branding/white-label/custom-login (enhancement-setting cluster), then v1.3 threat-modeled secure multi-node (the keystone 15+ capabilities depend on, requiring a second VPS to accept).
+**Deliberately deferred:** v1.3 image branding upload (logo/favicon/login image) — the high-risk file-upload item, to be built with the captured threat model (serve-side SVG hardening, size/dimension caps, CSRF, `.ico` resolution). Then v1.4+ threat-modeled secure multi-node (the keystone, needs a second VPS).
 
 ## Requirements
 

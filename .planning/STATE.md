@@ -5,17 +5,17 @@
 See: `.planning/PROJECT.md`, `.planning/REQUIREMENTS.md`, `.planning/v1.1-MILESTONE-DECISION.md`, `.planning/research/CAPABILITY-MATRIX.md` (updated 2026-07-10)
 
 **Core value:** Deliver a complete, security-conscious, fully open server panel without proprietary code or license bypasses.
-**Current milestone:** v1.1 Open Enhancement Hardening
-**Current focus:** Pay down the two source-verified debts of the shipped v1.0 features (plaintext webhook secret at rest; non-atomic AI Agent limit + missing UI) as two independent single-node phases, fully CI-verified in WSL.
+**Current milestone:** v1.2 Open Branding Text & Login Colors
+**Current focus:** Ship the safe text/color slice of branding (no file upload) — wire the already-declared, frontend-consumed enhancement fields with server-side XSS controls and a strict anonymous subset, plus a minimal community edit form. Image upload deferred to v1.3.
 
 ## Current Position
 
-Milestone: v1.1 (Phases 6-7); v1.0 (Phases 1-5) remains a release candidate with 20 human UAT pending (not archived, not regressed).
-Phase: 6 and 7 implemented, automatically verified, and released as `v1.1.0-open.1`.
-Status: `gaps_found` — implementation and all automated gates complete; 6 human UAT items (3 per phase) pending on a VPS. Milestone not archived.
-Last activity: 2026-07-10 - Built and independently inspected `v1.1.0-open.1` from source revision `21d19773ca6ec9a786931b533ff6292e71f7d409`.
+Milestone: v1.2 (Phases 8-9). v1.1 (Phases 6-7) shipped `v1.1.0-open.1` with 6 UAT pending; v1.0 (Phases 1-5) with 20 UAT pending. None archived.
+Phase: 8 (backend) and 9 (frontend form) planned; implementation next.
+Status: Milestone defined from a source-verified branding design + adversarial threat model (verdict design_sound, ship-P1-first). Planning docs written; code next.
+Last activity: 2026-07-11 - Ran a 6-agent branding investigation (seam already wired, image serve exists but no upload, SVG serve-XSS risk), chose the text/color slice and deferred image upload to v1.3.
 
-Progress: v1.0 [##########] 100% implementation + automated gates (0/5 accepted, UAT pending). v1.1 [##########] 100% implementation + automated gates + reproducible release (0/2 accepted, 6 UAT pending).
+Progress: v1.0 [##########] gates done (0/5 accepted). v1.1 [##########] released (0/2 accepted). v1.2 [#---------] planned, implementation pending.
 
 ## Repository Snapshot
 
@@ -44,11 +44,11 @@ Progress: v1.0 [##########] 100% implementation + automated gates (0/5 accepted,
 
 ## Next Actions
 
-1. Transfer `image/releases/v1.1.0-open.1` to a disposable or fully snapshotted VPS; verify both checksum layers.
-2. Execute the 6 v1.1 human UAT items (`06-HUMAN-UAT.md`, `07-HUMAN-UAT.md`); record results honestly.
-3. Also execute the outstanding 20 v1.0 UAT items where the environment allows.
-4. Re-run the v1.1 milestone audit once acceptance evidence exists; only then consider archiving.
-5. Next milestone candidate: v1.2 Branding / white-label / custom-login (enhancement-setting cluster; build a file-upload negative-path harness + pre-auth safe subset).
+1. Implement Phase 8 (backend branding wiring); run `go test ./core/app/service` + full core regression.
+2. Implement Phase 9 (community branding form); run `npm run build:pro` + ESLint.
+3. Write SUMMARY/VERIFICATION/HUMAN-UAT for phases 8-9; build `v1.2.0-open.1`; roadmap note; v1.2 audit.
+4. Carry forward the pending UAT: v1.1 (6 items) + v1.0 (20 items) still need a VPS.
+5. v1.3 = image branding upload (honor the threat model in `BRANDING-DESIGN.md`).
 
 ## Session Continuity
 
