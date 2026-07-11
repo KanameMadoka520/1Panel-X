@@ -91,6 +91,10 @@ func TestPublicEnhancementSettingIsStrictSubset(t *testing.T) {
 		"LoginBgType":       "color",
 		"LoginBackground":   "#101828",
 		"LoginBtnLinkColor": "rgb(0, 94, 235)",
+		"Logo":              "logo",
+		"LogoWithText":      "logoWithText",
+		"Favicon":           "favicon",
+		"LoginImage":        "loginImage",
 	}
 	for k, v := range stored {
 		if err := settingRepo.UpdateOrCreate(k, v); err != nil {
@@ -111,9 +115,14 @@ func TestPublicEnhancementSettingIsStrictSubset(t *testing.T) {
 	publicFields := jsonKeySet(t, publicSetting)
 	authedFields := jsonKeySet(t, authedSetting)
 
+	// The public surface exposes cosmetic text/colors plus presence sentinels
+	// for images that are ALREADY anonymously served at /api/v2/images/* — so a
+	// sentinel discloses nothing new. It must still never carry the watermark,
+	// bytes, paths, or any key absent from the authenticated DTO (T8).
 	wantPublic := map[string]bool{
 		"theme": true, "themeColor": true, "title": true, "masterAlias": true,
 		"loginBgType": true, "loginBackground": true, "loginBtnLinkColor": true,
+		"logo": true, "logoWithText": true, "favicon": true, "loginImage": true,
 	}
 	for k := range publicFields {
 		if !wantPublic[k] {
@@ -128,9 +137,18 @@ func TestPublicEnhancementSettingIsStrictSubset(t *testing.T) {
 			t.Fatalf("public payload missing expected cosmetic key %q", k)
 		}
 	}
-	for _, forbidden := range []string{"watermark", "watermarkShow", "logo", "logoWithText", "favicon", "loginImage"} {
+	for _, forbidden := range []string{"watermark", "watermarkShow"} {
 		if _, exists := publicFields[forbidden]; exists {
 			t.Fatalf("public response exposed forbidden key %q", forbidden)
+		}
+	}
+	// The image fields are presence sentinels only — never a path or bytes.
+	for k, v := range map[string]string{
+		"logo": publicSetting.Logo, "logoWithText": publicSetting.LogoWithText,
+		"favicon": publicSetting.Favicon, "loginImage": publicSetting.LoginImage,
+	} {
+		if v != k {
+			t.Fatalf("public image field %q must be the presence sentinel %q, got %q", k, k, v)
 		}
 	}
 	if publicSetting.Title != "Acme Cloud" || publicSetting.LoginBackground != "#101828" {
@@ -161,7 +179,13 @@ func TestValidateEnhancementBrandingFields(t *testing.T) {
 		{"MasterAlias", "HQ-Node"},
 		{"LoginBgType", ""}, {"LoginBgType", "image"}, {"LoginBgType", "color"},
 		{"LoginBackground", ""}, {"LoginBackground", "#0a0a0a"}, {"LoginBackground", "rgba(0,0,0,0.5)"},
+		{"LoginBackground", "loginBackground"}, // image-mode presence sentinel
 		{"LoginBtnLinkColor", "#005eeb"},
+		// Image presence sentinels: empty (unset) or the exact camel-case key.
+		{"Logo", ""}, {"Logo", "logo"},
+		{"LogoWithText", ""}, {"LogoWithText", "logoWithText"},
+		{"Favicon", ""}, {"Favicon", "favicon"},
+		{"LoginImage", ""}, {"LoginImage", "loginImage"},
 	}
 	for _, c := range valid {
 		if err := validateEnhancementSetting(c.key, c.value); err != nil {
@@ -180,6 +204,13 @@ func TestValidateEnhancementBrandingFields(t *testing.T) {
 		{"background not color", "LoginBackground", "javascript:alert(1)"},
 		{"background bad word", "LoginBackground", "red"},
 		{"btncolor not color", "LoginBtnLinkColor", "url(x)"},
+		// An image field must never hold anything but its own sentinel — no
+		// markup, no path, no cross-asset value.
+		{"logo markup", "Logo", "<svg onload=alert(1)>"},
+		{"logo path", "Logo", "/api/v2/images/logo"},
+		{"logo wrong sentinel", "Logo", "favicon"},
+		{"favicon wrong sentinel", "Favicon", "logo"},
+		{"loginImage arbitrary", "LoginImage", "https://evil.example/x.png"},
 	}
 	for _, c := range invalid {
 		if err := validateEnhancementSetting(c.key, c.value); err == nil {
