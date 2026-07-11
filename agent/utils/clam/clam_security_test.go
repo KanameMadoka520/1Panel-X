@@ -3,6 +3,7 @@ package clam
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -43,5 +44,19 @@ func TestRemoveInfectedDirectoryRejectsTraversalAndSymlink(t *testing.T) {
 	}
 	if _, err := os.Stat(outsideDir); err != nil {
 		t.Fatalf("outside directory was affected: %v", err)
+	}
+}
+
+func TestRemoveInfectedDirectoryRejectsFilesystemRoot(t *testing.T) {
+	baseDir := t.TempDir()
+	volume := filepath.VolumeName(baseDir)
+	filesystemRoot := volume + string(filepath.Separator)
+	if volume == "" {
+		filesystemRoot = string(filepath.Separator)
+	}
+
+	err := RemoveInfectedDirectory(filesystemRoot, "legacy-rule")
+	if err == nil || !strings.Contains(err.Error(), "filesystem root") {
+		t.Fatalf("expected filesystem-root quarantine base to be rejected, got %v", err)
 	}
 }

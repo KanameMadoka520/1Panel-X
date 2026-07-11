@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -65,6 +66,20 @@ func setupClamScheduleTest(t *testing.T) {
 		global.Cron = oldCron
 		global.LOG = oldLog
 	})
+}
+
+func closeClamAlertDB(t *testing.T) {
+	t.Helper()
+	sqlDB, err := global.AlertDB.DB()
+	if err != nil {
+		t.Fatalf("load alert database handle: %v", err)
+	}
+	if err := sqlDB.Close(); err != nil {
+		t.Fatalf("close alert database: %v", err)
+	}
+	if err := global.AlertDB.Exec("SELECT 1").Error; err == nil {
+		t.Fatal("closed alert database still accepts queries")
+	}
 }
 
 func TestClamScheduleLifecycle(t *testing.T) {
@@ -139,6 +154,154 @@ func TestClamScheduleLifecycle(t *testing.T) {
 	}
 	if deleted, _ := clamRepo.Get(repo.WithByID(item.ID)); deleted.ID != 0 {
 		t.Fatalf("expected scheduled scan to be deleted, got id %d", deleted.ID)
+	}
+}
+
+func TestClamCreateRollsBackRuleAndScheduleWhenAlertCreateFails(t *testing.T) {
+	setupClamScheduleTest(t)
+	service := NewIClamService()
+	closeClamAlertDB(t)
+
+	err := service.Create(dto.ClamCreate{
+		Name:             "alert-create-failure",
+		Path:             t.TempDir(),
+		InfectedStrategy: "none",
+		Spec:             "0 1 * * *",
+		Timeout:          60,
+		AlertCount:       1,
+		AlertTitle:       "Clam alert",
+		AlertMethod:      constant.Email,
+	}, "tester")
+	if err == nil {
+		t.Fatal("expected alert create failure")
+	}
+	if item, _ := clamRepo.Get(repo.WithByName("alert-create-failure")); item.ID != 0 {
+		t.Fatalf("alert failure left clam rule %d behind", item.ID)
+	}
+	if got := len(global.Cron.Entries()); got != 0 {
+		t.Fatalf("alert failure left %d cron entries behind", got)
+	}
+}
+
+func TestClamUpdateRollsBackRuleAndScheduleWhenAlertUpdateFails(t *testing.T) {
+	setupClamScheduleTest(t)
+	service := NewIClamService()
+	if err := service.Create(dto.ClamCreate{
+		Name:             "alert-update-failure",
+		Path:             t.TempDir(),
+		InfectedStrategy: "none",
+		Spec:             "0 2 * * *",
+		Timeout:          60,
+		Description:      "original",
+	}, "tester"); err != nil {
+		t.Fatalf("create clam rule fixture: %v", err)
+	}
+	original, _ := clamRepo.Get(repo.WithByName("alert-update-failure"))
+	changedScanPath := t.TempDir()
+	changedInfectedDir := t.TempDir()
+	closeClamAlertDB(t)
+
+	err := service.Update(dto.ClamUpdate{
+		ID:               original.ID,
+		Name:             "alert-update-failure-renamed",
+		Path:             changedScanPath,
+		InfectedStrategy: "move",
+		InfectedDir:      changedInfectedDir,
+		Spec:             "30 3 * * *",
+		Timeout:          120,
+		Description:      "changed",
+		AlertCount:       1,
+		AlertTitle:       "Clam alert",
+		AlertMethod:      constant.Email,
+	}, "tester")
+	if err == nil {
+		t.Fatal("expected alert update failure")
+	}
+	persisted, _ := clamRepo.Get(repo.WithByID(original.ID))
+	if persisted.Name != original.Name || persisted.Path != original.Path ||
+		persisted.InfectedStrategy != original.InfectedStrategy || persisted.InfectedDir != original.InfectedDir ||
+		persisted.Spec != original.Spec || persisted.Timeout != original.Timeout ||
+		persisted.Description != original.Description || persisted.Status != original.Status || persisted.EntryID != original.EntryID {
+		t.Fatalf("alert failure did not restore original rule: original=%+v persisted=%+v", original, persisted)
+	}
+	entries := global.Cron.Entries()
+	if len(entries) != 1 || int(entries[0].ID) != original.EntryID {
+		t.Fatalf("alert failure did not preserve original schedule: original=%d entries=%+v", original.EntryID, entries)
+	}
+}
+
+func TestClamDeleteReturnsRetryableErrorWhenAlertCleanupFails(t *testing.T) {
+	setupClamScheduleTest(t)
+	service := NewIClamService()
+	if err := service.Create(dto.ClamCreate{
+		Name:             "alert-delete-failure",
+		Path:             t.TempDir(),
+		InfectedStrategy: "none",
+		Spec:             "0 4 * * *",
+		Timeout:          60,
+	}, "tester"); err != nil {
+		t.Fatalf("create clam rule fixture: %v", err)
+	}
+	item, _ := clamRepo.Get(repo.WithByName("alert-delete-failure"))
+	const callbackName = "test:fail-clam-alert-delete"
+	if err := global.AlertDB.Callback().Delete().Before("gorm:delete").Register(callbackName, func(db *gorm.DB) {
+		db.AddError(errors.New("simulated alert cleanup failure"))
+	}); err != nil {
+		t.Fatalf("register alert delete failure callback: %v", err)
+	}
+
+	if err := service.Delete(dto.ClamDelete{Ids: []uint{item.ID}}); err == nil {
+		t.Fatal("expected alert cleanup failure after primary deletion")
+	}
+	if persisted, _ := clamRepo.Get(repo.WithByID(item.ID)); persisted.ID != 0 {
+		t.Fatalf("clam rule %d remained after delete", persisted.ID)
+	}
+	if got := len(global.Cron.Entries()); got != 0 {
+		t.Fatalf("delete left %d cron entries behind", got)
+	}
+	global.AlertDB.Callback().Delete().Remove(callbackName)
+	if err := service.Delete(dto.ClamDelete{Ids: []uint{item.ID}}); err != nil {
+		t.Fatalf("retry should clean an orphan alert even after the clam rule is gone: %v", err)
+	}
+}
+
+func TestClamDeleteRejectsLegacyFilesystemRootQuarantine(t *testing.T) {
+	setupClamScheduleTest(t)
+	service := NewIClamService()
+	volume := filepath.VolumeName(t.TempDir())
+	filesystemRoot := volume + string(filepath.Separator)
+	if volume == "" {
+		filesystemRoot = string(filepath.Separator)
+	}
+	legacy := model.Clam{
+		Name:             "legacy-root-quarantine",
+		Path:             t.TempDir(),
+		InfectedStrategy: "move",
+		InfectedDir:      filesystemRoot,
+		Timeout:          60,
+	}
+	if err := global.DB.Create(&legacy).Error; err != nil {
+		t.Fatalf("create legacy clam rule: %v", err)
+	}
+	entryID, err := global.Cron.AddFunc("0 6 * * *", func() {})
+	if err != nil {
+		t.Fatalf("register legacy clam schedule: %v", err)
+	}
+	legacy.EntryID = int(entryID)
+	if err := clamRepo.Update(legacy.ID, map[string]interface{}{"entry_id": legacy.EntryID}); err != nil {
+		t.Fatalf("persist legacy clam schedule: %v", err)
+	}
+
+	err = service.Delete(dto.ClamDelete{Ids: []uint{legacy.ID}, RemoveInfected: true})
+	if err == nil || !strings.Contains(err.Error(), "filesystem root") {
+		t.Fatalf("expected legacy filesystem-root quarantine to be rejected, got %v", err)
+	}
+	if persisted, _ := clamRepo.Get(repo.WithByID(legacy.ID)); persisted.ID == 0 {
+		t.Fatal("legacy clam rule was deleted despite unsafe quarantine base")
+	}
+	entries := global.Cron.Entries()
+	if len(entries) != 1 || int(entries[0].ID) != legacy.EntryID {
+		t.Fatalf("legacy schedule changed despite unsafe quarantine base: entry=%d entries=%+v", legacy.EntryID, entries)
 	}
 }
 

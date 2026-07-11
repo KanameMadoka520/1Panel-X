@@ -170,6 +170,10 @@ func resolveQuarantineBase(rawPath string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("resolve clam infected path %q failed: %w", rawPath, err)
 	}
+	resolvedPath = filepath.Clean(resolvedPath)
+	if isFilesystemRoot(resolvedPath) {
+		return "", fmt.Errorf("clam infected path cannot be a filesystem root")
+	}
 	info, err := os.Stat(resolvedPath)
 	if err != nil {
 		return "", fmt.Errorf("stat clam infected path %q failed: %w", resolvedPath, err)
@@ -177,7 +181,17 @@ func resolveQuarantineBase(rawPath string) (string, error) {
 	if !info.IsDir() {
 		return "", fmt.Errorf("clam infected path %q is not a directory", resolvedPath)
 	}
-	return filepath.Clean(resolvedPath), nil
+	return resolvedPath, nil
+}
+
+func isFilesystemRoot(path string) bool {
+	cleanedPath := filepath.Clean(path)
+	volume := filepath.VolumeName(cleanedPath)
+	root := volume + string(filepath.Separator)
+	if volume == "" {
+		root = string(filepath.Separator)
+	}
+	return cleanedPath == root
 }
 
 func ensureSecureDirectory(directory string, create bool) error {

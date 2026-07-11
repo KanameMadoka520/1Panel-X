@@ -361,11 +361,21 @@ func (c *ClamService) Create(req dto.ClamCreate, operator string) error {
 			Project:   strconv.Itoa(int(clam.ID)),
 			Status:    constant.AlertEnable,
 		}
-		err := NewIAlertService().CreateAlert(createAlert, operator)
-		if err != nil {
+		if err := NewIAlertService().CreateAlert(createAlert, operator); err != nil {
+			if rollbackErr := rollbackCreatedClam(clam); rollbackErr != nil {
+				return clamAlertRollbackError("create", clam.ID, err, rollbackErr)
+			}
 			return err
 		}
 	}
+	return nil
+}
+
+func rollbackCreatedClam(clam model.Clam) error {
+	if err := clamRepo.Delete(repo.WithByID(clam.ID)); err != nil {
+		return err
+	}
+	clamUtil.RemoveSchedule(clam.EntryID)
 	return nil
 }
 
@@ -440,9 +450,6 @@ func (c *ClamService) Update(req dto.ClamUpdate, operator string) error {
 		clamUtil.RemoveSchedule(newEntryID)
 		return err
 	}
-	if clam.EntryID != 0 && clam.EntryID != newEntryID {
-		clamUtil.RemoveSchedule(clam.EntryID)
-	}
 	updateAlert := dto.AlertCreate{
 		Title:     req.AlertTitle,
 		SendCount: req.AlertCount,
@@ -452,9 +459,50 @@ func (c *ClamService) Update(req dto.ClamUpdate, operator string) error {
 	}
 	err = NewIAlertService().ExternalUpdateAlert(updateAlert, operator)
 	if err != nil {
+		if rollbackErr := rollbackUpdatedClam(clam, newEntryID); rollbackErr != nil {
+			if clam.EntryID != 0 && clam.EntryID != newEntryID {
+				clamUtil.RemoveSchedule(clam.EntryID)
+			}
+			return clamAlertRollbackError("update", clam.ID, err, rollbackErr)
+		}
 		return err
 	}
+	if clam.EntryID != 0 && clam.EntryID != newEntryID {
+		clamUtil.RemoveSchedule(clam.EntryID)
+	}
 	return nil
+}
+
+func rollbackUpdatedClam(clam model.Clam, newEntryID int) error {
+	rollbackMap := map[string]interface{}{
+		"name":              clam.Name,
+		"path":              clam.Path,
+		"infected_dir":      clam.InfectedDir,
+		"infected_strategy": clam.InfectedStrategy,
+		"spec":              clam.Spec,
+		"timeout":           clam.Timeout,
+		"description":       clam.Description,
+		"status":            clam.Status,
+		"entry_id":          clam.EntryID,
+	}
+	if err := clamRepo.Update(clam.ID, rollbackMap); err != nil {
+		return err
+	}
+	clamUtil.RemoveSchedule(newEntryID)
+	return nil
+}
+
+func clamAlertRollbackError(operation string, clamID uint, alertErr, rollbackErr error) error {
+	partialErr := fmt.Errorf(
+		"clam rule %d %s alert change failed and rollback failed; the persisted rule state remains applied: %w",
+		clamID,
+		operation,
+		rollbackErr,
+	)
+	if global.LOG != nil {
+		global.LOG.Errorf("%v; alert error: %v", partialErr, alertErr)
+	}
+	return errors.Join(alertErr, partialErr)
 }
 
 func (c *ClamService) UpdateStatus(id uint, status string) error {
@@ -519,12 +567,18 @@ func (c *ClamService) Delete(req dto.ClamDelete) error {
 			return err
 		}
 		clamUtil.RemoveSchedule(clam.EntryID)
-		err := alertRepo.Delete(alertRepo.WithByProject(strconv.Itoa(int(clam.ID))), alertRepo.WithByType("clams"))
-		if err != nil {
-			return err
+	}
+	var alertCleanupErrors []error
+	for _, id := range req.Ids {
+		if err := alertRepo.Delete(alertRepo.WithByProject(strconv.Itoa(int(id))), alertRepo.WithByType("clams")); err != nil {
+			cleanupErr := fmt.Errorf("delete alert for clam rule %d failed after the primary deletion: %w", id, err)
+			if global.LOG != nil {
+				global.LOG.Error(cleanupErr)
+			}
+			alertCleanupErrors = append(alertCleanupErrors, cleanupErr)
 		}
 	}
-	return nil
+	return errors.Join(alertCleanupErrors...)
 }
 
 func (c *ClamService) HandleOnce(id uint) error {
