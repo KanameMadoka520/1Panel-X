@@ -126,11 +126,71 @@
                                 />
                             </el-form-item>
 
+                            <el-form-item
+                                v-if="form.loginBgType === 'image'"
+                                :label="$t('setting.brandLoginBgImage')"
+                                prop="loginBackground"
+                            >
+                                <div class="brand-asset">
+                                    <img
+                                        v-if="assetValue('loginBackground')"
+                                        :src="assetPreviewUrl('loginBackground')"
+                                        class="brand-asset__preview"
+                                        alt=""
+                                    />
+                                    <el-upload
+                                        :show-file-list="false"
+                                        accept="image/png,image/jpeg,image/gif,image/webp"
+                                        :before-upload="(file) => beforeAssetUpload('loginBackground', file)"
+                                        :http-request="(options) => onUploadAsset('loginBackground', options.file)"
+                                    >
+                                        <el-button icon="Upload">{{ $t('setting.brandUpload') }}</el-button>
+                                    </el-upload>
+                                    <el-button
+                                        v-if="assetValue('loginBackground')"
+                                        link
+                                        type="danger"
+                                        @click="onResetAsset('loginBackground')"
+                                    >
+                                        {{ $t('commons.button.reset') }}
+                                    </el-button>
+                                </div>
+                                <span class="input-help">{{ $t('setting.brandImageHelper') }}</span>
+                            </el-form-item>
+
                             <el-form-item :label="$t('setting.loginBtnLinkColorLabel')" prop="loginBtnLinkColor">
                                 <el-color-picker
                                     v-model="form.loginBtnLinkColor"
                                     @change="onSaveBranding('LoginBtnLinkColor', form.loginBtnLinkColor)"
                                 />
+                            </el-form-item>
+
+                            <el-form-item v-for="asset in brandAssets" :key="asset.key" :label="$t(asset.label)">
+                                <div class="brand-asset">
+                                    <img
+                                        v-if="assetValue(asset.key)"
+                                        :src="assetPreviewUrl(asset.key)"
+                                        class="brand-asset__preview"
+                                        alt=""
+                                    />
+                                    <el-upload
+                                        :show-file-list="false"
+                                        :accept="asset.accept"
+                                        :before-upload="(file) => beforeAssetUpload(asset.key, file)"
+                                        :http-request="(options) => onUploadAsset(asset.key, options.file)"
+                                    >
+                                        <el-button icon="Upload">{{ $t('setting.brandUpload') }}</el-button>
+                                    </el-upload>
+                                    <el-button
+                                        v-if="assetValue(asset.key)"
+                                        link
+                                        type="danger"
+                                        @click="onResetAsset(asset.key)"
+                                    >
+                                        {{ $t('commons.button.reset') }}
+                                    </el-button>
+                                </div>
+                                <span class="input-help">{{ $t(asset.helper) }}</span>
                             </el-form-item>
 
                             <el-form-item :label="$t('setting.language')" prop="language">
@@ -242,9 +302,10 @@
 import { ref, reactive, onMounted } from 'vue';
 import { ElForm, ElMessageBox } from 'element-plus';
 import { getSettingInfo, updateSetting, getSystemAvailable, getAgentSettingInfo } from '@/api/modules/setting';
+import { uploadOpenEnhancementAsset, resetOpenEnhancementAsset } from '@/api/modules/enhancement';
 import { useGlobalStore } from '@/composables/useGlobalStore';
 import { useTheme } from '@/global/use-theme';
-import { MsgSuccess } from '@/utils/message';
+import { MsgSuccess, MsgError } from '@/utils/message';
 import ThemeColor from '@/views/setting/panel/theme-color/index.vue';
 import Watermark from '@/views/setting/panel/watermark/index.vue';
 import Edition from '@/views/setting/panel/edition/index.vue';
@@ -294,6 +355,10 @@ const form = reactive({
     loginBgType: '',
     loginBackground: '',
     loginBtnLinkColor: '',
+    logo: '',
+    logoWithText: '',
+    favicon: '',
+    loginImage: '',
     themeColor: {} as ThemeColor,
     menuTabs: '',
     menuAccordion: '',
@@ -390,6 +455,10 @@ const search = async () => {
         form.loginBgType = xpackRes.data.loginBgType || '';
         form.loginBackground = xpackRes.data.loginBackground || '';
         form.loginBtnLinkColor = xpackRes.data.loginBtnLinkColor || '';
+        form.logo = xpackRes.data.logo || '';
+        form.logoWithText = xpackRes.data.logoWithText || '';
+        form.favicon = xpackRes.data.favicon || '';
+        form.loginImage = xpackRes.data.loginImage || '';
         try {
             watermark.value = JSON.parse(xpackRes.data.watermark);
         } catch {
@@ -498,6 +567,99 @@ const onSaveBranding = async (key: string, val: string) => {
     }
 };
 
+// Branding images are presence-only on the client: the value is a sentinel and
+// the bytes are fetched from the fixed /api/v2/images/<key> path. previewTick
+// busts the cache after an upload or reset.
+const previewTick = ref(Date.now());
+
+const brandAssets = [
+    {
+        key: 'logo',
+        label: 'setting.brandLogo',
+        accept: 'image/png,image/jpeg,image/gif,image/webp',
+        maxKB: 2048,
+        helper: 'setting.brandImageHelper',
+    },
+    {
+        key: 'logoWithText',
+        label: 'setting.brandLogoWithText',
+        accept: 'image/png,image/jpeg,image/gif,image/webp',
+        maxKB: 2048,
+        helper: 'setting.brandImageHelper',
+    },
+    {
+        key: 'favicon',
+        label: 'setting.brandFavicon',
+        accept: 'image/png',
+        maxKB: 256,
+        helper: 'setting.brandFaviconHelper',
+    },
+    {
+        key: 'loginImage',
+        label: 'setting.brandLoginImage',
+        accept: 'image/png,image/jpeg,image/gif,image/webp',
+        maxKB: 2048,
+        helper: 'setting.brandImageHelper',
+    },
+];
+
+const assetValue = (key: string): string => {
+    switch (key) {
+        case 'logo':
+            return form.logo;
+        case 'logoWithText':
+            return form.logoWithText;
+        case 'favicon':
+            return form.favicon;
+        case 'loginImage':
+            return form.loginImage;
+        case 'loginBackground':
+            return form.loginBackground === 'loginBackground' ? form.loginBackground : '';
+        default:
+            return '';
+    }
+};
+
+const assetPreviewUrl = (key: string) => `/api/v2/images/${key}?t=${previewTick.value}`;
+
+const beforeAssetUpload = (key: string, file: File) => {
+    const accept = key === 'favicon' ? 'image/png' : 'image/png,image/jpeg,image/gif,image/webp';
+    if (!accept.split(',').includes(file.type)) {
+        MsgError(i18n.global.t('setting.brandImageBadType'));
+        return false;
+    }
+    const maxKB = key === 'favicon' ? 256 : 2048;
+    if (file.size > maxKB * 1024) {
+        MsgError(i18n.global.t('setting.brandImageTooLarge'));
+        return false;
+    }
+    return true;
+};
+
+const onUploadAsset = async (key: string, file: File) => {
+    loading.value = true;
+    try {
+        await uploadOpenEnhancementAsset(key, file);
+        await search();
+        previewTick.value = Date.now();
+        MsgSuccess(i18n.global.t('commons.msg.operationSuccess'));
+    } finally {
+        loading.value = false;
+    }
+};
+
+const onResetAsset = async (key: string) => {
+    loading.value = true;
+    try {
+        await resetOpenEnhancementAsset(key);
+        await search();
+        previewTick.value = Date.now();
+        MsgSuccess(i18n.global.t('commons.msg.operationSuccess'));
+    } finally {
+        loading.value = false;
+    }
+};
+
 const onSave = async (key: string, val: any) => {
     loading.value = true;
     let param = {
@@ -541,5 +703,20 @@ onMounted(() => {
 <style scoped lang="scss">
 :deep(.el-radio-group) {
     min-width: max-content;
+}
+.brand-asset {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+.brand-asset__preview {
+    max-width: 120px;
+    max-height: 40px;
+    object-fit: contain;
+    border: 1px solid var(--el-border-color);
+    border-radius: 4px;
+    padding: 2px;
+    background: var(--el-fill-color-light);
 }
 </style>
