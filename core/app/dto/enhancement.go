@@ -17,11 +17,16 @@ type EnhancementSettingInfo struct {
 }
 
 type PublicEnhancementSettingInfo struct {
-	Theme      string `json:"theme"`
-	ThemeColor string `json:"themeColor"`
+	Theme             string `json:"theme"`
+	ThemeColor        string `json:"themeColor"`
+	Title             string `json:"title"`
+	MasterAlias       string `json:"masterAlias"`
+	LoginBgType       string `json:"loginBgType"`
+	LoginBackground   string `json:"loginBackground"`
+	LoginBtnLinkColor string `json:"loginBtnLinkColor"`
 }
 
 type EnhancementSettingUpdate struct {
-	Key   string `json:"key" validate:"required,oneof=Theme ThemeColor Watermark WatermarkShow"`
+	Key   string `json:"key" validate:"required,oneof=Theme ThemeColor Watermark WatermarkShow Title MasterAlias LoginBgType LoginBackground LoginBtnLinkColor"`
 	Value string `json:"value" validate:"max=8192"`
 }

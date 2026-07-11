@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/1Panel-dev/1Panel/core/app/dto"
 	"github.com/1Panel-dev/1Panel/core/constant"
@@ -51,17 +52,27 @@ func NewIEnhancementService() IEnhancementService {
 
 func (u *EnhancementService) GetSettingInfo() (*dto.EnhancementSettingInfo, error) {
 	return &dto.EnhancementSettingInfo{
-		Theme:         loadValidatedEnhancementValue("Theme", defaultEnhancementTheme),
-		ThemeColor:    loadValidatedEnhancementValue("ThemeColor", defaultEnhancementThemeColor),
-		Watermark:     loadValidatedEnhancementValue("Watermark", defaultEnhancementWatermark),
-		WatermarkShow: loadValidatedEnhancementValue("WatermarkShow", constant.StatusDisable),
+		Theme:             loadValidatedEnhancementValue("Theme", defaultEnhancementTheme),
+		ThemeColor:        loadValidatedEnhancementValue("ThemeColor", defaultEnhancementThemeColor),
+		Watermark:         loadValidatedEnhancementValue("Watermark", defaultEnhancementWatermark),
+		WatermarkShow:     loadValidatedEnhancementValue("WatermarkShow", constant.StatusDisable),
+		Title:             loadValidatedEnhancementValue("Title", ""),
+		MasterAlias:       loadValidatedEnhancementValue("MasterAlias", ""),
+		LoginBgType:       loadValidatedEnhancementValue("LoginBgType", ""),
+		LoginBackground:   loadValidatedEnhancementValue("LoginBackground", ""),
+		LoginBtnLinkColor: loadValidatedEnhancementValue("LoginBtnLinkColor", ""),
 	}, nil
 }
 
 func (u *EnhancementService) GetPublicSettingInfo() (*dto.PublicEnhancementSettingInfo, error) {
 	return &dto.PublicEnhancementSettingInfo{
-		Theme:      loadValidatedEnhancementValue("Theme", defaultEnhancementTheme),
-		ThemeColor: loadValidatedEnhancementValue("ThemeColor", defaultEnhancementThemeColor),
+		Theme:             loadValidatedEnhancementValue("Theme", defaultEnhancementTheme),
+		ThemeColor:        loadValidatedEnhancementValue("ThemeColor", defaultEnhancementThemeColor),
+		Title:             loadValidatedEnhancementValue("Title", ""),
+		MasterAlias:       loadValidatedEnhancementValue("MasterAlias", ""),
+		LoginBgType:       loadValidatedEnhancementValue("LoginBgType", ""),
+		LoginBackground:   loadValidatedEnhancementValue("LoginBackground", ""),
+		LoginBtnLinkColor: loadValidatedEnhancementValue("LoginBtnLinkColor", ""),
 	}, nil
 }
 
@@ -145,8 +156,43 @@ func validateEnhancementSetting(key, value string) error {
 		if value != constant.StatusEnable && value != constant.StatusDisable {
 			return fmt.Errorf("unsupported watermark status %q", value)
 		}
+	case "Title", "MasterAlias":
+		if err := validateBrandingText(value, 64); err != nil {
+			return err
+		}
+	case "LoginBgType":
+		if value != "" && value != "image" && value != "color" {
+			return fmt.Errorf("unsupported login background type %q", value)
+		}
+	case "LoginBackground", "LoginBtnLinkColor":
+		if value != "" && !isSafeCSSColor(value) {
+			return fmt.Errorf("%s must be empty or a hex, rgb, or rgba value", key)
+		}
 	default:
 		return fmt.Errorf("unsupported enhancement setting %q", key)
+	}
+	return nil
+}
+
+// validateBrandingText bounds an operator-authored branding string that renders
+// on the login page before authentication. It rejects angle brackets and
+// control characters (so the value can never be persisted as markup, the
+// server-side half of the pre-auth XSS control) and caps the rune length. An
+// empty value is allowed and means "unset — use the frontend default".
+func validateBrandingText(value string, maxRunes int) error {
+	if value == "" {
+		return nil
+	}
+	if strings.ContainsAny(value, "<>") {
+		return fmt.Errorf("branding text must not contain angle brackets")
+	}
+	for _, r := range value {
+		if unicode.IsControl(r) {
+			return fmt.Errorf("branding text must not contain control characters")
+		}
+	}
+	if len([]rune(value)) > maxRunes {
+		return fmt.Errorf("branding text must be at most %d characters", maxRunes)
 	}
 	return nil
 }
