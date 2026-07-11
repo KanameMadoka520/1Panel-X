@@ -522,6 +522,9 @@ func (a AlertService) UpdateAlertConfig(req dto.AlertConfigUpdate, operator stri
 	if err := a.checkAlertConfigSMSPhoneUnique(req); err != nil {
 		return err
 	}
+	if err := encryptWebhookAlertConfigURL(&req); err != nil {
+		return err
+	}
 	if req.ID != 0 {
 		upMap := make(map[string]interface{})
 		upMap["id"] = req.ID
@@ -613,7 +616,36 @@ func replaceMaskedWebhookURL(incoming *dto.AlertWebhookConfig, storedConfig stri
 	if strings.TrimSpace(stored.Url) == "" {
 		return buserr.New("ErrInvalidParams")
 	}
-	incoming.Url = stored.Url
+	decrypted, err := webhook_alert.DecryptWebhookURL(stored.Url)
+	if err != nil {
+		return err
+	}
+	incoming.Url = decrypted
+	return nil
+}
+
+// encryptWebhookAlertConfigURL encrypts the webhook URL of a config at the
+// persist boundary, so the service layer always operates on plaintext while
+// the alert database only ever stores ciphertext. It is a no-op for
+// non-webhook config types and idempotent for already-encrypted values.
+func encryptWebhookAlertConfigURL(req *dto.AlertConfigUpdate) error {
+	if req == nil || !isWebhookAlertConfigType(req.Type) {
+		return nil
+	}
+	var config dto.AlertWebhookConfig
+	if err := json.Unmarshal([]byte(req.Config), &config); err != nil {
+		return buserr.WithErr("ErrInvalidParams", err)
+	}
+	encrypted, err := webhook_alert.EncryptWebhookURL(config.Url)
+	if err != nil {
+		return err
+	}
+	config.Url = encrypted
+	data, err := json.Marshal(config)
+	if err != nil {
+		return buserr.WithErr("ErrInvalidParams", err)
+	}
+	req.Config = string(data)
 	return nil
 }
 

@@ -45,6 +45,9 @@ func (a *alertHelper) createWebhookAlertLog(alertType string, info dto.AlertDTO,
 	var webhookConfig dto.AlertWebhookConfig
 	deliveryErr := json.Unmarshal([]byte(config.Config), &webhookConfig)
 	if deliveryErr == nil {
+		webhookConfig.Url, deliveryErr = webhook_alert.DecryptWebhookURL(webhookConfig.Url)
+	}
+	if deliveryErr == nil {
 		content := alertUtil.GetSendContent(alertType, params, agentInfo)
 		if content == "" {
 			content = i18n.GetMsgWithMap("CommonAlert", map[string]interface{}{"msg": info.Title})

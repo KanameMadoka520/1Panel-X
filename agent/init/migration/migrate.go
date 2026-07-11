@@ -88,6 +88,7 @@ func InitAgentDB() {
 		migrations.AddFileHistoryTable,
 		migrations.MigrateLegoV5,
 		migrations.InitFirewallPortWhiteList,
+		migrations.EncryptWebhookAlertConfigURL,
 	})
 	if err := m.Migrate(); err != nil {
 		global.LOG.Error(err)

@@ -23,6 +23,7 @@ import (
 	"github.com/1Panel-dev/1Panel/agent/utils/encrypt"
 	"github.com/1Panel-dev/1Panel/agent/utils/firewall"
 	"github.com/1Panel-dev/1Panel/agent/utils/ssh"
+	"github.com/1Panel-dev/1Panel/agent/utils/webhook_alert"
 	"github.com/1Panel-dev/1Panel/agent/utils/xpack"
 
 	"github.com/go-gormigrate/gormigrate/v2"
@@ -407,6 +408,42 @@ var InitAlertConfig = &gormigrate.Migration{
 		}
 		for _, r := range records {
 			if err := global.AlertDB.Model(&model.AlertConfig{}).Create(&r).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	},
+}
+
+var EncryptWebhookAlertConfigURL = &gormigrate.Migration{
+	ID: "20260711-encrypt-webhook-alert-config-url",
+	Migrate: func(tx *gorm.DB) error {
+		var configs []model.AlertConfig
+		if err := global.AlertDB.Model(&model.AlertConfig{}).
+			Where("type in ?", []string{constant.WeCom, constant.DingTalk, constant.FeiShu}).
+			Find(&configs).Error; err != nil {
+			return err
+		}
+		for i := range configs {
+			var cfg dto.AlertWebhookConfig
+			if err := json.Unmarshal([]byte(configs[i].Config), &cfg); err != nil {
+				continue
+			}
+			if cfg.Url == "" || webhook_alert.IsEncryptedWebhookURL(cfg.Url) {
+				continue
+			}
+			encrypted, err := webhook_alert.EncryptWebhookURL(cfg.Url)
+			if err != nil {
+				return err
+			}
+			cfg.Url = encrypted
+			data, err := json.Marshal(cfg)
+			if err != nil {
+				return err
+			}
+			if err := global.AlertDB.Model(&model.AlertConfig{}).
+				Where("id = ?", configs[i].ID).
+				Update("config", string(data)).Error; err != nil {
 				return err
 			}
 		}
