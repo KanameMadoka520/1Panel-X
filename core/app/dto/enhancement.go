@@ -14,6 +14,9 @@ type EnhancementSettingInfo struct {
 	LoginBackground   string `json:"loginBackground"`
 	LoginBtnLinkColor string `json:"loginBtnLinkColor"`
 	MasterAlias       string `json:"masterAlias"`
+	LoginWelcome      string `json:"loginWelcome"`
+	LoginSubtitle     string `json:"loginSubtitle"`
+	Copyright         string `json:"copyright"`
 }
 
 type PublicEnhancementSettingInfo struct {
@@ -30,10 +33,14 @@ type PublicEnhancementSettingInfo struct {
 	LogoWithText string `json:"logoWithText"`
 	Favicon      string `json:"favicon"`
 	LoginImage   string `json:"loginImage"`
+	// Operator-authored login-page text (rendered as interpolation, never HTML).
+	LoginWelcome  string `json:"loginWelcome"`
+	LoginSubtitle string `json:"loginSubtitle"`
+	Copyright     string `json:"copyright"`
 }
 
 type EnhancementSettingUpdate struct {
-	Key   string `json:"key" validate:"required,oneof=Theme ThemeColor Watermark WatermarkShow Title MasterAlias LoginBgType LoginBackground LoginBtnLinkColor"`
+	Key   string `json:"key" validate:"required,oneof=Theme ThemeColor Watermark WatermarkShow Title MasterAlias LoginBgType LoginBackground LoginBtnLinkColor LoginWelcome LoginSubtitle Copyright"`
 	Value string `json:"value" validate:"max=8192"`
 }
 

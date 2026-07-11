@@ -67,6 +67,9 @@ func (u *EnhancementService) GetSettingInfo() (*dto.EnhancementSettingInfo, erro
 		LogoWithText:      loadValidatedEnhancementValue("LogoWithText", ""),
 		Favicon:           loadValidatedEnhancementValue("Favicon", ""),
 		LoginImage:        loadValidatedEnhancementValue("LoginImage", ""),
+		LoginWelcome:      loadValidatedEnhancementValue("LoginWelcome", ""),
+		LoginSubtitle:     loadValidatedEnhancementValue("LoginSubtitle", ""),
+		Copyright:         loadValidatedEnhancementValue("Copyright", ""),
 	}, nil
 }
 
@@ -86,6 +89,10 @@ func (u *EnhancementService) GetPublicSettingInfo() (*dto.PublicEnhancementSetti
 		LogoWithText: loadValidatedEnhancementValue("LogoWithText", ""),
 		Favicon:      loadValidatedEnhancementValue("Favicon", ""),
 		LoginImage:   loadValidatedEnhancementValue("LoginImage", ""),
+		// Login-page text the community login page renders pre-auth (interpolation only).
+		LoginWelcome:  loadValidatedEnhancementValue("LoginWelcome", ""),
+		LoginSubtitle: loadValidatedEnhancementValue("LoginSubtitle", ""),
+		Copyright:     loadValidatedEnhancementValue("Copyright", ""),
 	}, nil
 }
 
@@ -173,6 +180,14 @@ func validateEnhancementSetting(key, value string) error {
 		if err := validateBrandingText(value, 64); err != nil {
 			return err
 		}
+	case "LoginWelcome", "LoginSubtitle":
+		if err := validateBrandingText(value, 128); err != nil {
+			return err
+		}
+	case "Copyright":
+		if err := validateBrandingText(value, 200); err != nil {
+			return err
+		}
 	case "LoginBgType":
 		if value != "" && value != "image" && value != "color" {
 			return fmt.Errorf("unsupported login background type %q", value)
@@ -237,8 +252,11 @@ func validateBrandingText(value string, maxRunes int) error {
 		return fmt.Errorf("branding text must not contain angle brackets")
 	}
 	for _, r := range value {
-		if unicode.IsControl(r) {
-			return fmt.Errorf("branding text must not contain control characters")
+		// Reject C0/C1 control chars and Unicode bidirectional formatting
+		// characters (RLO/LRO/isolates/marks, U+202A-202E, U+2066-2069, ...),
+		// which can visually reorder this pre-auth text (Trojan-Source style).
+		if unicode.IsControl(r) || unicode.Is(unicode.Bidi_Control, r) {
+			return fmt.Errorf("branding text must not contain control or bidirectional formatting characters")
 		}
 	}
 	if len([]rune(value)) > maxRunes {
