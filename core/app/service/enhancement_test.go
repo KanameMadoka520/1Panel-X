@@ -95,6 +95,9 @@ func TestPublicEnhancementSettingIsStrictSubset(t *testing.T) {
 		"LogoWithText":      "logoWithText",
 		"Favicon":           "favicon",
 		"LoginImage":        "loginImage",
+		"LoginWelcome":      "Welcome to Acme Cloud",
+		"LoginSubtitle":     "Sign in to continue",
+		"Copyright":         "© 2026 Acme Inc.",
 	}
 	for k, v := range stored {
 		if err := settingRepo.UpdateOrCreate(k, v); err != nil {
@@ -123,6 +126,7 @@ func TestPublicEnhancementSettingIsStrictSubset(t *testing.T) {
 		"theme": true, "themeColor": true, "title": true, "masterAlias": true,
 		"loginBgType": true, "loginBackground": true, "loginBtnLinkColor": true,
 		"logo": true, "logoWithText": true, "favicon": true, "loginImage": true,
+		"loginWelcome": true, "loginSubtitle": true, "copyright": true,
 	}
 	for k := range publicFields {
 		if !wantPublic[k] {
@@ -186,6 +190,10 @@ func TestValidateEnhancementBrandingFields(t *testing.T) {
 		{"LogoWithText", ""}, {"LogoWithText", "logoWithText"},
 		{"Favicon", ""}, {"Favicon", "favicon"},
 		{"LoginImage", ""}, {"LoginImage", "loginImage"},
+		// Login-page text: empty or plain text within the rune cap.
+		{"LoginWelcome", ""}, {"LoginWelcome", "欢迎登录 Acme 云"},
+		{"LoginSubtitle", "Sign in to your account"},
+		{"Copyright", "© 2026 Acme Inc. All rights reserved."},
 	}
 	for _, c := range valid {
 		if err := validateEnhancementSetting(c.key, c.value); err != nil {
@@ -211,6 +219,11 @@ func TestValidateEnhancementBrandingFields(t *testing.T) {
 		{"logo wrong sentinel", "Logo", "favicon"},
 		{"favicon wrong sentinel", "Favicon", "logo"},
 		{"loginImage arbitrary", "LoginImage", "https://evil.example/x.png"},
+		{"welcome markup", "LoginWelcome", "<b>hi</b>"},
+		{"subtitle control char", "LoginSubtitle", "line1\nline2"},
+		{"copyright too long", "Copyright", strings.Repeat("c", 201)},
+		{"welcome bidi override", "LoginWelcome", "hello" + string(rune(0x202e)) + "world"},
+		{"title bidi isolate", "Title", "acme" + string(rune(0x2066)) + "evil" + string(rune(0x2069))},
 	}
 	for _, c := range invalid {
 		if err := validateEnhancementSetting(c.key, c.value); err == nil {
@@ -237,6 +250,30 @@ func TestEnhancementBrandingStoredValueFallsBack(t *testing.T) {
 	}
 	if info.LoginBackground != "" {
 		t.Fatalf("corrupt background did not fall back: %q", info.LoginBackground)
+	}
+}
+
+// TestEnhancementLoginTextPublicFallsBack proves the pre-auth surface (T7/T8)
+// also strips a corrupt/hostile stored login-text value: a bidi-override or
+// markup value must not reach the anonymous login page.
+func TestEnhancementLoginTextPublicFallsBack(t *testing.T) {
+	setupEnhancementTestDB(t)
+	corrupt := map[string]string{
+		"LoginWelcome":  "hi" + string(rune(0x202e)) + "evil",
+		"LoginSubtitle": "<script>alert(1)</script>",
+		"Copyright":     strings.Repeat("c", 500),
+	}
+	for k, v := range corrupt {
+		if err := settingRepo.UpdateOrCreate(k, v); err != nil {
+			t.Fatalf("store %s: %v", k, err)
+		}
+	}
+	pub, err := NewIEnhancementService().GetPublicSettingInfo()
+	if err != nil {
+		t.Fatalf("get public setting: %v", err)
+	}
+	if pub.LoginWelcome != "" || pub.LoginSubtitle != "" || pub.Copyright != "" {
+		t.Fatalf("corrupt login text leaked to anon surface: %+v", pub)
 	}
 }
 
