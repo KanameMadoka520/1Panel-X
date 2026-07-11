@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/1Panel-dev/1Panel/agent/app/dto"
@@ -143,16 +144,11 @@ func (a AgentService) Create(req dto.AgentCreateReq) (*dto.AgentItem, error) {
 	if installs, _ := appInstallRepo.ListBy(context.Background(), repo.WithByLowerName(req.Name)); len(installs) > 0 {
 		return nil, buserr.New("ErrNameIsExist")
 	}
-	limit := loadAIAgentLimit()
-	if limit > 0 {
-		count, _, err := agentRepo.Page(1, 1)
-		if err != nil {
-			return nil, err
-		}
-		if err := validateAIAgentCapacity(count, limit); err != nil {
-			return nil, err
-		}
+	releaseSlot, err := reserveAIAgentSlot()
+	if err != nil {
+		return nil, err
 	}
+	defer releaseSlot()
 	app, err := appRepo.GetFirst(appRepo.WithKey(agentType))
 	if err != nil || app.ID == 0 {
 		return nil, buserr.New("ErrRecordNotFound")
@@ -330,6 +326,56 @@ func validateAIAgentCapacity(current, limit int64) error {
 		return nil
 	}
 	return buserr.WithMap("ErrAgentLimitReached", map[string]interface{}{"max": limit}, nil)
+}
+
+// aiAgentLimiter serializes the AI Agent capacity gate so a positive soft limit
+// cannot be exceeded by concurrent creations. The committed count is read under
+// the lock (so it reflects every prior commit) and inFlight tracks reserved but
+// not-yet-committed creations. The lock is held only for the count query and
+// check, never across the container install.
+type aiAgentLimiter struct {
+	mu       sync.Mutex
+	inFlight int64
+}
+
+var aiAgentLimiterInst = &aiAgentLimiter{}
+
+// reserve checks capacity and reserves one slot when count+inFlight < limit.
+// It returns a release that decrements inFlight exactly once. A non-positive
+// limit means unlimited: nothing is reserved and the release is a no-op.
+func (l *aiAgentLimiter) reserve(limit int64, countFn func() (int64, error)) (func(), error) {
+	if limit <= 0 {
+		return func() {}, nil
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	count, err := countFn()
+	if err != nil {
+		return nil, err
+	}
+	if err := validateAIAgentCapacity(count+l.inFlight, limit); err != nil {
+		return nil, err
+	}
+	l.inFlight++
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			l.mu.Lock()
+			defer l.mu.Unlock()
+			if l.inFlight > 0 {
+				l.inFlight--
+			}
+		})
+	}, nil
+}
+
+// reserveAIAgentSlot reserves a creation slot against the operator soft limit,
+// reading the current committed Agent count from the repository under the lock.
+func reserveAIAgentSlot() (func(), error) {
+	return aiAgentLimiterInst.reserve(loadAIAgentLimit(), func() (int64, error) {
+		count, _, err := agentRepo.Page(1, 1)
+		return count, err
+	})
 }
 
 func (a AgentService) BatchInstall(req dto.AgentBatchInstallReq) (*dto.AgentItem, error) {
