@@ -20,6 +20,7 @@ import (
 	"github.com/1Panel-dev/1Panel/agent/utils/cmd"
 	"github.com/1Panel-dev/1Panel/agent/utils/copier"
 	"github.com/1Panel-dev/1Panel/agent/utils/email"
+	"github.com/1Panel-dev/1Panel/agent/utils/webhook_alert"
 	"github.com/1Panel-dev/1Panel/agent/utils/xpack"
 	"github.com/shirou/gopsutil/v4/disk"
 )
@@ -28,11 +29,10 @@ type AlertService struct{}
 
 var eeHiddenAlertTypes = []string{"licenseException", "panelUpdate", "panelPwdEndTime"}
 var communityAlertMethodTypeNames = map[string]string{
-	constant.WeCom:    "WeCom",
-	constant.DingTalk: "DingTalk",
-	constant.FeiShu:   "FeiShu",
-	constant.SMS:      "SMS",
+	constant.SMS: "SMS",
 }
+
+const maskedWebhookURL = "********"
 
 type IAlertService interface {
 	PageAlert(req dto.AlertSearch) (int64, []dto.AlertDTO, error)
@@ -491,7 +491,7 @@ func (a AlertService) GetAlertConfig(req dto.AlertConfigQuery) ([]model.AlertCon
 	}
 	opts = append(opts, repo.WithByStatus(constant.AlertEnable))
 	configs, err := alertRepo.AlertConfigList(opts...)
-	return configs, err
+	return maskWebhookAlertConfigs(configs), err
 }
 
 func (a AlertService) PageAlertConfig(req dto.AlertConfigPageReq) (int64, []model.AlertConfig, error) {
@@ -502,11 +502,18 @@ func (a AlertService) PageAlertConfig(req dto.AlertConfigPageReq) (int64, []mode
 	if len(req.ExcludeTypes) > 0 {
 		opts = append(opts, alertRepo.WithByTypeNotIn(req.ExcludeTypes))
 	}
-	return alertRepo.PageAlertConfig(req.Page, req.PageSize, opts...)
+	total, configs, err := alertRepo.PageAlertConfig(req.Page, req.PageSize, opts...)
+	return total, maskWebhookAlertConfigs(configs), err
 }
 
 func (a AlertService) UpdateAlertConfig(req dto.AlertConfigUpdate, operator string) error {
 	if err := a.validateCommunityAlertConfigType(req.Type); err != nil {
+		return err
+	}
+	if err := restoreMaskedWebhookURL(&req); err != nil {
+		return err
+	}
+	if err := validateWebhookAlertConfig(req.Type, req.Config); err != nil {
 		return err
 	}
 	if err := a.checkAlertConfigDisplayNameUnique(req); err != nil {
@@ -539,6 +546,79 @@ func (a AlertService) UpdateAlertConfig(req dto.AlertConfigUpdate, operator stri
 	}
 
 	return nil
+}
+
+func maskWebhookAlertConfigs(configs []model.AlertConfig) []model.AlertConfig {
+	for index := range configs {
+		if !isWebhookAlertConfigType(configs[index].Type) {
+			continue
+		}
+		var config dto.AlertWebhookConfig
+		if err := json.Unmarshal([]byte(configs[index].Config), &config); err != nil {
+			configs[index].Config = `{"displayName":"","url":"********"}`
+			continue
+		}
+		if strings.TrimSpace(config.Url) != "" {
+			config.Url = maskedWebhookURL
+		}
+		data, err := json.Marshal(config)
+		if err != nil {
+			configs[index].Config = `{"displayName":"","url":"********"}`
+			continue
+		}
+		configs[index].Config = string(data)
+	}
+	return configs
+}
+
+func restoreMaskedWebhookURL(req *dto.AlertConfigUpdate) error {
+	if req == nil || req.ID == 0 || !isWebhookAlertConfigType(req.Type) {
+		return nil
+	}
+
+	var incoming dto.AlertWebhookConfig
+	if err := json.Unmarshal([]byte(req.Config), &incoming); err != nil {
+		return buserr.WithErr("ErrInvalidParams", err)
+	}
+	if incoming.Url != maskedWebhookURL {
+		return nil
+	}
+
+	existing, err := alertRepo.GetConfigById(req.ID)
+	if err != nil {
+		return err
+	}
+	if existing.Type != req.Type {
+		return buserr.New("ErrInvalidParams")
+	}
+	if err := replaceMaskedWebhookURL(&incoming, existing.Config); err != nil {
+		return err
+	}
+	data, err := json.Marshal(incoming)
+	if err != nil {
+		return buserr.WithErr("ErrInvalidParams", err)
+	}
+	req.Config = string(data)
+	return nil
+}
+
+func replaceMaskedWebhookURL(incoming *dto.AlertWebhookConfig, storedConfig string) error {
+	if incoming == nil || incoming.Url != maskedWebhookURL {
+		return nil
+	}
+	var stored dto.AlertWebhookConfig
+	if err := json.Unmarshal([]byte(storedConfig), &stored); err != nil {
+		return buserr.WithErr("ErrInvalidParams", err)
+	}
+	if strings.TrimSpace(stored.Url) == "" {
+		return buserr.New("ErrInvalidParams")
+	}
+	incoming.Url = stored.Url
+	return nil
+}
+
+func isWebhookAlertConfigType(configType string) bool {
+	return configType == constant.WeCom || configType == constant.DingTalk || configType == constant.FeiShu
 }
 
 func (a AlertService) checkAlertConfigSMSPhoneUnique(req dto.AlertConfigUpdate) error {
@@ -588,7 +668,7 @@ func (a AlertService) checkAlertConfigDisplayNameUnique(req dto.AlertConfigUpdat
 }
 
 func (a AlertService) validateCommunityAlertMethod(method string) error {
-	if global.CONF.Base.IsEnterprise || global.CONF.Base.Edition == "cn" {
+	if global.CONF.Base.IsEnterprise || xpack.MultiNodeProvider.IsXpack() {
 		return nil
 	}
 	if strings.TrimSpace(method) == "" {
@@ -619,11 +699,37 @@ func (a AlertService) validateCommunityAlertMethod(method string) error {
 }
 
 func (a AlertService) validateCommunityAlertConfigType(configType string) error {
-	if global.CONF.Base.IsEnterprise || global.CONF.Base.Edition == "cn" {
+	if global.CONF.Base.IsEnterprise || xpack.MultiNodeProvider.IsXpack() {
 		return nil
 	}
 	if _, ok := communityAlertMethodTypeNames[configType]; ok {
 		return buserr.WithErr("ErrAlertMethodNotSupported", nil)
+	}
+	return nil
+}
+
+func validateWebhookAlertConfig(configType, configData string) error {
+	var platform webhook_alert.Platform
+	switch configType {
+	case constant.WeCom:
+		platform = webhook_alert.PlatformWeCom
+	case constant.DingTalk:
+		platform = webhook_alert.PlatformDingTalk
+	case constant.FeiShu:
+		platform = webhook_alert.PlatformFeiShu
+	default:
+		return nil
+	}
+
+	var config dto.AlertWebhookConfig
+	if err := json.Unmarshal([]byte(configData), &config); err != nil {
+		return buserr.WithErr("ErrInvalidParams", err)
+	}
+	if strings.TrimSpace(config.DisplayName) == "" {
+		return buserr.New("ErrInvalidParams")
+	}
+	if err := webhook_alert.ValidateURL(platform, config.Url); err != nil {
+		return buserr.WithErr("ErrInvalidParams", err)
 	}
 	return nil
 }

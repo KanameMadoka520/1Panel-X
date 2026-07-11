@@ -421,9 +421,7 @@ const configOptions = computed(() => {
             label: getConfigOptionLabel(c),
             typeLabel: getConfigTypeLabel(c.type),
             type: c.type,
-            disabled:
-                c.status !== 'Enable' ||
-                ((isIntl.value || !isProductPro.value) && ['weCom', 'dingTalk', 'feiShu', 'sms'].includes(c.type)),
+            disabled: c.status !== 'Enable' || ((isIntl.value || !isProductPro.value) && c.type === 'sms'),
         }))
         .sort((a, b) => Number(a.disabled) - Number(b.disabled));
 });

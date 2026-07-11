@@ -144,7 +144,7 @@ import { Alert } from '@/api/interface/alert';
 
 const emit = defineEmits<{ (e: 'search'): void }>();
 
-const { isProductPro, isIntl, isEE } = useGlobalStore();
+const { isEE, isIntl, isProductPro } = useGlobalStore();
 
 const emailRules = {
     'config.displayName': [Rules.requiredInput, { validator: checkDisplayNameDuplicate, trigger: 'blur' }],
@@ -172,12 +172,12 @@ const currentRules = computed(() => {
 });
 
 const typeOptions = computed(() => {
-    const options: { value: string; label: string }[] = [{ value: 'email', label: i18n.global.t('xpack.alert.mail') }];
-    if (isProductPro.value && !isIntl.value) {
-        options.push({ value: 'weCom', label: i18n.global.t('xpack.alert.weCom') });
-        options.push({ value: 'dingTalk', label: i18n.global.t('xpack.alert.dingTalk') });
-        options.push({ value: 'feiShu', label: i18n.global.t('xpack.alert.feiShu') });
-    }
+    const options: { value: string; label: string }[] = [
+        { value: 'email', label: i18n.global.t('xpack.alert.mail') },
+        { value: 'weCom', label: i18n.global.t('xpack.alert.weCom') },
+        { value: 'dingTalk', label: i18n.global.t('xpack.alert.dingTalk') },
+        { value: 'feiShu', label: i18n.global.t('xpack.alert.feiShu') },
+    ];
     options.push({ value: 'bark', label: i18n.global.t('xpack.alert.bark') });
     if (isProductPro.value && !isEE.value && !isIntl.value) {
         options.push({ value: 'sms', label: i18n.global.t('xpack.alert.sms') });

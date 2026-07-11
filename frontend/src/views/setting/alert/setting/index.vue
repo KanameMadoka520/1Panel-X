@@ -49,9 +49,6 @@
                     <template #title>
                         <div class="flex items-center justify-start">
                             {{ $t('xpack.alert.alertConfigHelper') }}
-                            <span v-if="!isProductPro">
-                                {{ $t('commons.units.semicolon') }}{{ $t('xpack.alert.alertConfigProHelper') }}
-                            </span>
                             <el-link
                                 class="ml-1 text-xs"
                                 type="primary"
@@ -107,7 +104,7 @@
                                 v-model="row.status"
                                 active-value="Enable"
                                 inactive-value="Disable"
-                                :disabled="!isProductPro && ['weCom', 'dingTalk', 'feiShu', 'sms'].includes(row.type)"
+                                :disabled="(isIntl || !isProductPro) && row.type === 'sms'"
                                 @change="onStatusChange(row)"
                             />
                         </template>
@@ -482,8 +479,7 @@ const buttons = computed(() => [
         click: (row: Alert.AlertConfigInfo) => {
             openEditDrawer(row);
         },
-        disabled: (row: Alert.AlertConfigInfo) =>
-            (isIntl.value || !isProductPro.value) && ['weCom', 'dingTalk', 'feiShu', 'sms'].includes(row.type),
+        disabled: (row: Alert.AlertConfigInfo) => (isIntl.value || !isProductPro.value) && row.type === 'sms',
     },
     {
         label: i18n.global.t('commons.button.delete'),
