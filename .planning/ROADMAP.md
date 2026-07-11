@@ -107,9 +107,47 @@ All five implementation plans and automated gates are complete. The milestone re
 | 4. AI Agent Soft Limit | AGENT-01 | 1/1 | Human UAT pending | 2026-07-10 |
 | 5. Reproducible Release and VPS Handoff | RELEASE-01 | 1/1 | Human UAT pending | 2026-07-10 |
 
+## Current Milestone: v1.1 Open Enhancement Hardening
+
+Chosen from a source-verified 53-capability inventory (`.planning/research/CAPABILITY-MATRIX.md`) that found **no** commercial capability which is merely a UI/license gate over a complete OSS backend (`uiGateOnly = ∅`). Rather than build new attack surface on top of two disclosed debts, v1.1 pays them down first, as two independent single-node phases that are fully CI-testable without a VPS. Decision record: `.planning/v1.1-MILESTONE-DECISION.md`.
+
+- [ ] **Phase 6: Webhook Secret At-Rest Encryption** - Encrypt the bot webhook URL at rest with the panel's existing `encrypt` helper; transparent migration; no delivery/masking/validation regression. [ALERT-SEC-01]
+- [ ] **Phase 7: Atomic AI Agent Limit + UI** - Race-free `AIAgentLimit` via mutex-guarded slot reservation; dedicated management control on the existing setting endpoint. [AGENT-02]
+
+### Phase 6: Webhook Secret At-Rest Encryption
+
+**Goal:** No plaintext webhook bot secret survives in the alert database or its backups, with zero behavior regression.
+**Depends on:** v1.0 Phase 2 (Open Webhook Alerts), already implemented.
+**Requirements:** [ALERT-SEC-01]
+**Success Criteria:**
+
+1. Webhook `url` is stored ciphertext (sentinel-prefixed, AES via the existing `EncryptKey`); the plaintext never appears in the row.
+2. A transparent migration encrypts existing plaintext rows once and is safe at zero rows / fresh key.
+3. Delivery decrypts before sending; API still masks to `********`; masked-edit preserves the stored secret; allowlist/TLS/redirect/timeout/retry behavior unchanged.
+4. Focused Go tests (roundtrip, idempotency, legacy passthrough, mask-over-ciphertext, edit-preserve, one-shot migration) pass; real-robot delivery + on-disk ciphertext inspection persist as human UAT.
+
+**Plans:** 06-01 defined.
+
+### Phase 7: Atomic AI Agent Limit + Management UI
+
+**Goal:** `AIAgentLimit` cannot be exceeded by concurrent creation, and operators can manage it from the UI.
+**Depends on:** v1.0 Phase 4 (AI Agent Soft Limit), already implemented.
+**Requirements:** [AGENT-02]
+**Success Criteria:**
+
+1. A positive limit N is never exceeded under concurrency; failed installs release their slot; in-flight returns to zero.
+2. Missing/zero remains unlimited; 1..1000 validation and semantics unchanged.
+3. The reservation holds no lock across the install and reads the committed count under its guard.
+4. A UI control (0 = unlimited) reads/writes `AIAgentLimit` via the existing setting endpoint; concurrency test passes; `npm run build:pro` and ESLint pass; live/resource checks persist as human UAT.
+
+**Plans:** 07-01 defined.
+
 ## Future Milestone Themes
 
-These themes are intentionally outside v1.0. They have no current phase number and must not be described as implemented:
+These themes are intentionally outside v1.0 and v1.1. They have no current phase number and must not be described as implemented. Ordering reflects the dependency graph and risk ranking in `.planning/research/CAPABILITY-MATRIX.md`:
+
+0. **v1.2 Branding / white-label / custom-login** - depends only on the open enhancement-setting seam; single-node; introduces file-upload and pre-auth rendering (needs a negative-path harness and a pre-login safe subset).
+0b. **v1.3 Secure multi-node** - the keystone 15+ capabilities depend on; needs a full threat model (identity, enrollment token, mutual mTLS, rotation, replay, audit, failure consistency) and a second VPS to accept.
 
 1. Advanced WAF and website request monitoring.
 2. Secure multi-node enrollment, synchronization, overview, and RBAC.
@@ -119,4 +157,4 @@ These themes are intentionally outside v1.0. They have no current phase number a
 
 ---
 *Roadmap created: 2026-07-10*
-*Current milestone: v1.0 Open Enhancement First Release*
+*Current milestone: v1.1 Open Enhancement Hardening (v1.0 remains release-candidate with 20 UAT pending)*

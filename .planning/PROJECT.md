@@ -10,16 +10,19 @@ The project is intended for self-hosters and infrastructure operators who need a
 
 Deliver a complete, security-conscious, fully open server panel whose enhanced capabilities can be built, inspected, deployed, and maintained without proprietary code or license bypasses.
 
-## Current Milestone: v1.0 Open Enhancement First Release
+## Prior Milestone: v1.0 Open Enhancement First Release
 
-**Goal:** Ship a narrow, usable, independently implemented enhancement release with four verified features and a reproducible Linux VPS handoff.
+**Status:** Release candidate `v1.0.0-open.1` built and automatically verified; 20 human UAT items remain pending. Not archived. Delivered four independently implemented features (open theme/watermark, WeCom/DingTalk/Feishu webhook alerts, durable ClamAV schedules, AI Agent soft limit) plus a reproducible Linux AMD64 release with dual-layer checksums.
+
+## Current Milestone: v1.1 Open Enhancement Hardening
+
+**Goal:** Pay down the two source-verified security/correctness debts of the shipped v1.0 features before adding new attack surface — delivered as two independent, single-node, fully CI-testable phases. Chosen after a source-verified 53-capability inventory found no "UI-gate-only" commercial capability (`uiGateOnly = ∅`); see `.planning/v1.1-MILESTONE-DECISION.md` and `.planning/research/CAPABILITY-MATRIX.md`.
 
 **Target features:**
-- Open theme color and authenticated watermark settings.
-- WeCom, DingTalk, and Feishu robot webhook alerts.
-- Durable, restart-safe ClamAV schedules.
-- AI Agent default unlimited count with an optional operator soft limit.
-- Reproducible Linux AMD64 release artifacts, checksums, and VPS instructions.
+- Encrypt the webhook bot URL at rest using the panel's existing `encrypt` helper, with a transparent migration for existing plaintext rows (ALERT-SEC-01).
+- Make `AIAgentLimit` enforcement race-free via a mutex-guarded slot reservation, and add the missing management UI (AGENT-02).
+
+**Deliberately sequenced next (not this milestone):** v1.2 branding/white-label/custom-login (enhancement-setting cluster), then v1.3 threat-modeled secure multi-node (the keystone 15+ capabilities depend on, requiring a second VPS to accept).
 
 ## Requirements
 
@@ -74,6 +77,8 @@ Deliver a complete, security-conscious, fully open server panel whose enhanced c
 | Start with existing public extension gaps | Public interfaces, UI, and data models reduce guesswork and integration risk | Pending |
 | Use standard open protocols for alerts and local scheduling | Avoids proprietary service dependencies and makes behavior testable | Pending |
 | Keep long-term parity in a phased roadmap | Multi-node, WAF, anti-tamper, and enterprise RBAC are separate security domains and cannot be responsibly treated as one patch | Pending |
+| Harden shipped features (v1.1) before adding new surface | Source inventory found no cheap UI-gate win; two real debts (plaintext webhook secret, non-atomic limit) must be paid before piling on attack surface | Pending |
+| Sequence branding before multi-node | Branding depends only on the existing enhancement-setting seam; multi-node is the keystone but needs a threat model and a second VPS | Pending |
 
 ## Evolution
 
@@ -93,4 +98,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update build, VPS test, and maintenance context.
 
 ---
-*Last updated: 2026-07-10 after building and inspecting v1.0.0-open.1*
+*Last updated: 2026-07-10 after defining milestone v1.1 Open Enhancement Hardening from the source-verified capability inventory*

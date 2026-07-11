@@ -2,69 +2,55 @@
 
 ## Project Reference
 
-See: `.planning/PROJECT.md` and `.planning/REQUIREMENTS.md` (updated 2026-07-10)
+See: `.planning/PROJECT.md`, `.planning/REQUIREMENTS.md`, `.planning/v1.1-MILESTONE-DECISION.md`, `.planning/research/CAPABILITY-MATRIX.md` (updated 2026-07-10)
 
 **Core value:** Deliver a complete, security-conscious, fully open server panel without proprietary code or license bypasses.
-**Current milestone:** v1.0 Open Enhancement First Release
-**Current focus:** Transfer and exercise the v1.0.0-open.1 release candidate on a disposable or fully snapshotted VPS.
+**Current milestone:** v1.1 Open Enhancement Hardening
+**Current focus:** Pay down the two source-verified debts of the shipped v1.0 features (plaintext webhook secret at rest; non-atomic AI Agent limit + missing UI) as two independent single-node phases, fully CI-verified in WSL.
 
 ## Current Position
 
-Phase: 5 of 5 (Reproducible Release and VPS Handoff)
-Plan: 05-01 complete
-Status: Release candidate built; 20 human UAT items pending
-Last activity: 2026-07-10 - Built and independently inspected `v1.0.0-open.1` from source revision `cc5d31aa76a4d166f287a98b5d92b1f63c67af3d`.
+Milestone: v1.1 (Phases 6-7); v1.0 (Phases 1-5) remains a release candidate with 20 human UAT pending (not archived, not regressed).
+Phase: 6 and 7 planned; implementation next.
+Status: Milestone defined from the source-verified capability inventory. Planning docs written; code not yet started.
+Last activity: 2026-07-10 - Ran a 12-agent source-verification workflow (53 capabilities, `uiGateOnly = ∅`), reconciled its adversarial critique, chose and de-bundled v1.1.
 
-Progress: [##########] 100% implementation and automated gates; 0 of 5 requirements accepted because human UAT remains.
+Progress: v1.0 [##########] 100% implementation + automated gates (0/5 accepted, UAT pending). v1.1 [#---------] planning complete, implementation pending.
 
 ## Repository Snapshot
 
 - Branch: `open-pro-v1`, tracking `upstream/dev-v2`
 - Upstream baseline: `8be2a9ab0270139d0cea2f023ea3f287db2217e0`
-- Latest source revision used by the release: `cc5d31aa76a4d166f287a98b5d92b1f63c67af3d`
-- Worktree: clean after the final release build
-- External `image` directory: contains `releases/v1.0.0-open.1` with native binaries, archive, checksums, logs, metadata, and VPS instructions
-- External `roadmap` directory: contains the timestamped Chinese v1 release-candidate note
+- HEAD before v1.1 work: `508403749` (2 docs commits ahead of the v1.0.0-open.1 release revision `cc5d31aa7`)
+- v1.0 release: `image/releases/v1.0.0-open.1` (dual-layer checksums verified 8/8 + 7/7; must not be overwritten)
+- Toolchain confirmed working: Go 1.26.1 at `/tmp/codex-go1.26.1/go/bin/go` (WSL Ubuntu), Node 24.14.0, npm 11.14.1, Docker 29.2.1. Security-critical focused tests pass at HEAD (regression baseline clean).
 - Commit identity configured locally: `KanameMadoka520 <2441883200@qq.com>`
-
-## Phase Review Status
-
-| Phase | Current evidence | Remaining before acceptance |
-|-------|------------------|-----------------------------|
-| 1. Theme and watermark | Implementation, core tests, target lint, and production build passed | Browser login, refresh, theme-mode, watermark, and CSS visual UAT |
-| 2. Webhook alerts | Sender/config/retry-accounting tests and production build passed | Real disposable WeCom, DingTalk, and Feishu/Lark delivery plus end-to-end secret inspection |
-| 3. Scheduled ClamAV | Lifecycle, compensation, root, path, restart, concurrency, and package tests passed | Real agent restart, cron timing, overlap, and isolated EICAR UAT |
-| 4. AI Agent limit | Capacity, metadata hook, setting boundary, persistence, and package tests passed | Live creation beyond five, positive limit, race characterization, and resource observation |
-| 5. Release | Checksums, ELF architecture, metadata, archive contents, and cleanup verified | VPS backup, replacement, startup, smoke test, feature UAT, and rollback rehearsal |
 
 ## Accumulated Context
 
 ### Decisions
 
-- Implement user outcomes one feature at a time; never force global Pro state.
-- Use only public GPL interfaces, public documentation, open protocols, and lawfully observable behavior.
-- Keep native Linux binaries as the release target; containers may reproduce builds but are not the default runtime boundary.
-- Run Go verification in Linux or WSL with Go 1.26.1; native Windows compilation is not authoritative for Linux-specific syscall code.
-- A requirement is complete only after implementation, verification, relevant VPS evidence, and a scoped commit.
+- v1.1 hardens shipped features before adding surface; there is no cheap UI-gate capability to grab (`uiGateOnly = ∅`).
+- Reuse the panel's existing `EncryptKey` + `encrypt.StringEncrypt/Decrypt` for the webhook secret — no new key-management design.
+- Make `AIAgentLimit` race-free with a mutex-guarded slot reservation (count read inside the lock + in-flight counter); do not hold a lock across the container install.
+- Dropped the speculative capability-registry and demoted UAT-automation from the milestone (per the adversarial critique).
+- Sequence branding (v1.2, enhancement-setting cluster) before threat-modeled multi-node (v1.3, keystone, needs 2nd VPS).
 
 ### Blockers and Concerns
 
-- Webhook robot URLs contain secrets and require strict host validation and redaction.
-- ClamAV scheduling touches destructive paths and cannot ship before path containment, restart recovery, and scan serialization are proved.
-- AI Agent count-then-create soft enforcement is not atomic and may be exceeded by concurrent requests.
-- Frontend `type-check` has known upstream errors; verify changed-code behavior and report baseline failures without attributing them to v1.0.
-- Full VPS acceptance has not run. Local or WSL test success alone does not make the milestone complete.
+- Full VPS acceptance still unavailable; v1.1 is deliberately chosen to be fully CI-verifiable without one, but real-robot delivery, on-disk ciphertext inspection, live concurrency, and browser UAT remain human debt.
+- Webhook encryption migration must be safe with zero rows and a freshly seeded key; must not break live alerts (legacy plaintext still delivers until migrated).
+- Frontend `type-check` has known upstream errors; verify changed-code behavior and report baseline failures without attributing them to this project.
 
 ## Next Actions
 
-1. Upload the complete `image/releases/v1.0.0-open.1` directory to a disposable or fully snapshotted VPS.
-2. Verify both checksum layers and compare the installed official v2 baseline to `RELEASE-METADATA.json`.
-3. Execute the 20 persisted human UAT items in Phases 1 through 5.
-4. Record pass, issue, skipped, or blocked results in each `*-HUMAN-UAT.md`.
-5. Close requirements only after their required acceptance evidence exists.
+1. Implement Phase 6 (webhook secret encryption + migration); run `go test ./utils/webhook_alert ./app/service`.
+2. Implement Phase 7 (atomic limit + UI); run agent focused tests + `npm run build:pro`.
+3. Write SUMMARY/VERIFICATION/HUMAN-UAT for both phases.
+4. Build `v1.1.0-open.1` from a clean HEAD; verify dual-layer checksums/metadata; write the Chinese roadmap note; run the v1.1 milestone audit.
 
 ## Session Continuity
 
 Last session: 2026-07-10
-Stopped at: Release candidate and automated evidence complete; human VPS/browser/provider acceptance pending
-Resume file: None
+Stopped at: v1.1 milestone defined and planned; implementation of Phases 6-7 next.
+Resume file: `.planning/phases/06-webhook-secret-encryption/06-01-PLAN.md`, `.planning/phases/07-atomic-ai-agent-limit-ui/07-01-PLAN.md`

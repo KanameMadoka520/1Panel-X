@@ -76,9 +76,37 @@ Acceptance criteria:
 4. Each material update has a separate Markdown record under `D:\_CodeNotSync\_1Panel-X\roadmap` whose filename contains a timestamp and a Chinese change summary.
 5. Feature and release work is split into reviewable commits, and every new commit records `KanameMadoka520 <2441883200@qq.com>` as both author and committer.
 
+## v1.1 Requirements (current milestone: Open Enhancement Hardening)
+
+**Note:** The five v1.0 requirements above remain **Human UAT Pending** (not regressed, not accepted). v1.1 hardens the shipped v1.0 features; it does not supersede those requirements. Rationale and evidence: `.planning/v1.1-MILESTONE-DECISION.md`, `.planning/research/CAPABILITY-MATRIX.md`.
+
+### Webhook Secret At-Rest Encryption
+
+- [ ] **ALERT-SEC-01**: A community build stores webhook bot URLs encrypted at rest, with no plaintext secret in the alert database or its backups, and no behavior regression for delivery, masking, or validation.
+
+Acceptance criteria:
+
+1. Saving a WeCom/DingTalk/Feishu config persists the `url` as ciphertext (sentinel-prefixed, AES via the panel's existing `EncryptKey`); the plaintext URL never appears in the stored row.
+2. A transparent migration encrypts existing plaintext webhook rows exactly once and is safe with zero rows and a freshly seeded key.
+3. Delivery still succeeds (the sender decrypts before sending); API list/detail still returns `********`; editing with a masked URL preserves the stored secret; the official-host allowlist, TLS, redirect, timeout, response-bound, and retry-accounting behavior are unchanged.
+4. The secret never appears in alert logs, API responses, or error messages; legacy plaintext rows still deliver until migrated.
+5. Focused Go tests cover encrypt roundtrip, prefix idempotency, legacy passthrough, mask-over-ciphertext, edit-preserve, and one-shot migration; a disposable-robot delivery plus an on-disk ciphertext inspection are recorded as human UAT.
+
+### Atomic AI Agent Limit and Management UI
+
+- [ ] **AGENT-02**: `AIAgentLimit` enforcement is race-free under concurrent creation, and operators can view and set it from a dedicated UI control.
+
+Acceptance criteria:
+
+1. With a positive limit N, concurrent creation can never commit more than N agents; a failed install releases its reserved slot; the in-flight counter returns to zero at rest.
+2. Missing or zero limit remains unlimited with no reservation overhead; the 1..1000 validation and the unlimited/soft-cap semantics from AGENT-01 are unchanged.
+3. The reservation holds no lock across the container install; it reads the committed count under its guard so prior commits are always reflected.
+4. A UI control (0 = unlimited) reads and writes `AIAgentLimit` through the existing validated setting endpoint, with a hint that unlimited count is not unlimited host resources.
+5. A concurrency focused test proves the cap holds; `npm run build:pro` and changed-file ESLint pass; live multi-request and resource observation are recorded as human UAT.
+
 ## Future Requirements
 
-The following areas are acknowledged but are not committed to v1.0 and do not map to current phases:
+The following areas are acknowledged but are not committed to v1.0 or v1.1 and do not map to current phases:
 
 ### Security and Monitoring
 
@@ -127,14 +155,16 @@ Each current requirement maps to exactly one phase.
 | CLAM-01 | Phase 3 | Human UAT Pending |
 | AGENT-01 | Phase 4 | Human UAT Pending |
 | RELEASE-01 | Phase 5 | Human UAT Pending |
+| ALERT-SEC-01 | Phase 6 | Active (v1.1) |
+| AGENT-02 | Phase 7 | Active (v1.1) |
 
 **Coverage:**
 
-- v1.0 requirements: 5 total
-- Mapped to exactly one phase: 5
+- v1.0 requirements: 5 total; v1.1 requirements: 2 total
+- Mapped to exactly one phase: 7
 - Unmapped: 0
 - Mapped more than once: 0
 
 ---
 *Requirements defined: 2026-07-10*
-*Last updated: 2026-07-10 after v1.0.0-open.1 release-candidate build and artifact verification*
+*Last updated: 2026-07-10 after defining milestone v1.1 (ALERT-SEC-01, AGENT-02) from the source-verified capability inventory*
