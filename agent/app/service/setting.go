@@ -125,6 +125,13 @@ func (u *SettingService) GetWebsiteDir() string {
 
 func (u *SettingService) Update(key, value string) error {
 	oldValue := constant.FirewallPortWhiteListValue
+	if key == "AIAgentLimit" {
+		limit, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
+		if err != nil || limit < 0 || limit > 1000 {
+			return buserr.New("ErrInvalidParams")
+		}
+		value = strconv.FormatInt(limit, 10)
+	}
 	if key == constant.FirewallPortWhiteList {
 		if _, err := parseFirewallPortWhiteList(value); err != nil {
 			return err

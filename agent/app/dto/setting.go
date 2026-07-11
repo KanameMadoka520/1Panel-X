@@ -27,6 +27,7 @@ type SettingInfo struct {
 	LocalSSHConnShow string `json:"localSSHConnShow"`
 
 	FirewallPortWhiteList string `json:"firewallPortWhiteList"`
+	AIAgentLimit          string `json:"aiAgentLimit"`
 }
 
 type SettingUpdate struct {
@@ -35,7 +36,7 @@ type SettingUpdate struct {
 }
 
 type AgentSettingUpdate struct {
-	Key   string `json:"key" validate:"required,oneof=SystemIP DockerSockPath FileRecycleBin FirewallPortWhiteList"`
+	Key   string `json:"key" validate:"required,oneof=SystemIP DockerSockPath FileRecycleBin FirewallPortWhiteList AIAgentLimit"`
 	Value string `json:"value"`
 }
 

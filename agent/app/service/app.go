@@ -60,6 +60,7 @@ type IAppService interface {
 
 type appInstallHooks struct {
 	AfterCopyData func(appInstall *model.AppInstall) error
+	SkipAppLimit  bool
 }
 
 func NewIAppService() IAppService {
@@ -403,8 +404,10 @@ func (a AppService) installWithHooks(req request.AppInstallCreate, executeScript
 		}
 	}
 
-	if err = checkRequiredAndLimit(app); err != nil {
-		return
+	if shouldCheckAppLimit(hooks) {
+		if err = checkRequiredAndLimit(app); err != nil {
+			return
+		}
 	}
 
 	appInstall = &model.AppInstall{
@@ -591,6 +594,10 @@ func (a AppService) installWithHooks(req request.AppInstallCreate, executeScript
 	}()
 
 	return
+}
+
+func shouldCheckAppLimit(hooks *appInstallHooks) bool {
+	return hooks == nil || !hooks.SkipAppLimit
 }
 
 func (a AppService) SyncAppListFromLocal(TaskID string) {

@@ -24,7 +24,6 @@ import (
 	"github.com/1Panel-dev/1Panel/agent/utils/cmd"
 	"github.com/1Panel-dev/1Panel/agent/utils/docker"
 	terminalai "github.com/1Panel-dev/1Panel/agent/utils/terminal/ai"
-	"github.com/1Panel-dev/1Panel/agent/utils/xpack"
 	"github.com/docker/docker/api/types/container"
 	"gopkg.in/yaml.v3"
 	"gorm.io/gorm"
@@ -121,7 +120,7 @@ const (
 	defaultUserTimezone           = "Asia/Shanghai"
 	defaultToolsProfile           = "full"
 	defaultToolsSessionVisibility = "all"
-	maxCommunityAIAgents          = int64(5)
+	aiAgentLimitSettingKey        = "AIAgentLimit"
 	openclawPluginBaseDir         = "/home/node/.openclaw/extensions"
 	openclawPluginPackageTmpDir   = "/tmp/openclaw-plugin"
 	openclawManagedSkillsDir      = "/home/node/.openclaw/skills"
@@ -144,13 +143,14 @@ func (a AgentService) Create(req dto.AgentCreateReq) (*dto.AgentItem, error) {
 	if installs, _ := appInstallRepo.ListBy(context.Background(), repo.WithByLowerName(req.Name)); len(installs) > 0 {
 		return nil, buserr.New("ErrNameIsExist")
 	}
-	if !global.CONF.Base.IsEnterprise && !xpack.MultiNodeProvider.IsXpack() {
+	limit := loadAIAgentLimit()
+	if limit > 0 {
 		count, _, err := agentRepo.Page(1, 1)
 		if err != nil {
 			return nil, err
 		}
-		if count >= maxCommunityAIAgents {
-			return nil, buserr.WithMap("ErrAgentLimitReached", map[string]interface{}{"max": maxCommunityAIAgents}, nil)
+		if err := validateAIAgentCapacity(count, limit); err != nil {
+			return nil, err
 		}
 	}
 	app, err := appRepo.GetFirst(appRepo.WithKey(agentType))
@@ -175,7 +175,7 @@ func (a AgentService) Create(req dto.AgentCreateReq) (*dto.AgentItem, error) {
 	storedModel := ""
 	var allowedOrigins []string
 	var account *model.AgentAccount
-	var installHooks *appInstallHooks
+	installHooks := &appInstallHooks{SkipAppLimit: true}
 	var hermesAuth hermesDashboardAuth
 
 	if agentType == constant.AppOpenclaw || agentType == constant.AppHermesAgent {
@@ -217,20 +217,16 @@ func (a AgentService) Create(req dto.AgentCreateReq) (*dto.AgentItem, error) {
 		if token == "" {
 			token = generateToken()
 		}
-		installHooks = &appInstallHooks{
-			AfterCopyData: func(appInstall *model.AppInstall) error {
-				return prepareOpenclawInstallFiles(appInstall, account, storedModel, token, allowedOrigins)
-			},
+		installHooks.AfterCopyData = func(appInstall *model.AppInstall) error {
+			return prepareOpenclawInstallFiles(appInstall, account, storedModel, token, allowedOrigins)
 		}
 	} else if agentType == constant.AppHermesAgent {
 		hermesAuth = normalizeHermesDashboardAuth(req.DashboardUsername, req.DashboardPassword)
-		installHooks = &appInstallHooks{
-			AfterCopyData: func(appInstall *model.AppInstall) error {
-				if err := prepareHermesInstallFiles(appInstall, account, storedModel); err != nil {
-					return err
-				}
-				return writeHermesDashboardAuthEnv(path.Join(appInstall.GetPath(), ".env"), hermesAuth, false)
-			},
+		installHooks.AfterCopyData = func(appInstall *model.AppInstall) error {
+			if err := prepareHermesInstallFiles(appInstall, account, storedModel); err != nil {
+				return err
+			}
+			return writeHermesDashboardAuthEnv(path.Join(appInstall.GetPath(), ".env"), hermesAuth, false)
 		}
 	}
 
@@ -314,6 +310,26 @@ func (a AgentService) Create(req dto.AgentCreateReq) (*dto.AgentItem, error) {
 
 	item := buildAgentItem(agent, appInstall, nil)
 	return &item, nil
+}
+
+func loadAIAgentLimit() int64 {
+	value, err := settingRepo.GetValueByKey(aiAgentLimitSettingKey)
+	if err != nil || strings.TrimSpace(value) == "" {
+		return 0
+	}
+	limit, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
+	if err != nil || limit < 0 {
+		global.LOG.Warnf("ignore invalid %s setting %q", aiAgentLimitSettingKey, value)
+		return 0
+	}
+	return limit
+}
+
+func validateAIAgentCapacity(current, limit int64) error {
+	if limit <= 0 || current < limit {
+		return nil
+	}
+	return buserr.WithMap("ErrAgentLimitReached", map[string]interface{}{"max": limit}, nil)
 }
 
 func (a AgentService) BatchInstall(req dto.AgentBatchInstallReq) (*dto.AgentItem, error) {
