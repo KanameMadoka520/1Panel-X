@@ -10,12 +10,12 @@ See: `.planning/PROJECT.md`, `.planning/REQUIREMENTS.md`, `.planning/v1.1-MILEST
 
 ## Current Position
 
-Milestone: v1.3 (Phases 10-11) implemented + automatically verified; adversarial security review + release pending. v1.2 shipped `v1.2.0-open.1` (4 UAT pending); v1.1 `v1.1.0-open.1` (6 UAT pending); v1.0 (20 UAT pending). None archived.
-Phase: 10 (backend upload + serve hardening) and 11 (frontend form) implemented; gofmt/vet clean, focused Go tests pass, `build:pro` + changed-file ESLint pass.
-Status: implementation + automated gates complete; adversarial security-review workflow over the diff in progress; release `v1.3.0-open.1` not yet built. Human UAT (browser/API/pre-auth render) will remain pending without a VPS. Milestone will be `gaps_found`, not archived.
-Last activity: 2026-07-11 - Implemented v1.3 backend + frontend; ran the T1–T10 adversarial security review workflow before release.
+Milestone: v1.3 (Phases 10-11) shipped `v1.3.0-open.1`. v1.2 shipped `v1.2.0-open.1` (4 UAT pending); v1.1 `v1.1.0-open.1` (6 UAT pending); v1.0 (20 UAT pending). None archived.
+Phase: 10 (backend upload + serve hardening) and 11 (frontend form) implemented, automatically verified, adversarially security-reviewed, and released.
+Status: `gaps_found` — implementation + all automated gates + a 0-confirmed-defect adversarial security review complete; 5 human UAT items (Phase 10: 3, Phase 11: 2) pending on a VPS/browser. Milestone not archived.
+Last activity: 2026-07-11 - Built and independently inspected `v1.3.0-open.1` from source revision `39c0a51db33ba5cc99157603c1d19f23777eb742` (dual-layer checksums 8/8 + 7/7, `dirty=false`; agent binary byte-identical to v1.1/v1.2).
 
-Progress: v1.0 [##########] gates done (0/5 accepted). v1.1 [##########] released (0/2 accepted). v1.2 [##########] released (0/2 accepted, 4 UAT). v1.3 [########--] implemented + verified, review/release in progress.
+Progress: v1.0 [##########] gates done (0/5 accepted). v1.1 [##########] released (0/2 accepted). v1.2 [##########] released (0/2 accepted, 4 UAT). v1.3 [##########] released (0/2 accepted, 5 UAT pending).
 
 ## Repository Snapshot
 
@@ -44,13 +44,14 @@ Progress: v1.0 [##########] gates done (0/5 accepted). v1.1 [##########] release
 
 ## Next Actions
 
-1. v1.3 = image branding upload (logo/favicon/loginImage): implement under the threat model in `research/BRANDING-DESIGN.md` — serve-side SVG hardening (`router.go:133`), `MaxBytesReader` + `image.DecodeConfig` caps, fixed-enum filenames, CSRF verification on the write routes, `.ico` decision. May fold in login welcome/subtitle/copyright text (P2).
-2. Carry forward pending UAT on a VPS/browser: v1.2 (4), v1.1 (6), v1.0 (20).
+1. Carry forward pending UAT on a VPS/browser: v1.3 (5 — serve Content-Type+nosniff, upload rejection, anon presence-only, form set/persist/reset, pre-auth image render), v1.2 (4), v1.1 (6), v1.0 (20).
+2. Next milestone candidate: login welcome/subtitle/copyright text (P2) — new login-page text fields, server-side reject-`<>`, rendered as interpolation (never `v-html`); its own small phase.
 3. Gotcha: do not run full core `go test ./...` before a release without reverting `x-log.json` (swagger_test.go side-effect); the release script uses focused/compile-only tests.
-4. Later: v1.4 threat-modeled secure multi-node (keystone; needs a second VPS).
+4. Toolchain gotcha (release): `export PATH` does not survive the `wsl.exe -- bash -c` boundary and bash skips the codex npm symlink; run the release from a script file with a `/tmp/relbin` shim (node/npm/go) piped `sed 's/\r$//' | bash`. See `scratchpad/run-release-v13.sh`.
+5. Later: v1.4 threat-modeled secure multi-node (keystone; needs a second VPS).
 
 ## Session Continuity
 
 Last session: 2026-07-11
-Stopped at: v1.2 implemented, automatically verified, and released as v1.2.0-open.1 (revision 8f9e18fe4); 4 human UAT items pending. Next milestone is v1.3 image branding upload under the captured threat model.
+Stopped at: v1.3 implemented, automatically verified, adversarially security-reviewed (0 confirmed defects), and released as v1.3.0-open.1 (revision 39c0a51db); 5 human UAT items pending. Next candidate is login welcome/subtitle/copyright text (P2).
 Resume file: None
