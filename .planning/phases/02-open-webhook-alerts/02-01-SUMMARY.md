@@ -18,6 +18,7 @@ key-files:
     - agent/utils/webhook_alert/sender.go
     - agent/utils/webhook_alert/sender_test.go
     - agent/app/service/alert_webhook_config_test.go
+    - agent/utils/xpack/helper/alert_test.go
   modified:
     - agent/app/service/alert.go
     - agent/utils/xpack/helper/alert.go
@@ -57,6 +58,7 @@ completed: 2026-07-10
 ## Task Commit
 
 1. **Implement open webhook delivery, service integration, UI access, and tests** - `47e0887ee61d75f8f6b17c12b9a0bec90a6e37e8` (`feat`)
+2. **Add failed-delivery attempt-accounting regression coverage** - `1f731fa38891b020640bbc31ea3063fc1de4b76e` (`test`)
 
 Author and committer: `KanameMadoka520 <2441883200@qq.com>`.
 
@@ -67,6 +69,7 @@ Author and committer: `KanameMadoka520 <2441883200@qq.com>`.
 - `agent/utils/webhook_alert/sender.go` - Hardened provider transport and response handling.
 - `agent/utils/webhook_alert/sender_test.go` - Payload, host, TLS, redirect, timeout, and response tests.
 - `agent/utils/xpack/helper/alert.go` - Sends messages and records success/error AlertLogs.
+- `agent/utils/xpack/helper/alert_test.go` - Proves failed webhook delivery creates one error log and task and suppresses a same-cycle retry without leaking the secret.
 - `frontend/src/views/setting/alert/dash/task/index.vue` - Makes webhook methods selectable without Pro state.
 - `frontend/src/views/setting/alert/setting/drawer/index.vue` - Opens provider creation/editing while retaining SMS conditions.
 - `frontend/src/views/setting/alert/setting/index.vue` - Opens provider rows and actions while retaining SMS conditions.
@@ -76,7 +79,7 @@ Author and committer: `KanameMadoka520 <2441883200@qq.com>`.
 - Linux/WSL `agent`: `go test ./...` passed.
 - Targeted ESLint for the three changed Vue files passed.
 - `frontend`: `npm run build:pro` passed.
-- Focused tests cover payload contracts, URL allowlists, unsafe targets, trusted/untrusted TLS, transport cloning, redirect refusal, HTTP status, timeouts, response schemas, response bounds, config masking, and masked updates.
+- Focused tests cover payload contracts, URL allowlists, unsafe targets, trusted/untrusted TLS, transport cloning, redirect refusal, HTTP status, timeouts, response schemas, response bounds, config masking, masked updates, and failed-attempt accounting.
 
 ## Decisions Made
 

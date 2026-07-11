@@ -19,10 +19,10 @@ requirements:
 
 | # | Truth | Status | Evidence |
 |---|-------|--------|----------|
-| 1 | Create/update/enable/disable/delete compensate database and cron failures | VERIFIED | Lifecycle implementation and focused tests pass. |
+| 1 | Create/update/enable/disable/delete keep primary database and cron state explicit across failure paths | VERIFIED | Focused tests cover scheduler/database failures, alert create/update compensation, and retryable alert cleanup after a completed primary deletion. |
 | 2 | Enabled schedules restore after startup and receive new entry IDs | VERIFIED | Startup hook, restoration implementation, and restore tests pass. |
 | 3 | Manual and scheduled scans of one rule cannot overlap | VERIFIED | Conditional `is_executing` update and atomic claim test pass. |
-| 4 | Scan/quarantine/removal targets reject roots, escapes, symlinks, overlap, and unsafe names | VERIFIED | Service/util validation and security tests pass; created quarantine directories use `0700`. |
+| 4 | Scan/quarantine/removal targets reject roots, escapes, symlinks, overlap, and unsafe names | VERIFIED | Service/util validation and security tests include a corrupt legacy row with a filesystem-root quarantine base; created directories use `0700`. |
 | 5 | Community users can view and edit schedules and the frontend builds | VERIFIED | License gates removed from schedule controls; targeted ESLint and build pass. |
 | 6 | A real VPS restores schedules and safely detects/quarantines EICAR | NEEDS HUMAN | No live ClamAV/VPS/EICAR evidence exists. |
 
@@ -61,6 +61,7 @@ requirements:
 ## Automated Verification Passed
 
 - Linux/WSL `agent`: `go test ./...`
+- Release focused gates: `go test ./app/service -count=1` and `go test ./utils/clam -count=1`
 - Targeted ESLint for Phase 3 frontend changes
 - `frontend`: `npm run build:pro`
 - Commit author and committer identity verification

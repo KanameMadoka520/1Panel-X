@@ -54,6 +54,7 @@ Deliver a complete, security-conscious, fully open server panel whose enhanced c
 - Several community helpers intentionally return no-op results or `ErrXpackNotFound`; these are high-value boundaries for clean-room open implementations.
 - The host has Node.js, npm, pnpm, Git, and Docker, but no native Go installation. Verification should therefore prefer Dockerized Go toolchains and the repository's existing frontend toolchain.
 - The first milestone is deliberately narrower than total commercial parity. Its purpose is to establish a tested extension pattern, prove deployability, and leave a trustworthy development chain for subsequent phases.
+- The `v1.0.0-open.1` Linux AMD64 release candidate was built from `cc5d31aa76a4d166f287a98b5d92b1f63c67af3d`; automated gates and artifact checks passed, while live VPS/browser/provider acceptance remains pending.
 
 ## Constraints
 
@@ -92,4 +93,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update build, VPS test, and maintenance context.
 
 ---
-*Last updated: 2026-07-10 after defining milestone v1.0 Open Enhancement First Release*
+*Last updated: 2026-07-10 after building and inspecting v1.0.0-open.1*

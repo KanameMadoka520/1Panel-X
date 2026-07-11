@@ -22,7 +22,7 @@ requirements:
 | 1 | Community and international builds can configure/select the three webhook providers | VERIFIED | Service restriction map retains SMS only; changed Vue conditions restrict SMS only. |
 | 2 | Provider payloads and business responses are implemented | VERIFIED | Sender code and focused payload/response tests pass for all providers. |
 | 3 | Delivery uses a hardened HTTPS transport | VERIFIED | Official-host allowlists, TLS verification, TLS 1.2 minimum, no redirects, timeout, and response limit are implemented and tested. |
-| 4 | Every success/failure attempt is logged without a complete URL in the error | VERIFIED | GPL alert helper always persists AlertSuccess or AlertError; sender errors omit the URL. |
+| 4 | Every success/failure attempt is logged without a complete URL in the error | VERIFIED | `TestFailedWebhookDeliveryCountsAsAttempt` exercises the real helper/sender path, proves one AlertError plus one AlertTask is stored, suppresses the second same-cycle send, and asserts the secret is absent. |
 | 5 | Settings responses do not return stored webhook secrets | VERIFIED | List/page masking and masked-edit restoration tests pass. Database storage is still plaintext at rest. |
 | 6 | Real WeCom, DingTalk, and Feishu/Lark robots accept messages from a VPS | NEEDS HUMAN | No real-provider test evidence exists. |
 
@@ -61,6 +61,7 @@ requirements:
 ## Automated Verification Passed
 
 - Linux/WSL `agent`: `go test ./...`
+- Release focused gate: `go test ./utils/xpack/helper -count=1`
 - Targeted ESLint for Phase 2 frontend changes
 - `frontend`: `npm run build:pro`
 - Commit author and committer identity verification

@@ -60,13 +60,14 @@ completed: 2026-07-10
 ## Task Commit
 
 1. **Implement durable schedules, scan serialization, path protections, UI access, and tests** - `fd6a1244476dbd25823653317e16058e708c4717` (`feat`)
+2. **Harden alert compensation, orphan cleanup retry, and legacy root removal** - `cc5d31aa76a4d166f287a98b5d92b1f63c67af3d` (`fix`)
 
 Author and committer: `KanameMadoka520 <2441883200@qq.com>`.
 
 ## Files Created/Modified
 
-- `agent/app/service/clam.go` - Lifecycle, restoration, normalization, running-state guards, and atomic claim.
-- `agent/app/service/clam_schedule_test.go` - Lifecycle, invalid spec, restart, path, running-state, and atomic claim tests.
+- `agent/app/service/clam.go` - Lifecycle, restoration, normalization, running-state guards, atomic claim, alert compensation, and retryable orphan alert cleanup.
+- `agent/app/service/clam_schedule_test.go` - Lifecycle, invalid spec, restart, path, running-state, atomic claim, alert failure compensation, and legacy root-row tests.
 - `agent/cron/cron.go` - Restores ClamAV schedules during agent cron startup.
 - `agent/utils/clam/clam.go` - Schedule registration and secure quarantine creation/removal.
 - `agent/utils/clam/clam_security_test.go` - Quarantine permissions, traversal, and symlink tests.
@@ -79,7 +80,7 @@ Author and committer: `KanameMadoka520 <2441883200@qq.com>`.
 - Linux/WSL `agent`: `go test ./...` passed.
 - Targeted ESLint for the two changed Vue files passed.
 - `frontend`: `npm run build:pro` passed.
-- Focused tests cover create/update/disable/delete, invalid expressions, restart restoration, path normalization, unsafe names, mutation while running, atomic claims, quarantine permissions, traversal, and symlink rejection.
+- Focused tests cover create/update/disable/delete, invalid expressions, restart restoration, path normalization, unsafe names, mutation while running, atomic claims, alert create/update compensation, retryable orphan cleanup, quarantine permissions, traversal, symlink rejection, and filesystem-root rejection.
 
 ## Decisions Made
 

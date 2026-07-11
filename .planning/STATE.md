@@ -6,36 +6,36 @@ See: `.planning/PROJECT.md` and `.planning/REQUIREMENTS.md` (updated 2026-07-10)
 
 **Core value:** Deliver a complete, security-conscious, fully open server panel without proprietary code or license bypasses.
 **Current milestone:** v1.0 Open Enhancement First Release
-**Current focus:** Review and verify Phase 1 while preserving the parallel draft work for Phases 2 through 4.
+**Current focus:** Transfer and exercise the v1.0.0-open.1 release candidate on a disposable or fully snapshotted VPS.
 
 ## Current Position
 
-Phase: 1 of 5 (Open Theme and Watermark)
-Plan: No formal phase plan yet; an existing uncommitted implementation is under review
-Status: In progress, not accepted
-Last activity: 2026-07-10 - Research was committed and the five-requirement milestone roadmap was drafted while feature changes remained in the working tree.
+Phase: 5 of 5 (Reproducible Release and VPS Handoff)
+Plan: 05-01 complete
+Status: Release candidate built; 20 human UAT items pending
+Last activity: 2026-07-10 - Built and independently inspected `v1.0.0-open.1` from source revision `cc5d31aa76a4d166f287a98b5d92b1f63c67af3d`.
 
-Progress: [----------] 0% (0 of 5 phases accepted)
+Progress: [##########] 100% implementation and automated gates; 0 of 5 requirements accepted because human UAT remains.
 
 ## Repository Snapshot
 
 - Branch: `open-pro-v1`, tracking `upstream/dev-v2`
 - Upstream baseline: `8be2a9ab0270139d0cea2f023ea3f287db2217e0`
-- Latest planning commit at snapshot: `ad71fe9aa7d3b45fc016451c12393c271fc36931`
-- Worktree: dirty with draft theme, webhook, ClamAV, and AI Agent changes plus tests
-- External `image` directory: empty; no v1.0 release artifact exists
-- External `roadmap` directory: empty; no material update note has been created
+- Latest source revision used by the release: `cc5d31aa76a4d166f287a98b5d92b1f63c67af3d`
+- Worktree: clean after the final release build
+- External `image` directory: contains `releases/v1.0.0-open.1` with native binaries, archive, checksums, logs, metadata, and VPS instructions
+- External `roadmap` directory: contains the timestamped Chinese v1 release-candidate note
 - Commit identity configured locally: `KanameMadoka520 <2441883200@qq.com>`
 
 ## Phase Review Status
 
 | Phase | Current evidence | Remaining before acceptance |
 |-------|------------------|-----------------------------|
-| 1. Theme and watermark | Core API, service, tests, and frontend fallback changes are present | Re-run core tests, production build, and browser UAT; review public data split; commit separately |
-| 2. Webhook alerts | Sender, helper, UI, and tests are present | Complete HTTPS, host, TLS, redirect, secret-redaction, and failed-attempt review; Linux tests; commit separately |
-| 3. Scheduled ClamAV | Service, cron, helper, UI, and tests are present | Resolve lifecycle, restart, concurrency, path, permission, and destructive-action review; Linux tests and isolated VPS UAT; commit separately |
-| 4. AI Agent limit | Soft-limit implementation and focused tests are present | Check secondary App Store limits and concurrency semantics; Linux regression tests; commit separately |
-| 5. Release | No artifacts or VPS guide yet | Accept Phases 1-4, build Linux AMD64 release, create checksums and docs, perform smoke test, and commit release material |
+| 1. Theme and watermark | Implementation, core tests, target lint, and production build passed | Browser login, refresh, theme-mode, watermark, and CSS visual UAT |
+| 2. Webhook alerts | Sender/config/retry-accounting tests and production build passed | Real disposable WeCom, DingTalk, and Feishu/Lark delivery plus end-to-end secret inspection |
+| 3. Scheduled ClamAV | Lifecycle, compensation, root, path, restart, concurrency, and package tests passed | Real agent restart, cron timing, overlap, and isolated EICAR UAT |
+| 4. AI Agent limit | Capacity, metadata hook, setting boundary, persistence, and package tests passed | Live creation beyond five, positive limit, race characterization, and resource observation |
+| 5. Release | Checksums, ELF architecture, metadata, archive contents, and cleanup verified | VPS backup, replacement, startup, smoke test, feature UAT, and rollback rehearsal |
 
 ## Accumulated Context
 
@@ -57,14 +57,14 @@ Progress: [----------] 0% (0 of 5 phases accepted)
 
 ## Next Actions
 
-1. Review and verify Phase 1, then create its scoped commit.
-2. Complete security and lifecycle review for Phases 2 and 3, with focused Linux tests.
-3. Finish Phase 4 metadata and regression checks, then commit it separately.
-4. Run the combined frontend and Linux build gate.
-5. Produce external release artifacts, VPS instructions, and the timestamped roadmap note during Phase 5.
+1. Upload the complete `image/releases/v1.0.0-open.1` directory to a disposable or fully snapshotted VPS.
+2. Verify both checksum layers and compare the installed official v2 baseline to `RELEASE-METADATA.json`.
+3. Execute the 20 persisted human UAT items in Phases 1 through 5.
+4. Record pass, issue, skipped, or blocked results in each `*-HUMAN-UAT.md`.
+5. Close requirements only after their required acceptance evidence exists.
 
 ## Session Continuity
 
 Last session: 2026-07-10
-Stopped at: Planning documents drafted while all feature implementations remained incomplete and under review
+Stopped at: Release candidate and automated evidence complete; human VPS/browser/provider acceptance pending
 Resume file: None

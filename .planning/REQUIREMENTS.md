@@ -3,7 +3,7 @@
 **Defined:** 2026-07-10
 **Milestone:** v1.0 Open Enhancement First Release
 **Core Value:** Deliver a complete, security-conscious, fully open server panel whose enhanced capabilities can be built, inspected, deployed, and maintained without proprietary code or license bypasses.
-**Status:** In progress. No v1.0 requirement is complete until its implementation, verification, commit, and required VPS acceptance evidence all exist.
+**Status:** Release candidate built and automatically verified. No v1.0 requirement is complete until its required browser, external-provider, or VPS acceptance evidence exists.
 
 ## Completion Rule
 
@@ -122,11 +122,11 @@ Each current requirement maps to exactly one phase.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| THEME-01 | Phase 1 | In Progress |
-| ALERT-01 | Phase 2 | In Progress |
-| CLAM-01 | Phase 3 | In Progress |
-| AGENT-01 | Phase 4 | In Progress |
-| RELEASE-01 | Phase 5 | Pending |
+| THEME-01 | Phase 1 | Human UAT Pending |
+| ALERT-01 | Phase 2 | Human UAT Pending |
+| CLAM-01 | Phase 3 | Human UAT Pending |
+| AGENT-01 | Phase 4 | Human UAT Pending |
+| RELEASE-01 | Phase 5 | Human UAT Pending |
 
 **Coverage:**
 
@@ -137,4 +137,4 @@ Each current requirement maps to exactly one phase.
 
 ---
 *Requirements defined: 2026-07-10*
-*Last updated: 2026-07-10 after clean-room architecture research and initial implementation review*
+*Last updated: 2026-07-10 after v1.0.0-open.1 release-candidate build and artifact verification*

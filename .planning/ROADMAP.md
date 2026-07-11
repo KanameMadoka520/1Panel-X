@@ -14,11 +14,11 @@ Milestone v1.0, Open Enhancement First Release, establishes a narrow but usable 
 
 ## Current Milestone: v1.0 Open Enhancement First Release
 
-- [ ] **Phase 1: Open Theme and Watermark** - Make community theme and authenticated watermark settings persist and render without a license gate.
-- [ ] **Phase 2: Open Webhook Alerts** - Deliver WeCom, DingTalk, and Feishu alerts through hardened public webhook protocols.
-- [ ] **Phase 3: Scheduled ClamAV** - Add durable, restart-safe, non-overlapping scan schedules with path protections.
-- [ ] **Phase 4: AI Agent Soft Limit** - Remove the license-derived count cap and provide an optional operator limit.
-- [ ] **Phase 5: Reproducible Release and VPS Handoff** - Build, package, document, commit, and smoke-test the accepted milestone.
+- [x] **Phase 1: Open Theme and Watermark** - Implementation and automated verification complete; browser UAT persists separately.
+- [x] **Phase 2: Open Webhook Alerts** - Implementation and automated verification complete; real-provider UAT persists separately.
+- [x] **Phase 3: Scheduled ClamAV** - Implementation and automated verification complete; VPS/EICAR UAT persists separately.
+- [x] **Phase 4: AI Agent Soft Limit** - Implementation and automated verification complete; live capacity UAT persists separately.
+- [x] **Phase 5: Reproducible Release and VPS Handoff** - Reproducible native release candidate built and inspected; deployment/rollback UAT persists separately.
 
 ## Phase Details
 
@@ -93,19 +93,19 @@ Milestone v1.0, Open Enhancement First Release, establishes a narrow but usable 
 4. Source changes are separated into feature and release commits, and every new commit has the required author and committer identity.
 5. A timestamped external roadmap note with a Chinese change summary records delivered behavior, tests, artifacts, limitations, and deferred VPS evidence.
 
-**Plans:** TBD after all four feature phases pass acceptance review.
+**Plans:** 1 plan complete. Release candidate `v1.0.0-open.1` was built from `cc5d31aa76a4d166f287a98b5d92b1f63c67af3d` with all automated gates passed.
 
 ## Progress
 
-No phase is accepted yet. Draft implementations exist for Phases 1 through 4, but they remain uncommitted or not fully verified and therefore count as zero completed phases.
+All five implementation plans and automated gates are complete. The milestone remains a release candidate rather than an accepted release because 20 persisted browser, provider, VPS, EICAR, capacity, and rollback UAT items remain pending.
 
 | Phase | Requirement | Plans Complete | Status | Completed |
 |-------|-------------|----------------|--------|-----------|
-| 1. Open Theme and Watermark | THEME-01 | 0/TBD | In progress | - |
-| 2. Open Webhook Alerts | ALERT-01 | 0/TBD | In progress | - |
-| 3. Scheduled ClamAV | CLAM-01 | 0/TBD | In progress | - |
-| 4. AI Agent Soft Limit | AGENT-01 | 0/TBD | In progress | - |
-| 5. Reproducible Release and VPS Handoff | RELEASE-01 | 0/TBD | Not started | - |
+| 1. Open Theme and Watermark | THEME-01 | 1/1 | Human UAT pending | 2026-07-10 |
+| 2. Open Webhook Alerts | ALERT-01 | 1/1 | Human UAT pending | 2026-07-10 |
+| 3. Scheduled ClamAV | CLAM-01 | 1/1 | Human UAT pending | 2026-07-10 |
+| 4. AI Agent Soft Limit | AGENT-01 | 1/1 | Human UAT pending | 2026-07-10 |
+| 5. Reproducible Release and VPS Handoff | RELEASE-01 | 1/1 | Human UAT pending | 2026-07-10 |
 
 ## Future Milestone Themes
 

@@ -20,7 +20,7 @@ requirements:
 | # | Truth | Status | Evidence |
 |---|-------|--------|----------|
 | 1 | Missing or zero AIAgentLimit is unlimited and no license branch controls count | VERIFIED | `loadAIAgentLimit` returns zero for missing/blank values; Create checks only positive limits; xpack import and fixed five constant were removed. |
-| 2 | Positive limits block at the configured count and updates accept only 0..1000 | VERIFIED | Capacity and setting validation implementation plus focused tests pass. |
+| 2 | Positive limits block at the configured count and updates accept only 0..1000 | VERIFIED | Capacity tests and direct `SettingService.Update` persistence/boundary tests pass, including no mutation on rejected values. |
 | 3 | App Store metadata cannot restore a second AI count cap while normal app limits remain | VERIFIED | AI hooks set `SkipAppLimit`; nil/default hooks still enforce metadata limits; focused test passes. |
 | 4 | Existing creation validation remains active and automated regression passes | VERIFIED | Changes are localized around capacity/install hooks; full agent tests pass. |
 | 5 | Live creation beyond five and positive-limit blocking work on a real VPS under observed resource load | NEEDS HUMAN | No live multi-Agent acceptance evidence exists. |
@@ -59,6 +59,7 @@ requirements:
 ## Automated Verification Passed
 
 - Linux/WSL `agent`: `go test ./...`
+- Release focused gate: `go test ./app/service -count=1`
 - Combined `frontend`: `npm run build:pro`
 - Commit author and committer identity verification
 

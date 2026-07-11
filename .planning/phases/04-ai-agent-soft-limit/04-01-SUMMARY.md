@@ -16,6 +16,7 @@ tech-stack:
 key-files:
   created:
     - agent/app/service/agents_limit_test.go
+    - agent/app/service/setting_ai_agent_limit_test.go
   modified:
     - agent/app/dto/setting.go
     - agent/app/service/agents.go
@@ -56,6 +57,7 @@ completed: 2026-07-10
 ## Task Commit
 
 1. **Implement configurable AI Agent limit, metadata bypass, tests, and i18n** - `c305d759133ae7e22f90f11e16921f0e722f9bed` (`feat`)
+2. **Add setting boundary and persistence regression coverage** - `c6dab4e1f06204c43a1a7aa50eeb299dfc558f1e` (`test`)
 
 Author and committer: `KanameMadoka520 <2441883200@qq.com>`.
 
@@ -64,6 +66,7 @@ Author and committer: `KanameMadoka520 <2441883200@qq.com>`.
 - `agent/app/dto/setting.go` - Adds `aiAgentLimit` to settings and update allowlist.
 - `agent/app/service/agents.go` - Loads/enforces the soft limit and scopes AI install hooks.
 - `agent/app/service/agents_limit_test.go` - Unlimited, below-limit, reached-limit, and metadata-hook tests.
+- `agent/app/service/setting_ai_agent_limit_test.go` - Direct setting update tests for normalization, persistence, invalid bounds, and no-change-on-rejection behavior.
 - `agent/app/service/app.go` - Adds the internal `SkipAppLimit` hook decision.
 - `agent/app/service/setting.go` - Validates and normalizes values from 0 through 1000.
 - `agent/i18n/lang/*.yaml` (11 files) - Replaces fixed-five wording with configured-limit wording.
@@ -71,7 +74,7 @@ Author and committer: `KanameMadoka520 <2441883200@qq.com>`.
 ## Automated Verification
 
 - Linux/WSL `agent`: `go test ./...` passed.
-- Focused tests cover unlimited, below-limit, reached-limit, normal app hooks, and AI metadata bypass hooks.
+- Focused tests cover unlimited, below-limit, reached-limit, normal app hooks, AI metadata bypass hooks, and the complete `AIAgentLimit` setting boundary.
 - The combined `frontend`: `npm run build:pro` passed; Phase 4 itself has no frontend source change.
 
 ## Decisions Made
