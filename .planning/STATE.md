@@ -5,17 +5,17 @@
 See: `.planning/PROJECT.md`, `.planning/REQUIREMENTS.md`, `.planning/v1.1-MILESTONE-DECISION.md`, `.planning/research/CAPABILITY-MATRIX.md` (updated 2026-07-10)
 
 **Core value:** Deliver a complete, security-conscious, fully open server panel without proprietary code or license bypasses.
-**Current milestone:** v1.4 Open Login-Page Text (branding cluster complete)
-**Current focus:** Ship the last deferred branding slice (P2 login welcome/subtitle/copyright text, interpolation-render + server-side reject-`<>`/control/bidi) and the `LOGIN-HERO-RENDER` fix (reactive login image/background preload) found in the v1.3 live VPS UAT.
+**Current milestone:** v1.5 Secure Multi-Node (keystone) — Slice A (backend PKI + enrollment) + Slice B (community node UI). Slice C (cross-network live acceptance) deferred, no 2nd VPS.
+**Current focus:** Phase 13 (node registry + core-owned CA + single-use HMAC enrollment token + token-gated CSR-signing enroll endpoint) DONE + tested. Next: Phase 14 (core→node mTLS proxy + agent `ValidateCertificate` + node bootstrap + cross-module loopback), then Phase 15 (community node UI + honest re-gate, never forging license).
 
 ## Current Position
 
-Milestone: v1.4 (Phase 12) shipped `v1.4.0-open.1`. v1.3 shipped `v1.3.0-open.1` (BRAND-IMG-01 verified live; image-form visual pending); v1.2 (4 UAT), v1.1 (6 UAT), v1.0 (20 UAT). None archived.
-Phase: 12 (login-page text + login-hero fix) implemented, automatically verified, adversarially security-reviewed (0 confirmed defects), and released.
-Status: `gaps_found` — implementation + all automated gates + a 0-confirmed-defect adversarial security review complete. The `LOGIN-HERO-RENDER` gap from the v1.3 live UAT is FIXED here (reactive preload). Two v1.4 human UAT items (login-text render; hero-fix visual) pending on a VPS/browser. Milestone not archived.
-Last activity: 2026-07-11 - Built and verified `v1.4.0-open.1` (revision `3692325f8`, dual-layer checksums 8/8+7/7, dirty=false; agent binary byte-identical to v1.1/v1.2/v1.3).
+Milestone: v1.5 Secure Multi-Node IN PROGRESS. Phase 13 (backend PKI + registry + enrollment) done + committed (HEAD `027db78a5`, 50 ahead of baseline, all KanameMadoka520, worktree clean). Prior: v1.4 `v1.4.0-open.1`, v1.3 `v1.3.0-open.1` (BRAND-IMG-01 live), v1.2/v1.1/v1.0. None archived.
+Phase: 13 (node registry + core-owned CA + single-use HMAC enrollment token + token-gated CSR-signing enroll endpoint) implemented + automatically verified. Phases 14 (mTLS proxy + agent side + bootstrap) and 15 (community node UI + honest re-gate) pending.
+Status: v1.5 Phase 13 automated gates PASS — nodepki 10 tests (crypto core + single-box loopback mTLS proof + N1/N2/N3/N5/N6/N8/N13 controls), node service 4 tests (N14 SSRF addr, port, N1 replay-reject, N2 forged-token reject); gofmt/vet/build clean. No release yet (release after Phase 15 + adversarial review, task #24).
+Last activity: 2026-07-12 - Phase 13 committed in 5 scoped commits (docs/feat/test/feat/test).
 
-Progress: v1.0 [##########] gates done. v1.1 [##########] released. v1.2 [##########] released. v1.3 [##########] released (BRAND-IMG-01 verified live). v1.4 [##########] released (0/1 accepted, 2 UAT pending). Branding cluster (v1.2–v1.4) feature-complete.
+Progress: v1.0–v1.4 released (branding cluster v1.2–v1.4 feature-complete). v1.5 [###·······] Phase 13/3 done (backend PKI+enrollment); Phases 14 (mTLS proxy+agent) + 15 (node UI) next.
 
 ## Repository Snapshot
 
