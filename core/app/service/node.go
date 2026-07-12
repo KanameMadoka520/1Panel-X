@@ -1,0 +1,414 @@
+package service
+
+import (
+	"crypto/rand"
+	"encoding/base64"
+	"encoding/hex"
+	"fmt"
+	"net"
+	"os"
+	"path"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/1Panel-dev/1Panel/core/app/dto"
+	"github.com/1Panel-dev/1Panel/core/app/model"
+	"github.com/1Panel-dev/1Panel/core/app/repo"
+	"github.com/1Panel-dev/1Panel/core/buserr"
+	"github.com/1Panel-dev/1Panel/core/global"
+	"github.com/1Panel-dev/1Panel/core/utils/encrypt"
+	"github.com/1Panel-dev/1Panel/core/utils/nodepki"
+)
+
+type NodeService struct{}
+
+type INodeService interface {
+	List(req dto.NodeSearch) ([]dto.NodeInfo, error)
+	SimpleAll() ([]dto.SimpleNodeInfo, error)
+	Create(req dto.NodeCreate) (*dto.NodeEnrollToken, error)
+	Delete(id uint) error
+	Enroll(req dto.NodeEnrollRequest) (*dto.NodeEnrollResponse, error)
+}
+
+func NewINodeService() INodeService {
+	return &NodeService{}
+}
+
+// pkiMu serialises the lazy one-time PKI bootstrap so two concurrent admin
+// "add node" calls cannot each generate a competing CA.
+var pkiMu sync.Mutex
+
+// setting keys for the core-owned node PKI material.
+const (
+	keyNodeCACert       = "NodeCACert"         // CA cert PEM (public)
+	keyNodeCAKey        = "NodeCAKey"          // CA key PEM (encrypted)
+	keyNodeEnrollSecret = "NodeEnrollSecret"   // HMAC secret, base64 (encrypted)
+	keyNodeCoreCert     = "NodeCoreClientCert" // core client cert PEM (public)
+	keyNodeCoreKey      = "NodeCoreClientKey"  // core client key PEM (encrypted)
+)
+
+type nodePKI struct {
+	ca             *nodepki.CA
+	coreClientCert []byte
+	coreClientKey  []byte
+	coreClientFP   string
+	enrollSecret   []byte
+}
+
+func (s *NodeService) List(req dto.NodeSearch) ([]dto.NodeInfo, error) {
+	nodes, err := nodeRepo.GetList(repo.WithOrderDesc("created_at"))
+	if err != nil {
+		return nil, err
+	}
+	items := make([]dto.NodeInfo, 0, len(nodes))
+	for _, n := range nodes {
+		items = append(items, dto.NodeInfo{
+			ID:      n.ID,
+			GroupID: n.GroupID,
+			Addr:    n.Addr,
+			Status:  n.Status,
+			Version: n.Version,
+			IsXpack: false,
+			IsBound: n.Status == "online",
+			Name:    n.Name,
+		})
+	}
+	return items, nil
+}
+
+func (s *NodeService) SimpleAll() ([]dto.SimpleNodeInfo, error) {
+	nodes, err := nodeRepo.GetList(repo.WithOrderDesc("created_at"))
+	if err != nil {
+		return nil, err
+	}
+	items := make([]dto.SimpleNodeInfo, 0, len(nodes))
+	for _, n := range nodes {
+		items = append(items, dto.SimpleNodeInfo{
+			ID:            n.ID,
+			Name:          n.Name,
+			Addr:          n.Addr,
+			SystemVersion: n.Version,
+		})
+	}
+	return items, nil
+}
+
+func (s *NodeService) Create(req dto.NodeCreate) (*dto.NodeEnrollToken, error) {
+	if exist, _ := nodeRepo.Get(repo.WithByName(req.Name)); exist.ID != 0 {
+		return nil, buserr.New("ErrRecordExist")
+	}
+	if err := validateNodeAddr(req.Addr); err != nil {
+		return nil, err
+	}
+	if err := validateNodePort(req.Port); err != nil {
+		return nil, err
+	}
+	pki, err := s.ensurePKI()
+	if err != nil {
+		return nil, err
+	}
+
+	proxyID, err := randomHex(24)
+	if err != nil {
+		return nil, err
+	}
+	nonce, err := nodepki.NewNonce()
+	if err != nil {
+		return nil, err
+	}
+	expireAt := time.Now().Add(nodepki.MaxTokenTTL).Unix()
+	node := &model.Node{
+		Name:         req.Name,
+		Addr:         req.Addr,
+		Port:         req.Port,
+		GroupID:      req.GroupID,
+		Scope:        "node",
+		Status:       "pending",
+		ProxyID:      proxyID,
+		EnrollNonce:  nonce,
+		EnrollExpire: expireAt,
+	}
+	if err := nodeRepo.Create(node); err != nil {
+		return nil, err
+	}
+
+	claims := nodepki.TokenClaims{
+		NodeID:            node.ID,
+		Nonce:             nonce,
+		Exp:               expireAt,
+		MasterFingerprint: coreServerFingerprint(),
+	}
+	token, err := nodepki.IssueToken(pki.enrollSecret, claims)
+	if err != nil {
+		return nil, err
+	}
+	return &dto.NodeEnrollToken{
+		NodeID:   node.ID,
+		Token:    token,
+		ExpireAt: expireAt,
+		Addr:     req.Addr,
+		Port:     req.Port,
+	}, nil
+}
+
+func (s *NodeService) Delete(id uint) error {
+	if _, err := nodeRepo.Get(repo.WithByID(id)); err != nil {
+		return buserr.New("ErrRecordNotFound")
+	}
+	return nodeRepo.Delete(repo.WithByID(id))
+}
+
+// Enroll is called BY a joining node (token-gated, no session). It verifies the
+// enrollment token (HMAC + expiry), atomically consumes it (single-use), signs
+// the node's CSR into a per-node server leaf, pins the node's fingerprint, and
+// returns the certs + core client fingerprint the node needs to run node mode.
+func (s *NodeService) Enroll(req dto.NodeEnrollRequest) (*dto.NodeEnrollResponse, error) {
+	pki, err := s.ensurePKI()
+	if err != nil {
+		return nil, err
+	}
+	claims, err := nodepki.VerifyToken(pki.enrollSecret, strings.TrimSpace(req.Token))
+	if err != nil {
+		return nil, err // N2/N3: bad signature or expired
+	}
+	node, err := nodeRepo.Get(repo.WithByID(claims.NodeID))
+	if err != nil {
+		return nil, buserr.New("ErrRecordNotFound")
+	}
+	if node.Status == "revoked" || node.EnrollNonce != claims.Nonce {
+		return nil, fmt.Errorf("enrollment not permitted for this node")
+	}
+
+	// Sign the CSR first (validate the request) so a bad CSR does not waste the
+	// single-use token. CN is imposed by core, not taken from the CSR (N13).
+	leaf, err := pki.ca.SignLeaf([]byte(req.CSR), nodepki.LeafOptions{
+		CommonName:  fmt.Sprintf("node-%d", node.ID),
+		DNSNames:    dnsSANs(node.Addr),
+		IPAddresses: ipSANs(node.Addr),
+		ForServer:   true,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Atomic single-use burn (N1): only the winner proceeds; a replay loses.
+	won, err := nodeRepo.BurnEnrollment(node.ID, claims.Nonce)
+	if err != nil {
+		return nil, err
+	}
+	if !won {
+		return nil, fmt.Errorf("enrollment token already used")
+	}
+
+	fp, err := nodepki.FingerprintPEM(leaf)
+	if err != nil {
+		return nil, err
+	}
+	if err := nodeRepo.Update(node.ID, map[string]interface{}{
+		"server_fingerprint": fp,
+		"status":             "online",
+	}); err != nil {
+		return nil, err
+	}
+	return &dto.NodeEnrollResponse{
+		ServerCert:            string(leaf),
+		CACert:                string(pki.ca.CertPEM),
+		ProxyID:               node.ProxyID,
+		CoreClientFingerprint: pki.coreClientFP,
+	}, nil
+}
+
+// ensurePKI loads the core-owned node PKI, generating it once on first use.
+func (s *NodeService) ensurePKI() (*nodePKI, error) {
+	caCert, _ := settingRepo.GetValueByKey(keyNodeCACert)
+	caKeyEnc, _ := settingRepo.GetValueByKey(keyNodeCAKey)
+	if caCert == "" || caKeyEnc == "" {
+		return s.initPKI()
+	}
+	caKeyPEM, err := encrypt.StringDecrypt(caKeyEnc)
+	if err != nil {
+		return nil, err
+	}
+	ca, err := nodepki.LoadCA([]byte(caCert), []byte(caKeyPEM))
+	if err != nil {
+		return nil, err
+	}
+	clientCert, _ := settingRepo.GetValueByKey(keyNodeCoreCert)
+	clientKeyEnc, _ := settingRepo.GetValueByKey(keyNodeCoreKey)
+	clientKeyPEM, err := encrypt.StringDecrypt(clientKeyEnc)
+	if err != nil {
+		return nil, err
+	}
+	secretEnc, _ := settingRepo.GetValueByKey(keyNodeEnrollSecret)
+	secretB64, err := encrypt.StringDecrypt(secretEnc)
+	if err != nil {
+		return nil, err
+	}
+	secret, err := base64.StdEncoding.DecodeString(secretB64)
+	if err != nil {
+		return nil, err
+	}
+	fp, err := nodepki.FingerprintPEM([]byte(clientCert))
+	if err != nil {
+		return nil, err
+	}
+	return &nodePKI{
+		ca:             ca,
+		coreClientCert: []byte(clientCert),
+		coreClientKey:  []byte(clientKeyPEM),
+		coreClientFP:   fp,
+		enrollSecret:   secret,
+	}, nil
+}
+
+func (s *NodeService) initPKI() (*nodePKI, error) {
+	pkiMu.Lock()
+	defer pkiMu.Unlock()
+	// re-check under the lock in case another request just initialised it
+	if caCert, _ := settingRepo.GetValueByKey(keyNodeCACert); caCert != "" {
+		return s.ensurePKI()
+	}
+
+	caCertPEM, caKeyPEM, err := nodepki.GenerateCA("1Panel-X Node CA")
+	if err != nil {
+		return nil, err
+	}
+	ca, err := nodepki.LoadCA(caCertPEM, caKeyPEM)
+	if err != nil {
+		return nil, err
+	}
+	clientKeyPEM, clientCSR, err := nodepki.GenerateKeyAndCSR("1panel-core", nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	clientCertPEM, err := ca.SignLeaf(clientCSR, nodepki.LeafOptions{CommonName: "1panel-core", ForClient: true})
+	if err != nil {
+		return nil, err
+	}
+	secret := make([]byte, 32)
+	if _, err := rand.Read(secret); err != nil {
+		return nil, err
+	}
+
+	caKeyEnc, err := encrypt.StringEncrypt(string(caKeyPEM))
+	if err != nil {
+		return nil, err
+	}
+	clientKeyEnc, err := encrypt.StringEncrypt(string(clientKeyPEM))
+	if err != nil {
+		return nil, err
+	}
+	secretEnc, err := encrypt.StringEncrypt(base64.StdEncoding.EncodeToString(secret))
+	if err != nil {
+		return nil, err
+	}
+	for k, v := range map[string]string{
+		keyNodeCACert:       string(caCertPEM),
+		keyNodeCAKey:        caKeyEnc,
+		keyNodeCoreCert:     string(clientCertPEM),
+		keyNodeCoreKey:      clientKeyEnc,
+		keyNodeEnrollSecret: secretEnc,
+	} {
+		if err := settingRepo.UpdateOrCreate(k, v); err != nil {
+			return nil, err
+		}
+	}
+	fp, err := nodepki.FingerprintPEM(clientCertPEM)
+	if err != nil {
+		return nil, err
+	}
+	return &nodePKI{
+		ca:             ca,
+		coreClientCert: clientCertPEM,
+		coreClientKey:  clientKeyPEM,
+		coreClientFP:   fp,
+		enrollSecret:   secret,
+	}, nil
+}
+
+// coreServerFingerprint reads core's browser-facing TLS cert (if TLS is on) so
+// the enrollment token can carry the master fingerprint a joining node pins
+// before sending its CSR (N4). Best-effort: empty when core serves plain HTTP.
+func coreServerFingerprint() string {
+	certPath := path.Join(global.CONF.Base.InstallDir, "1panel/secret/server.crt")
+	pemBytes, err := os.ReadFile(certPath)
+	if err != nil {
+		return ""
+	}
+	fp, err := nodepki.FingerprintPEM(pemBytes)
+	if err != nil {
+		return ""
+	}
+	return fp
+}
+
+// ---- validation + SAN helpers ----
+
+// validateNodeAddr enforces a bare host or IP (N14 SSRF defense): no scheme, no
+// credentials, no path, no whitespace.
+func validateNodeAddr(addr string) error {
+	addr = strings.TrimSpace(addr)
+	if addr == "" {
+		return fmt.Errorf("node address is required")
+	}
+	if strings.ContainsAny(addr, " \t\r\n/@?#\\") || strings.Contains(addr, "://") {
+		return fmt.Errorf("invalid node address")
+	}
+	if ip := net.ParseIP(addr); ip != nil {
+		return nil
+	}
+	// hostname: labels of [A-Za-z0-9-], dot-separated
+	for _, label := range strings.Split(addr, ".") {
+		if label == "" || len(label) > 63 {
+			return fmt.Errorf("invalid node address")
+		}
+		for _, r := range label {
+			if !(r == '-' || (r >= '0' && r <= '9') || (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z')) {
+				return fmt.Errorf("invalid node address")
+			}
+		}
+	}
+	return nil
+}
+
+func validateNodePort(port string) error {
+	port = strings.TrimSpace(port)
+	if port == "" {
+		return fmt.Errorf("node port is required")
+	}
+	n := 0
+	for _, r := range port {
+		if r < '0' || r > '9' {
+			return fmt.Errorf("invalid node port")
+		}
+		n = n*10 + int(r-'0')
+	}
+	if n < 1 || n > 65535 {
+		return fmt.Errorf("invalid node port")
+	}
+	return nil
+}
+
+func ipSANs(addr string) []net.IP {
+	if ip := net.ParseIP(strings.TrimSpace(addr)); ip != nil {
+		return []net.IP{ip}
+	}
+	return nil
+}
+
+func dnsSANs(addr string) []string {
+	addr = strings.TrimSpace(addr)
+	if net.ParseIP(addr) == nil && addr != "" {
+		return []string{addr}
+	}
+	return nil
+}
+
+func randomHex(n int) (string, error) {
+	b := make([]byte, n)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
+}

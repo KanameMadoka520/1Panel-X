@@ -12,4 +12,5 @@ var (
 
 	agentRepo  = repo.NewIAgentRepo()
 	scriptRepo = repo.NewIScriptRepo()
+	nodeRepo   = repo.NewINodeRepo()
 )
