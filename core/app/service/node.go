@@ -16,6 +16,7 @@ import (
 	"github.com/1Panel-dev/1Panel/core/app/model"
 	"github.com/1Panel-dev/1Panel/core/app/repo"
 	"github.com/1Panel-dev/1Panel/core/buserr"
+	"github.com/1Panel-dev/1Panel/core/constant"
 	"github.com/1Panel-dev/1Panel/core/global"
 	"github.com/1Panel-dev/1Panel/core/utils/encrypt"
 	"github.com/1Panel-dev/1Panel/core/utils/nodepki"
@@ -39,15 +40,6 @@ func NewINodeService() INodeService {
 // "add node" calls cannot each generate a competing CA.
 var pkiMu sync.Mutex
 
-// setting keys for the core-owned node PKI material.
-const (
-	keyNodeCACert       = "NodeCACert"         // CA cert PEM (public)
-	keyNodeCAKey        = "NodeCAKey"          // CA key PEM (encrypted)
-	keyNodeEnrollSecret = "NodeEnrollSecret"   // HMAC secret, base64 (encrypted)
-	keyNodeCoreCert     = "NodeCoreClientCert" // core client cert PEM (public)
-	keyNodeCoreKey      = "NodeCoreClientKey"  // core client key PEM (encrypted)
-)
-
 type nodePKI struct {
 	ca             *nodepki.CA
 	coreClientCert []byte
@@ -70,7 +62,7 @@ func (s *NodeService) List(req dto.NodeSearch) ([]dto.NodeInfo, error) {
 			Status:  n.Status,
 			Version: n.Version,
 			IsXpack: false,
-			IsBound: n.Status == "online",
+			IsBound: n.Status == constant.NodeStatusOnline,
 			Name:    n.Name,
 		})
 	}
@@ -124,7 +116,7 @@ func (s *NodeService) Create(req dto.NodeCreate) (*dto.NodeEnrollToken, error) {
 		Port:         req.Port,
 		GroupID:      req.GroupID,
 		Scope:        "node",
-		Status:       "pending",
+		Status:       constant.NodeStatusPending,
 		ProxyID:      proxyID,
 		EnrollNonce:  nonce,
 		EnrollExpire: expireAt,
@@ -176,7 +168,7 @@ func (s *NodeService) Enroll(req dto.NodeEnrollRequest) (*dto.NodeEnrollResponse
 	if err != nil {
 		return nil, buserr.New("ErrRecordNotFound")
 	}
-	if node.Status == "revoked" || node.EnrollNonce != claims.Nonce {
+	if node.Status == constant.NodeStatusRevoked || node.EnrollNonce != claims.Nonce {
 		return nil, fmt.Errorf("enrollment not permitted for this node")
 	}
 
@@ -207,7 +199,7 @@ func (s *NodeService) Enroll(req dto.NodeEnrollRequest) (*dto.NodeEnrollResponse
 	}
 	if err := nodeRepo.Update(node.ID, map[string]interface{}{
 		"server_fingerprint": fp,
-		"status":             "online",
+		"status":             constant.NodeStatusOnline,
 	}); err != nil {
 		return nil, err
 	}
@@ -221,8 +213,8 @@ func (s *NodeService) Enroll(req dto.NodeEnrollRequest) (*dto.NodeEnrollResponse
 
 // ensurePKI loads the core-owned node PKI, generating it once on first use.
 func (s *NodeService) ensurePKI() (*nodePKI, error) {
-	caCert, _ := settingRepo.GetValueByKey(keyNodeCACert)
-	caKeyEnc, _ := settingRepo.GetValueByKey(keyNodeCAKey)
+	caCert, _ := settingRepo.GetValueByKey(constant.NodeCACertKey)
+	caKeyEnc, _ := settingRepo.GetValueByKey(constant.NodeCAKeyKey)
 	if caCert == "" || caKeyEnc == "" {
 		return s.initPKI()
 	}
@@ -234,13 +226,13 @@ func (s *NodeService) ensurePKI() (*nodePKI, error) {
 	if err != nil {
 		return nil, err
 	}
-	clientCert, _ := settingRepo.GetValueByKey(keyNodeCoreCert)
-	clientKeyEnc, _ := settingRepo.GetValueByKey(keyNodeCoreKey)
+	clientCert, _ := settingRepo.GetValueByKey(constant.NodeCoreCertKey)
+	clientKeyEnc, _ := settingRepo.GetValueByKey(constant.NodeCoreKeyKey)
 	clientKeyPEM, err := encrypt.StringDecrypt(clientKeyEnc)
 	if err != nil {
 		return nil, err
 	}
-	secretEnc, _ := settingRepo.GetValueByKey(keyNodeEnrollSecret)
+	secretEnc, _ := settingRepo.GetValueByKey(constant.NodeEnrollSecretKey)
 	secretB64, err := encrypt.StringDecrypt(secretEnc)
 	if err != nil {
 		return nil, err
@@ -266,7 +258,7 @@ func (s *NodeService) initPKI() (*nodePKI, error) {
 	pkiMu.Lock()
 	defer pkiMu.Unlock()
 	// re-check under the lock in case another request just initialised it
-	if caCert, _ := settingRepo.GetValueByKey(keyNodeCACert); caCert != "" {
+	if caCert, _ := settingRepo.GetValueByKey(constant.NodeCACertKey); caCert != "" {
 		return s.ensurePKI()
 	}
 
@@ -304,11 +296,11 @@ func (s *NodeService) initPKI() (*nodePKI, error) {
 		return nil, err
 	}
 	for k, v := range map[string]string{
-		keyNodeCACert:       string(caCertPEM),
-		keyNodeCAKey:        caKeyEnc,
-		keyNodeCoreCert:     string(clientCertPEM),
-		keyNodeCoreKey:      clientKeyEnc,
-		keyNodeEnrollSecret: secretEnc,
+		constant.NodeCACertKey:       string(caCertPEM),
+		constant.NodeCAKeyKey:        caKeyEnc,
+		constant.NodeCoreCertKey:     string(clientCertPEM),
+		constant.NodeCoreKeyKey:      clientKeyEnc,
+		constant.NodeEnrollSecretKey: secretEnc,
 	} {
 		if err := settingRepo.UpdateOrCreate(k, v); err != nil {
 			return nil, err
