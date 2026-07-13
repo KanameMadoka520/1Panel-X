@@ -6,16 +6,16 @@ See: `.planning/PROJECT.md`, `.planning/REQUIREMENTS.md`, `.planning/v1.1-MILEST
 
 **Core value:** Deliver a complete, security-conscious, fully open server panel without proprietary code or license bypasses.
 **Current milestone:** v1.5 Secure Multi-Node (keystone) — Slice A (backend PKI + enrollment) + Slice B (community node UI). Slice C (cross-network live acceptance) deferred, no 2nd VPS.
-**Current focus:** Phases 13 (registry+CA+enrollment token) and 14 (core→node mTLS proxy + agent `ValidateCertificate` pin + `LoadNodeInfo` node-mode-if-provisioned + node bootstrap) DONE + tested, both modules. Next: Phase 15 (community node UI + honest re-gate, never forging license), then task 24 (adversarial review + release).
+**Current focus:** All 3 v1.5 phases implemented + verified. Phase 13 (registry+CA+enrollment), Phase 14 (core→node mTLS proxy + agent cert pin + node-mode-if-provisioned + bootstrap), Phase 15 (community node management page at /settings/nodes, honest admin-gate — no license forging; add→enrollment-token/list/delete). Next: task 24 (adversarial N1-N15 review → release v1.5.0-open.1 → docs/memory).
 
 ## Current Position
 
 Milestone: v1.5 Secure Multi-Node IN PROGRESS. Phases 13 + 14 (all backend, both modules) done + committed (58 ahead of baseline, all KanameMadoka520, worktree clean). Prior: v1.4 `v1.4.0-open.1`, v1.3 `v1.3.0-open.1` (BRAND-IMG-01 live), v1.2/v1.1/v1.0. None archived.
 Phase: 13 (registry + CA + enrollment token) and 14 (core→node mTLS proxy + agent cert pin + node-mode-if-provisioned + bootstrap) implemented + automatically verified. Phase 15 (community node UI + honest re-gate) pending; then task 24 (review + release).
 Status: v1.5 backend automated gates PASS — core nodepki 10 tests (crypto + single-box loopback mTLS proof + N1/N2/N3/N5/N6/N8/N13), core node service 4 tests (N14 SSRF/port/N1 replay/N2 forged), core helper 3 tests (N5 pin proxy/resolve), agent nodepki 4 tests, agent helper 3 tests (IsProvisionedNode default-master exhaustive/ApplyEnrollment/N6 ValidateCertificate); gofmt/vet/build clean both modules. No release yet (after Phase 15 + adversarial review, task #24).
-Last activity: 2026-07-12 - Phase 14 committed in 7 scoped commits (core refactor/feat/test; agent feat/test/feat/test).
+Last activity: 2026-07-13 - Phase 15 committed in 3 scoped commits (feat api/feat page+routes/feat i18n); ESLint 0 + build:pro OK. 62 ahead of baseline.
 
-Progress: v1.0–v1.4 released (branding cluster v1.2–v1.4 feature-complete). v1.5 [#######···] Phases 13+14/3 done (backend complete both modules); Phase 15 (node UI + honest re-gate) next, then review+release. Cross-network live boot deferred (Slice C, needs 2nd VPS).
+Progress: v1.0–v1.4 released (branding cluster v1.2–v1.4 feature-complete). v1.5 [#########·] Phases 13+14+15/3 IMPLEMENTED + verified (backend both modules + community node UI). Remaining: task 24 — adversarial N1-N15 review + release v1.5.0-open.1 + docs/memory. Cross-network live boot + operate flow deferred (Slice C, needs 2nd VPS).
 
 ## Repository Snapshot
 
