@@ -47,6 +47,11 @@ func Proxy() gin.HandlerFunc {
 			return
 		}
 
+		// N7: never honor a client-supplied identity. Strip any inbound
+		// X-Panel-User unconditionally, then set it only from the authenticated
+		// session/API user. On the sessionless bypass paths this leaves no
+		// operator header at all, so a caller cannot assert an identity to a node.
+		c.Request.Header.Del("X-Panel-User")
 		if userName := middleware.LoadOperationUser(c); userName != "" {
 			c.Request.Header.Set("X-Panel-User", url.QueryEscape(userName))
 		}
