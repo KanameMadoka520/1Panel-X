@@ -5,17 +5,17 @@
 See: `.planning/PROJECT.md`, `.planning/REQUIREMENTS.md`, `.planning/v1.1-MILESTONE-DECISION.md`, `.planning/research/CAPABILITY-MATRIX.md` (updated 2026-07-10)
 
 **Core value:** Deliver a complete, security-conscious, fully open server panel without proprietary code or license bypasses.
-**Current milestone:** v1.5 Secure Multi-Node (keystone) — SHIPPED `v1.5.0-open.1`. Slice A (backend PKI+enrollment) + Slice B (community node UI) done. Slice C (cross-network live acceptance) deferred, no 2nd VPS.
-**Current focus:** v1.5 complete: 3 phases implemented + verified both modules, 0-confirmed-defect adversarial review (N7/N10/N13 hardenings adopted), released + verified, docs/memory updated. Milestone audit `gaps_found` — Slice C + browser UAT pending, not archived. Next domain candidates: Slice C live acceptance (needs 2nd VPS) OR the next future theme (WAF/monitoring, RBAC, etc.).
+**Current milestone:** v1.6 Website Access Monitoring IN PROGRESS (the feasible half of the "WAF/monitoring" domain). v1.5 Secure Multi-Node SHIPPED `v1.5.0-open.1` (gaps_found, Slice C deferred).
+**Current focus:** WAF-proper deferred — engine (1pwaf/OpenResty Lua) is ABSENT from the tree (closed app), a community WAF would mean shipping our own engine (XL, opt-in only). v1.6 does the CI-verifiable monitoring half. Phase 16 (nginx access.log parser + time-series/top-N aggregator, pure functions, fixture-tested) DONE. Next: Phase 17 (store + incremental tailer + agent GeoIP reader + API) → Phase 18 (dashboard frontend + honest gate). Design: `.planning/research/WEBSITE-MONITORING-DESIGN.md`; decision: `.planning/v1.6-MILESTONE-DECISION.md`.
 
 ## Current Position
 
 Milestone: v1.5 Secure Multi-Node SHIPPED `v1.5.0-open.1` (revision `6d363f6ef`, dirty=false, dual-layer checksums 8/8+7/7). All 6 releases present; v1.0–v1.4 re-verify OK. Prior: v1.4/v1.3(BRAND-IMG-01 live)/v1.2/v1.1/v1.0. None archived.
 Phase: 13 (registry+CA+enrollment), 14 (core→node mTLS proxy + agent cert pin + node-mode-if-provisioned + bootstrap), 15 (community node UI + honest admin-gate) all implemented + verified + released.
 Status: `gaps_found` — automated gates PASS both modules (core nodepki 10 + node service 4 + helper 3; agent nodepki 4 + helper 3; full core go test exit 0; ESLint 0 + build:pro), adversarial review 0 confirmed defects (N7/N10/N13 adopted). Slice C (cross-network live acceptance) + browser UAT pending on a 2nd VPS. Not archived.
-Last activity: 2026-07-13 - Released + verified v1.5.0-open.1; hardening (N7/N10/N13) from review committed; REQUIREMENTS/ROADMAP/audit/roadmap-note updated. ~70 ahead of baseline, all KanameMadoka520.
+Last activity: 2026-07-13 - v1.5 shipped/verified/documented. Opened v1.6: 2 recon probes (monitoring surface + WAF engine absence), design + decision docs, Phase 16 core (weblog parser + aggregator, 9 fixture tests PASS) committed. 73 ahead of baseline, all KanameMadoka520, worktree clean.
 
-Progress: v1.0–v1.5 released. Branding cluster (v1.2–v1.4) feature-complete; multi-node keystone backend (both modules) + community UI shipped. v1.5 [##########] released, gaps_found (Slice C 2-box acceptance deferred). Agent binary changed this milestone (b0fbe93f…, no longer byte-identical to v1.1–v1.4).
+Progress: v1.0–v1.5 released. v1.6 [###·······] Phase 16/3 done (access-log parser + aggregator, CI heart); Phases 17 (store+tailer+geo+API) + 18 (dashboard frontend) next, then review+release. WAF-proper deferred (engine absent, own-engine XL, opt-in). v1.5 agent binary b0fbe93f (no longer byte-identical to v1.1–v1.4).
 
 ## Repository Snapshot
 
