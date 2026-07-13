@@ -148,6 +148,20 @@ func TestBuildNodeTransportRejectsUnenrolled(t *testing.T) {
 	}
 }
 
+// N10: a revoked node (even with a valid fingerprint) is refused by the dialer.
+func TestBuildNodeTransportRejectsRevoked(t *testing.T) {
+	setupHelperTestDB(t)
+	seedPKI(t)
+	revoked := model.Node{Name: "r", Addr: "127.0.0.1", Port: "9", ServerFingerprint: "deadbeef", Status: constant.NodeStatusRevoked}
+	if _, err := buildNodeTransport(revoked); err == nil {
+		t.Fatal("revoked node must not build a transport")
+	}
+	offline := model.Node{Name: "o", Addr: "127.0.0.1", Port: "9", ServerFingerprint: "deadbeef", Status: constant.NodeStatusOffline}
+	if _, err := buildNodeTransport(offline); err == nil {
+		t.Fatal("offline node must not build a transport")
+	}
+}
+
 func TestResolveNode(t *testing.T) {
 	setupHelperTestDB(t)
 	n := &model.Node{Name: "web-1", Addr: "10.0.0.7", Port: "9999", Status: constant.NodeStatusOnline}

@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"io"
 	"strings"
 	"testing"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/1Panel-dev/1Panel/core/global"
 	"github.com/1Panel-dev/1Panel/core/utils/nodepki"
 	"github.com/glebarez/sqlite"
+	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 )
 
@@ -18,6 +20,7 @@ func setupNodeTestDB(t *testing.T) {
 	t.Helper()
 	oldDB := global.DB
 	oldKey := global.CONF.Base.EncryptKey
+	oldLog := global.LOG
 	dbName := strings.NewReplacer("/", "-", " ", "-").Replace(t.Name())
 	db, err := gorm.Open(sqlite.Open(fmt.Sprintf("file:%s?mode=memory&cache=shared", dbName)), &gorm.Config{})
 	if err != nil {
@@ -26,6 +29,9 @@ func setupNodeTestDB(t *testing.T) {
 	if err := db.AutoMigrate(&model.Node{}, &model.Setting{}); err != nil {
 		t.Fatalf("migrate node test database: %v", err)
 	}
+	logger := logrus.New()
+	logger.SetOutput(io.Discard)
+	global.LOG = logger
 	global.DB = db
 	global.CONF.Base.EncryptKey = "1234567890abcdef" // 16 bytes for AES
 	t.Cleanup(func() {
@@ -34,6 +40,7 @@ func setupNodeTestDB(t *testing.T) {
 		}
 		global.DB = oldDB
 		global.CONF.Base.EncryptKey = oldKey
+		global.LOG = oldLog
 	})
 }
 
@@ -101,6 +108,30 @@ func TestNodeEnrollSingleUse(t *testing.T) {
 	// replay the SAME token -> must be rejected
 	if _, err := svc.Enroll(dto.NodeEnrollRequest{Token: tok.Token, CSR: string(csrPEM)}); err == nil {
 		t.Fatal("replayed enrollment token was accepted (N1 violated)")
+	}
+}
+
+// N10: Revoke marks the node revoked without deleting its row.
+func TestNodeRevoke(t *testing.T) {
+	setupNodeTestDB(t)
+	svc := NewINodeService()
+	tok, err := svc.Create(dto.NodeCreate{Name: "web-r", Addr: "127.0.0.1", Port: "9999"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Revoke(tok.NodeID); err != nil {
+		t.Fatalf("revoke: %v", err)
+	}
+	node, err := nodeRepo.Get(repo.WithByID(tok.NodeID))
+	if err != nil || node.Status != "revoked" {
+		t.Fatalf("node not revoked: %+v (err %v)", node, err)
+	}
+	// the row is preserved (not deleted)
+	if node.ID == 0 {
+		t.Fatal("revoke must not delete the row")
+	}
+	if err := svc.Revoke(999999); err == nil {
+		t.Fatal("revoking a missing node should error")
 	}
 }
 
