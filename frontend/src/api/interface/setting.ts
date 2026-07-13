@@ -320,6 +320,19 @@ export namespace Setting {
         isFavorite?: boolean;
         name: string;
     }
+    export interface NodeCreate {
+        name: string;
+        addr: string;
+        port: string;
+        groupID?: number;
+    }
+    export interface NodeEnrollToken {
+        nodeID: number;
+        token: string;
+        expireAt: number;
+        addr: string;
+        port: string;
+    }
     export interface SimpleNodeItem {
         id: number;
         name: string;

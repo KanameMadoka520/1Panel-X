@@ -43,6 +43,12 @@ export const loadLicenseOptions = () => {
 export const listNodeOptions = (type: string) => {
     return http.post<Array<Setting.NodeItem>>(`/core/nodes/list`, { type: type });
 };
+export const createNode = (params: Setting.NodeCreate) => {
+    return http.post<Setting.NodeEnrollToken>(`/core/nodes`, params);
+};
+export const deleteNode = (id: number) => {
+    return http.post(`/core/nodes/del`, { id: id });
+};
 export const updateNodeFavorite = (id: number, isFavorite: boolean) => {
     return http.post(`/core/xpack/nodes/favorite`, { id, isFavorite });
 };
