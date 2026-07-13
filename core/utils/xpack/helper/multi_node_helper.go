@@ -103,6 +103,11 @@ func resolveNode(currentNode string) (model.Node, error) {
 
 // buildNodeTransport builds the pinned mTLS transport for one node.
 func buildNodeTransport(node model.Node) (*http.Transport, error) {
+	// N10: a revoked (or offline) node is refused even though its registry row
+	// persists for audit — core will not dial it.
+	if node.Status == constant.NodeStatusRevoked || node.Status == constant.NodeStatusOffline {
+		return nil, fmt.Errorf("node %q is not available (%s)", node.Name, node.Status)
+	}
 	if node.ServerFingerprint == "" {
 		return nil, fmt.Errorf("node %q is not enrolled", node.Name)
 	}

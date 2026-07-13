@@ -29,6 +29,7 @@ type INodeService interface {
 	SimpleAll() ([]dto.SimpleNodeInfo, error)
 	Create(req dto.NodeCreate) (*dto.NodeEnrollToken, error)
 	Delete(id uint) error
+	Revoke(id uint) error
 	Enroll(req dto.NodeEnrollRequest) (*dto.NodeEnrollResponse, error)
 }
 
@@ -151,6 +152,16 @@ func (s *NodeService) Delete(id uint) error {
 	return nodeRepo.Delete(repo.WithByID(id))
 }
 
+// Revoke marks a node revoked without deleting its registry row (N10). A revoked
+// node is refused by the proxy dial path (buildNodeTransport), so a suspected
+// node is cut off immediately while its record is preserved for audit.
+func (s *NodeService) Revoke(id uint) error {
+	if _, err := nodeRepo.Get(repo.WithByID(id)); err != nil {
+		return buserr.New("ErrRecordNotFound")
+	}
+	return nodeRepo.Update(id, map[string]interface{}{"status": constant.NodeStatusRevoked})
+}
+
 // Enroll is called BY a joining node (token-gated, no session). It verifies the
 // enrollment token (HMAC + expiry), atomically consumes it (single-use), signs
 // the node's CSR into a per-node server leaf, pins the node's fingerprint, and
@@ -203,6 +214,8 @@ func (s *NodeService) Enroll(req dto.NodeEnrollRequest) (*dto.NodeEnrollResponse
 	}); err != nil {
 		return nil, err
 	}
+	// N13: audit the highest-value security event — a node was signed and bound.
+	global.LOG.Infof("node enrolled: id=%d name=%s addr=%s fingerprint=%s", node.ID, node.Name, node.Addr, fp)
 	return &dto.NodeEnrollResponse{
 		ServerCert:            string(leaf),
 		CACert:                string(pki.ca.CertPEM),

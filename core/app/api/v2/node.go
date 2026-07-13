@@ -86,6 +86,27 @@ func (b *BaseApi) DeleteNode(c *gin.Context) {
 }
 
 // @Tags Node
+// @Summary Revoke a node (keeps the registry row for audit)
+// @Accept json
+// @Param request body dto.OperateByID true "request"
+// @Success 200
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /core/nodes/revoke [post]
+// @x-panel-log {"bodyKeys":["id"],"paramKeys":[],"BeforeFunctions":[{"input_column":"id","input_value":"id","isList":false,"db":"nodes","output_column":"name","output_value":"name"}],"formatZH":"撤销节点 [name]","formatEN":"revoke node [name]"}
+func (b *BaseApi) RevokeNode(c *gin.Context) {
+	var req dto.OperateByID
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	if err := nodeService.Revoke(req.ID); err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.Success(c)
+}
+
+// @Tags Node
 // @Summary Enroll a node (token-gated, called by a joining node)
 // @Accept json
 // @Param request body dto.NodeEnrollRequest true "request"
