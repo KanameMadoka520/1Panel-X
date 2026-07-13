@@ -2574,6 +2574,9 @@ const message = {
         nodeStatus_online: 'Online',
         nodeStatus_offline: 'Offline',
         nodeStatus_revoked: 'Revoked',
+        revokeNode: 'Revoke',
+        nodeRevokeHelper:
+            'Revoke node "{0}"? Core stops proxying to it immediately, but its record is kept for audit. You can delete it later.',
         user: 'Panel user',
         userChange: 'Change panel user',
         userChangeHelper: 'Changing the panel user will log you out. Continue?',

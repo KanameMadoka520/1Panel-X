@@ -31,6 +31,9 @@
                     </el-table-column>
                     <el-table-column :label="$t('commons.table.operate')" prop="operate" min-width="120" fix="right">
                         <template #default="{ row }">
+                            <el-button v-if="row.status !== 'revoked'" link type="warning" @click="onRevoke(row)">
+                                {{ $t('setting.revokeNode') }}
+                            </el-button>
                             <el-button link type="primary" @click="onDelete(row)">
                                 {{ $t('commons.button.delete') }}
                             </el-button>
@@ -94,7 +97,7 @@ import type { FormInstance, FormRules } from 'element-plus';
 import { ElMessageBox } from 'element-plus';
 import i18n from '@/lang';
 import { Setting } from '@/api/interface/setting';
-import { listNodeOptions, createNode, deleteNode } from '@/api/modules/setting';
+import { listNodeOptions, createNode, deleteNode, revokeNode } from '@/api/modules/setting';
 import { MsgSuccess } from '@/utils/message';
 import { copyText } from '@/utils/clipboard';
 
@@ -162,6 +165,22 @@ const onDelete = (row: Setting.NodeItem) => {
     ).then(async () => {
         await deleteNode(row.id);
         MsgSuccess(i18n.global.t('commons.msg.deleteSuccess'));
+        await search();
+    });
+};
+
+const onRevoke = (row: Setting.NodeItem) => {
+    ElMessageBox.confirm(
+        i18n.global.t('setting.nodeRevokeHelper', [row.name]),
+        i18n.global.t('commons.msg.infoTitle'),
+        {
+            confirmButtonText: i18n.global.t('commons.button.confirm'),
+            cancelButtonText: i18n.global.t('commons.button.cancel'),
+            type: 'warning',
+        },
+    ).then(async () => {
+        await revokeNode(row.id);
+        MsgSuccess(i18n.global.t('commons.msg.operationSuccess'));
         await search();
     });
 };

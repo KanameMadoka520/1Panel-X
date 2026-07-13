@@ -49,6 +49,9 @@ export const createNode = (params: Setting.NodeCreate) => {
 export const deleteNode = (id: number) => {
     return http.post(`/core/nodes/del`, { id: id });
 };
+export const revokeNode = (id: number) => {
+    return http.post(`/core/nodes/revoke`, { id: id });
+};
 export const updateNodeFavorite = (id: number, isFavorite: boolean) => {
     return http.post(`/core/xpack/nodes/favorite`, { id, isFavorite });
 };

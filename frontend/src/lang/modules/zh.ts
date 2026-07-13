@@ -2416,6 +2416,8 @@ const message = {
         nodeStatus_online: '在线',
         nodeStatus_offline: '离线',
         nodeStatus_revoked: '已撤销',
+        revokeNode: '撤销',
+        nodeRevokeHelper: '撤销节点“{0}”？core 会立即停止向其转发，但保留其记录以便审计。你之后可再删除。',
         user: '面板用户',
         userChange: '修改面板用户',
         userChangeHelper: '修改面板用户将退出登录，是否继续？',
