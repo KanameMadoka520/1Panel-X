@@ -210,11 +210,21 @@ The last deferred branding slice (P2): operator-authored login-page welcome/subt
 
 **Plans:** 11-01 defined.
 
+## Current Milestone: v1.5 Secure Multi-Node (keystone)
+
+The keystone the 15+ commercial capabilities depend on: authenticated node enrollment + mutual-TLS federation, clean-room. Grounded in a triangulated recon (4 probes) + a full threat model (N1–N15, `.planning/research/NODE-ENROLLMENT-DESIGN.md`) + an adversarial security review (10 agents, **0 confirmed defects**). Slice A (backend PKI+enrollment) + Slice B (community node UI) ship now; Slice C (cross-network live acceptance) is deferred — needs a second VPS. Decision: `.planning/v1.5-MILESTONE-DECISION.md`.
+
+Key finding: the community source already ships a **hollow mTLS shell** (two-mode listener, `RequireAndVerifyClientCert`, encrypted cert settings, `Proxy-Id`, the `CurrentNode` interceptor + switcher) — hardwired to single-host master. v1.5 supplies the missing security pieces behind the existing build-tag seams; the single-host posture is never regressed (node mode is opt-in after enrollment).
+
+- [x] **Phase 13: Node Registry + CA + Enrollment (backend)** — nodes registry + core-owned private CA + single-use HMAC enrollment token (N1 atomic burn / N2 HMAC / N3 TTL+scope / N4 master-fp embed) + token-gated CSR-signing enroll endpoint (N13 CN-imposed, rate-limited, audit-logged); SSRF addr validation (N14); revoke keeps the audit row (N10). Single-box loopback mTLS proof. [NODE-ENROLL-01]
+- [x] **Phase 14: Core→Node mTLS Proxy + Agent Validation + Bootstrap (backend)** — real remote proxy (per-node fingerprint pin N5/N8, registry-only target N14, no downgrade N12, revoked/offline refused N10); agent `ValidateCertificate` pins the master (N6) + inbound `X-Panel-User` stripped (N7); `LoadNodeInfo` node-mode-only-if-provisioned, default master, nil-DB safe; node bootstrap (local keypair+CSR, key never transmitted N9). [NODE-PROXY-01]
+- [x] **Phase 15: Community Node Management UI + Honest Re-gate (frontend)** — `/settings/nodes` page (add→enrollment token/list/revoke/delete), gated on `isAdmin` only — **no license state forged**; reuses the existing `CurrentNode` interceptor. [NODE-UI-01]
+
+Release: `v1.5.0-open.1`. Milestone audit: `gaps_found` — cross-network live acceptance (Slice C) + browser UAT pending; not archived.
+
 ## Future Milestone Themes
 
-These themes are intentionally outside v1.0–v1.3. They have no current phase number and must not be described as implemented. Ordering reflects the dependency graph and risk ranking in `.planning/research/CAPABILITY-MATRIX.md`:
-
-1. **v1.5 Secure multi-node** - the keystone the 15+ commercial capabilities depend on; needs a full threat model (identity, enrollment token, mutual mTLS, rotation, replay, audit, failure consistency) and a second VPS to accept. The branding cluster (v1.2–v1.4) is complete, so this is the next major domain.
+These themes are intentionally outside v1.0–v1.5. They have no current phase number and must not be described as implemented. Ordering reflects the dependency graph and risk ranking in `.planning/research/CAPABILITY-MATRIX.md`:
 
 1. Advanced WAF and website request monitoring.
 2. Secure multi-node enrollment, synchronization, overview, and RBAC.
@@ -224,4 +234,4 @@ These themes are intentionally outside v1.0–v1.3. They have no current phase n
 
 ---
 *Roadmap created: 2026-07-10*
-*Current milestone: v1.1 Open Enhancement Hardening (v1.0 remains release-candidate with 20 UAT pending)*
+*Current milestone: v1.5 Secure Multi-Node (keystone) — backend PKI+enrollment+mTLS proxy (both modules) + community node UI shipped as v1.5.0-open.1; cross-network live acceptance deferred (Slice C, needs 2nd VPS). v1.0–v1.4 UAT debt persists.*

@@ -174,6 +174,45 @@ Acceptance criteria:
 4. `login/index.vue` preloads the uploaded loginImage/loginBackground reactively (watch `themeConfig`), so an uploaded login image/background displays on the community login page (fixes `LOGIN-HERO-RENDER`).
 5. Focused Go tests + full core regression pass; changed-file ESLint + `npm run build:pro` pass; an adversarial security review of the diff is recorded; live login-page render is human UAT.
 
+## v1.5 Requirements (current milestone: Secure Multi-Node — keystone)
+
+**Note:** v1.0–v1.4 human UAT debt persists. v1.5 opens the keystone: authenticated node enrollment + mutual-TLS federation, as a clean-room re-implementation. Slice A (backend PKI+enrollment) + Slice B (community node UI) ship now; Slice C (cross-network live acceptance) is deferred — needs a second VPS. Rationale: `.planning/v1.5-MILESTONE-DECISION.md`, threat model `.planning/research/NODE-ENROLLMENT-DESIGN.md` (N1–N15).
+
+### Node Registry + CA + Enrollment (backend)
+
+- [ ] **NODE-ENROLL-01**: A community build can register remote nodes, mint single-use HMAC enrollment tokens, and sign per-node leaf certificates from a core-owned private CA, without any commercial license.
+
+Acceptance criteria:
+
+1. A `nodes` registry (model/migration/repo/service/authenticated CRUD API) is served under `/core/nodes/*`, including the read endpoints the community frontend already calls (`/core/nodes/list`, `/core/nodes/simple/all`).
+2. Core lazily generates and persists (encrypted at rest) a private CA + a core client cert + an HMAC enrollment secret; it signs a node's CSR into a leaf whose CN is imposed by core, not taken from the CSR (N13).
+3. Enrollment tokens are single-use (atomic burn, N1), HMAC-authenticated (N2, constant-time), nodeId-scoped + short-TTL (N3), and carry the master fingerprint the joining node pins (N4). The enroll endpoint is token-gated, sessionless, rate-limited, and audit-logged (N13).
+4. Node address is validated as a bare host/IP (no scheme/creds/path/control chars, N14); a node can be revoked (row preserved for audit, N10).
+5. Focused Go tests (crypto chain, CN imposition, token replay/forgery/expiry, revoke) + full core regression pass; cross-network live enrollment is human UAT (Slice C).
+
+### Core→Node mTLS Proxy + Agent Validation + Bootstrap (backend)
+
+- [ ] **NODE-PROXY-01**: Core proxies to enrolled nodes over mutual TLS with per-node fingerprint pinning; the agent pins the master and enters node mode only after enrollment, never regressing the single-host posture.
+
+Acceptance criteria:
+
+1. Core resolves the node from the registry (never client input, N14) and dials `https://addr:port` presenting its client cert, verifying `RootCAs=CA` AND the node's exact server-cert fingerprint (N5/N8); no `InsecureSkipVerify` and no plaintext fallback on the node path (N12); revoked/offline nodes are refused (N10).
+2. The agent `ValidateCertificate` pins the master's client-cert fingerprint and fails closed (N6); an unauthenticated caller cannot assert `X-Panel-User` (N7 — core strips inbound, agent binds to the mTLS master).
+3. The agent enters node mode ONLY when provisioned (`scope=node` + server/root certs); default stays single-host master, nil-DB safe at pre-DB init; a community install never binds the 0.0.0.0 mTLS listener.
+4. The node bootstrap generates its keypair + CSR locally (private key never transmitted, N9), pins the master from the token, and persists certs+scope, writing the Proxy-Id file, flipping to node mode last.
+5. Focused Go tests both modules (loopback mTLS pin match/mismatch, foreign-CA reject, provisioned-node decision, ApplyEnrollment) + an adversarial security review are recorded; live cross-network proxy + node-mode boot are human UAT (Slice C).
+
+### Community Node Management UI + Honest Re-gate (frontend)
+
+- [ ] **NODE-UI-01**: A community administrator can add, list, revoke, and remove nodes from an open settings page, gated by a genuine admin signal — never by forging license state.
+
+Acceptance criteria:
+
+1. A `/settings/nodes` page (static community route) lists nodes, adds a node (form → shows the single-use enrollment token, copyable, with expiry), revokes, and deletes.
+2. The page is reachable via a settings sub-nav entry gated on `isAdmin` only; `isProductPro`/`isXpackOrEE`/license flags are untouched — no license state is forged.
+3. Token/text render via interpolation, never `v-html`; API clients call the open `/core/nodes` endpoints; i18n zh + en.
+4. `npm run build:pro` and changed-file ESLint pass; live browser add→token/list/revoke/delete is human UAT.
+
 ## Future Requirements
 
 The following areas are acknowledged but are not committed to v1.0, v1.1, or v1.2 and do not map to current phases:
@@ -231,15 +270,18 @@ Each current requirement maps to exactly one phase.
 | BRAND-02 | Phase 9 | Human UAT Pending (v1.2) |
 | BRAND-IMG-01 | Phase 10 | Verified live (v1.3) |
 | BRAND-IMG-02 | Phase 11 | Human UAT Pending (v1.3) |
-| LOGIN-TEXT-01 | Phase 12 | Active (v1.4) |
+| LOGIN-TEXT-01 | Phase 12 | Human UAT Pending (v1.4) |
+| NODE-ENROLL-01 | Phase 13 | Human UAT Pending (v1.5) |
+| NODE-PROXY-01 | Phase 14 | Human UAT Pending (v1.5) |
+| NODE-UI-01 | Phase 15 | Human UAT Pending (v1.5) |
 
 **Coverage:**
 
-- v1.0: 5; v1.1: 2; v1.2: 2; v1.3: 2; v1.4: 1 total
-- Mapped to exactly one phase: 12
+- v1.0: 5; v1.1: 2; v1.2: 2; v1.3: 2; v1.4: 1; v1.5: 3 total
+- Mapped to exactly one phase: 15
 - Unmapped: 0
 - Mapped more than once: 0
 
 ---
 *Requirements defined: 2026-07-10*
-*Last updated: 2026-07-11 after defining milestone v1.4 (LOGIN-TEXT-01) — login-page text + the LOGIN-HERO-RENDER fix from the v1.3 live UAT*
+*Last updated: 2026-07-13 after defining milestone v1.5 (NODE-ENROLL-01/NODE-PROXY-01/NODE-UI-01) — secure multi-node keystone: backend PKI+enrollment+mTLS proxy (both modules) + community node UI; cross-network live acceptance deferred (Slice C, needs 2nd VPS)*
