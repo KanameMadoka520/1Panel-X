@@ -2557,6 +2557,23 @@ const message = {
     },
     setting: {
         panel: 'Panel',
+        nodes: 'Nodes',
+        addNode: 'Add node',
+        nodePort: 'Node port',
+        nodeEmpty: 'No nodes yet. Add a node and complete enrollment on the target host.',
+        nodeNamePlaceholder: 'A name to identify this node',
+        nodeManageHelper:
+            'Register remote hosts as nodes. Adding a node issues a single-use enrollment token; complete enrollment on the target host to bring it online over mutual TLS.',
+        nodeEnrollToken: 'Enrollment token',
+        nodeEnrollTokenHelper:
+            'This single-use token is valid for a short time. Provide it to the target host to complete enrollment. Keep it secret and do not reuse it.',
+        nodeTokenExpire: 'Expires at',
+        nodeDeleteHelper: 'Are you sure you want to remove node "{0}"? This revokes its access.',
+        nodeStatus_pending: 'Pending',
+        nodeStatus_enrolling: 'Enrolling',
+        nodeStatus_online: 'Online',
+        nodeStatus_offline: 'Offline',
+        nodeStatus_revoked: 'Revoked',
         user: 'Panel user',
         userChange: 'Change panel user',
         userChangeHelper: 'Changing the panel user will log you out. Continue?',
