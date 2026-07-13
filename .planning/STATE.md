@@ -5,17 +5,17 @@
 See: `.planning/PROJECT.md`, `.planning/REQUIREMENTS.md`, `.planning/v1.1-MILESTONE-DECISION.md`, `.planning/research/CAPABILITY-MATRIX.md` (updated 2026-07-10)
 
 **Core value:** Deliver a complete, security-conscious, fully open server panel without proprietary code or license bypasses.
-**Current milestone:** v1.5 Secure Multi-Node (keystone) — Slice A (backend PKI + enrollment) + Slice B (community node UI). Slice C (cross-network live acceptance) deferred, no 2nd VPS.
-**Current focus:** All 3 v1.5 phases implemented + verified. Phase 13 (registry+CA+enrollment), Phase 14 (core→node mTLS proxy + agent cert pin + node-mode-if-provisioned + bootstrap), Phase 15 (community node management page at /settings/nodes, honest admin-gate — no license forging; add→enrollment-token/list/delete). Next: task 24 (adversarial N1-N15 review → release v1.5.0-open.1 → docs/memory).
+**Current milestone:** v1.5 Secure Multi-Node (keystone) — SHIPPED `v1.5.0-open.1`. Slice A (backend PKI+enrollment) + Slice B (community node UI) done. Slice C (cross-network live acceptance) deferred, no 2nd VPS.
+**Current focus:** v1.5 complete: 3 phases implemented + verified both modules, 0-confirmed-defect adversarial review (N7/N10/N13 hardenings adopted), released + verified, docs/memory updated. Milestone audit `gaps_found` — Slice C + browser UAT pending, not archived. Next domain candidates: Slice C live acceptance (needs 2nd VPS) OR the next future theme (WAF/monitoring, RBAC, etc.).
 
 ## Current Position
 
-Milestone: v1.5 Secure Multi-Node IN PROGRESS. Phases 13 + 14 (all backend, both modules) done + committed (58 ahead of baseline, all KanameMadoka520, worktree clean). Prior: v1.4 `v1.4.0-open.1`, v1.3 `v1.3.0-open.1` (BRAND-IMG-01 live), v1.2/v1.1/v1.0. None archived.
-Phase: 13 (registry + CA + enrollment token) and 14 (core→node mTLS proxy + agent cert pin + node-mode-if-provisioned + bootstrap) implemented + automatically verified. Phase 15 (community node UI + honest re-gate) pending; then task 24 (review + release).
-Status: v1.5 backend automated gates PASS — core nodepki 10 tests (crypto + single-box loopback mTLS proof + N1/N2/N3/N5/N6/N8/N13), core node service 4 tests (N14 SSRF/port/N1 replay/N2 forged), core helper 3 tests (N5 pin proxy/resolve), agent nodepki 4 tests, agent helper 3 tests (IsProvisionedNode default-master exhaustive/ApplyEnrollment/N6 ValidateCertificate); gofmt/vet/build clean both modules. No release yet (after Phase 15 + adversarial review, task #24).
-Last activity: 2026-07-13 - Phase 15 committed in 3 scoped commits (feat api/feat page+routes/feat i18n); ESLint 0 + build:pro OK. 62 ahead of baseline.
+Milestone: v1.5 Secure Multi-Node SHIPPED `v1.5.0-open.1` (revision `6d363f6ef`, dirty=false, dual-layer checksums 8/8+7/7). All 6 releases present; v1.0–v1.4 re-verify OK. Prior: v1.4/v1.3(BRAND-IMG-01 live)/v1.2/v1.1/v1.0. None archived.
+Phase: 13 (registry+CA+enrollment), 14 (core→node mTLS proxy + agent cert pin + node-mode-if-provisioned + bootstrap), 15 (community node UI + honest admin-gate) all implemented + verified + released.
+Status: `gaps_found` — automated gates PASS both modules (core nodepki 10 + node service 4 + helper 3; agent nodepki 4 + helper 3; full core go test exit 0; ESLint 0 + build:pro), adversarial review 0 confirmed defects (N7/N10/N13 adopted). Slice C (cross-network live acceptance) + browser UAT pending on a 2nd VPS. Not archived.
+Last activity: 2026-07-13 - Released + verified v1.5.0-open.1; hardening (N7/N10/N13) from review committed; REQUIREMENTS/ROADMAP/audit/roadmap-note updated. ~70 ahead of baseline, all KanameMadoka520.
 
-Progress: v1.0–v1.4 released (branding cluster v1.2–v1.4 feature-complete). v1.5 [#########·] Phases 13+14+15/3 IMPLEMENTED + verified (backend both modules + community node UI). Remaining: task 24 — adversarial N1-N15 review + release v1.5.0-open.1 + docs/memory. Cross-network live boot + operate flow deferred (Slice C, needs 2nd VPS).
+Progress: v1.0–v1.5 released. Branding cluster (v1.2–v1.4) feature-complete; multi-node keystone backend (both modules) + community UI shipped. v1.5 [##########] released, gaps_found (Slice C 2-box acceptance deferred). Agent binary changed this milestone (b0fbe93f…, no longer byte-identical to v1.1–v1.4).
 
 ## Repository Snapshot
 
