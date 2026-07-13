@@ -96,5 +96,14 @@ The community frontend already ships the entire node-*targeting* plumbing — on
 - Whether Slice A flips `global.IsMaster` in a shipped binary or only in the loopback test harness. **Lean: keep production default master; node mode is opt-in via a provisioned node install**, so we never regress the single-host security posture.
 - Fingerprint algorithm + pin storage column shape (SHA-256 of DER, hex) — settle in the migration.
 
+## Post-implementation adversarial review (2026-07-13, workflow wf_349d7556-0ef)
+
+10 agents (6 lenses + per-finding verify). **0 confirmed exploitable defects**; 4 raw findings all high-confidence refuted. The refuted findings surfaced legitimate doc-overclaim / defense-in-depth gaps, all now **closed** so the N-table is not overclaimed:
+
+- **N7 (adopted):** core now unconditionally `Del`s any inbound `X-Panel-User` before the conditional `Set` (`core/init/router/proxy.go`), so a client cannot assert an identity on the sessionless bypass paths. (Was refuted — the only consumer, agent `alert.go`, is not on those paths — but the strip makes N7 airtight.)
+- **N10 (implemented):** the doc previously promised "manual revoke ships now" but no revoke existed and `revoked` was dead code. Now real: `NodeService.Revoke` sets status=revoked (row preserved for audit), and the dial path (`buildNodeTransport`) refuses `revoked`/`offline` nodes; endpoint `POST /core/nodes/revoke` + a community UI action. Full deletion still also cuts a node off.
+- **N13 (implemented):** enroll endpoint now has a per-IP fixed-window rate limit (`core/router/ro_node.go`, dependency-free) and a success audit log line (`node enrolled: id/name/addr/fingerprint`). The single-use HMAC token remains the primary control.
+- **N4 (confirmed honest, no change):** when core serves plain HTTP, `coreServerFingerprint()` returns "" and the token carries an empty master fingerprint — but the agent's `EnrollTLSConfig("")` is **fail-closed** (standard CA+hostname verification, no `InsecureSkipVerify`), so an empty pin makes an HTTPS enroll ABORT rather than accept a MITM; and the live enroll path is Slice C (not wired). Documented "best-effort"; agent behavior verified safe.
+
 ---
-*Design by KanameMadoka520, 2026-07-12. Triangulated recon (3 probes). Extends the v1.4 roadmap; the branding cluster (v1.2–v1.4) is feature-complete and this opens the multi-node keystone.*
+*Design by KanameMadoka520, 2026-07-12 (review reconciliation 2026-07-13). Triangulated recon (3 probes) + adversarial review (10 agents). Extends the v1.4 roadmap; the branding cluster (v1.2–v1.4) is feature-complete and this opens the multi-node keystone.*
