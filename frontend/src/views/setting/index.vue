@@ -25,6 +25,10 @@ const buttons = computed<RouterButton[]>(() => {
                       label: i18n.global.t('setting.safe'),
                       path: '/settings/safe',
                   },
+                  {
+                      label: i18n.global.t('setting.nodes'),
+                      path: '/settings/nodes',
+                  },
               ]
             : []),
         ...(globalStore.hasPermission('alert_view')

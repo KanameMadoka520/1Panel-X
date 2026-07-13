@@ -51,6 +51,18 @@ const settingRouter = {
                     },
                 },
                 {
+                    path: 'nodes',
+                    name: 'Nodes',
+                    component: () => import('@/views/setting/node/index.vue'),
+                    hidden: true,
+                    meta: {
+                        parent: 'menu.settings',
+                        title: 'setting.nodes',
+                        activeMenu: '/settings',
+                        adminOnly: true,
+                    },
+                },
+                {
                     path: 'alert',
                     name: 'Alert',
                     component: () => import('@/views/setting/alert/index.vue'),
