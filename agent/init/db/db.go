@@ -14,6 +14,7 @@ func Init() {
 	global.MonitorDB = common.LoadDBConnByPath(path.Join(global.Dir.DbDir, "monitor.db"), "monitor")
 	global.GPUMonitorDB = common.LoadDBConnByPath(path.Join(global.Dir.DbDir, "gpu_monitor.db"), "gpu_monitor")
 	global.AlertDB = common.LoadDBConnByPath(path.Join(global.Dir.DbDir, "alert.db"), "alert")
+	global.WebsiteStatDB = common.LoadDBConnByPath(path.Join(global.Dir.DbDir, "website_stat.db"), "website_stat")
 
 	if _, err := os.Stat(path.Join(global.Dir.DbDir, "core.db")); err == nil {
 		global.CoreDB = common.LoadDBConnByPath(path.Join(global.Dir.DbDir, "core.db"), "core")

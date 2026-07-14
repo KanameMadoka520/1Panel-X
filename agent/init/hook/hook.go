@@ -176,4 +176,7 @@ func initAlertTask() {
 func initMonitorDB() {
 	_ = global.MonitorDB.AutoMigrate(&model.MonitorBase{}, &model.MonitorNetwork{}, &model.MonitorGPU{}, &model.MonitorIO{})
 	_ = global.TaskDB.AutoMigrate(&model.Task{})
+	if global.WebsiteStatDB != nil {
+		_ = global.WebsiteStatDB.AutoMigrate(&model.WebsiteAccessStat{}, &model.WebsiteAccessRank{}, &model.WebsiteAccessCursor{})
+	}
 }
