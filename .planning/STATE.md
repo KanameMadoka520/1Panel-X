@@ -5,8 +5,8 @@
 See: `.planning/PROJECT.md`, `.planning/REQUIREMENTS.md`, `.planning/v1.1-MILESTONE-DECISION.md`, `.planning/research/CAPABILITY-MATRIX.md` (updated 2026-07-10)
 
 **Core value:** Deliver a complete, security-conscious, fully open server panel without proprietary code or license bypasses.
-**Current milestone:** v1.6 Website Access Monitoring IN PROGRESS (the feasible half of the "WAF/monitoring" domain). v1.5 Secure Multi-Node SHIPPED `v1.5.0-open.1` (gaps_found, Slice C deferred).
-**Current focus:** WAF-proper deferred — engine (1pwaf/OpenResty Lua) is ABSENT from the tree (closed app), a community WAF would mean shipping our own engine (XL, opt-in only). v1.6 does the CI-verifiable monitoring half. Phase 16 (nginx access.log parser + time-series/top-N aggregator, pure functions, fixture-tested) DONE. Next: Phase 17 (store + incremental tailer + agent GeoIP reader + API) → Phase 18 (dashboard frontend + honest gate). Design: `.planning/research/WEBSITE-MONITORING-DESIGN.md`; decision: `.planning/v1.6-MILESTONE-DECISION.md`.
+**Current milestone:** TWO tracks in flight (user opted into WAF-proper alongside monitoring, 2026-07-13). v1.6 Website Access Monitoring: Phase 16+17 DONE (parser/aggregator + backend store/tailer/geo/API), Phase 18 (dashboard frontend) pending. v1.7 WAF-Proper (own-engine): design done, **Phase 19 (`coraza-gateway` engine) DONE (CI heart)**. v1.5 Secure Multi-Node SHIPPED `v1.5.0-open.1` (gaps_found, Slice C deferred).
+**Current focus:** WAF-proper is now a REAL engine, not a deferral: the closed 1pwaf/OpenResty Lua engine is ABSENT so we ship our own — OWASP Coraza v3 + CRS v4 (PL1) as a loopback reverse-proxy sidecar (`coraza-gateway/`, separate Go module) behind nginx TLS termination. Phase 19 binary (engine compile-then-swap W9, detection/block modes, recover block-vs-pass W1, no-leak block page W7, body caps W3) has 10/10 CI tests: SQLi/XSS/traversal→403, clean→200, detection passes+logs. Next WAF: Phase 20 (attack-event store) → 21 packaging → 22 nginx wiring → 23 frontend. Docs: `.planning/research/WAF-ENGINE-DESIGN.md`, `.planning/v1.7-MILESTONE-DECISION.md` (7 open decisions, provisional defaults adopted). v1.6 monitoring design: `.planning/research/WEBSITE-MONITORING-DESIGN.md`.
 
 ## Current Position
 
@@ -15,7 +15,7 @@ Phase: 13 (registry+CA+enrollment), 14 (core→node mTLS proxy + agent cert pin 
 Status: `gaps_found` — automated gates PASS both modules (core nodepki 10 + node service 4 + helper 3; agent nodepki 4 + helper 3; full core go test exit 0; ESLint 0 + build:pro), adversarial review 0 confirmed defects (N7/N10/N13 adopted). Slice C (cross-network live acceptance) + browser UAT pending on a 2nd VPS. Not archived.
 Last activity: 2026-07-13 - v1.5 shipped/verified/documented. Opened v1.6: 2 recon probes (monitoring surface + WAF engine absence), design + decision docs, Phase 16 core (weblog parser + aggregator, 9 fixture tests PASS) committed. 73 ahead of baseline, all KanameMadoka520, worktree clean.
 
-Progress: v1.0–v1.5 released. v1.6 [###·······] Phase 16/3 done (access-log parser + aggregator, CI heart); Phases 17 (store+tailer+geo+API) + 18 (dashboard frontend) next, then review+release. WAF-proper deferred (engine absent, own-engine XL, opt-in). v1.5 agent binary b0fbe93f (no longer byte-identical to v1.1–v1.4).
+Progress: v1.0–v1.5 released. v1.6 monitoring [######····] Phase 16+17 done (parser/aggregator + store/tailer/geo/API, all CI-tested), Phase 18 frontend + review + release pending. v1.7 WAF-proper [##········] Phase 19 done (coraza-gateway real engine, 10/10 CI), Phases 20-23 next. Neither v1.6 nor v1.7 released yet. v1.5 agent binary b0fbe93f.
 
 ## Repository Snapshot
 
