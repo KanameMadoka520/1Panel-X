@@ -12,6 +12,7 @@ const (
 	RankIP      = "ip"
 	RankReferer = "referer"
 	RankStatus  = "status"
+	RankRegion  = "region"
 )
 
 // Bucket is per-(website, time-bucket) aggregated traffic. Uv is the count of
@@ -97,6 +98,35 @@ func Aggregate(entries []AccessEntry, bucketSize time.Duration, topN int) ([]Buc
 		ranks = append(ranks, topRanks(kind, rankCounts[kind], topN)...)
 	}
 	return out, ranks
+}
+
+// RegionRanks builds a top-N region ranking from entries. The geo lookup is
+// injected as resolve(ip) so this package stays pure and dependency-free (the
+// caller passes an agent/utils/geo-backed resolver, or a no-op when the GeoIP
+// database is absent — in which case this returns nil). A resolve that returns
+// "" (unknown) is skipped, so a missing mmdb degrades gracefully to no region
+// data rather than a wrong one.
+func RegionRanks(entries []AccessEntry, resolve func(ip string) string, topN int) []RankItem {
+	if resolve == nil {
+		return nil
+	}
+	counts := map[string]int64{}
+	cache := map[string]string{}
+	for _, e := range entries {
+		if e.IP == "" {
+			continue
+		}
+		region, ok := cache[e.IP]
+		if !ok {
+			region = resolve(e.IP)
+			cache[e.IP] = region
+		}
+		if region == "" {
+			continue
+		}
+		counts[region]++
+	}
+	return topRanks(RankRegion, counts, topN)
 }
 
 func topRanks(kind string, counts map[string]int64, topN int) []RankItem {
