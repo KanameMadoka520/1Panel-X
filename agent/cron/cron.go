@@ -41,6 +41,9 @@ func Run() {
 	if _, err := global.Cron.AddJob("@daily", job.NewWebsiteJob()); err != nil {
 		global.LOG.Errorf("can not add  website corn job: %s", err.Error())
 	}
+	if _, err := global.Cron.AddJob("@every 10m", job.NewWebsiteStatJob()); err != nil {
+		global.LOG.Errorf("can not add website stat corn job: %s", err.Error())
+	}
 	if _, err := global.Cron.AddJob("0 */6 * * *", job.NewSSLJob()); err != nil {
 		global.LOG.Errorf("can not add  ssl corn job: %s", err.Error())
 	}
