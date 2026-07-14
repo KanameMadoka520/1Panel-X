@@ -164,3 +164,83 @@ func TestAggregateEmpty(t *testing.T) {
 		t.Fatalf("empty input must yield empty output: %d buckets, %d ranks", len(buckets), len(ranks))
 	}
 }
+
+func at(hour, min int, end int64) LineAt {
+	return LineAt{
+		Entry: AccessEntry{Time: time.Date(2026, 7, 13, hour, min, 0, 0, time.UTC), IP: "1.1.1.1"},
+		End:   end,
+	}
+}
+
+func TestPartitionClosedFinalizesOnlyClosedPrefix(t *testing.T) {
+	now := time.Date(2026, 7, 13, 11, 30, 0, 0, time.UTC) // open bucket = 11:00
+	lines := []LineAt{
+		at(10, 0, 100),  // closed
+		at(10, 30, 200), // closed
+		at(11, 5, 300),  // open — stop here
+		at(11, 10, 400), // held back
+	}
+	closed, advanceTo, ok := PartitionClosed(lines, now, time.Hour)
+	if !ok || advanceTo != 200 || len(closed) != 2 {
+		t.Fatalf("want 2 closed + advanceTo=200 + ok, got closed=%d advanceTo=%d ok=%v", len(closed), advanceTo, ok)
+	}
+}
+
+func TestPartitionClosedNoneReady(t *testing.T) {
+	now := time.Date(2026, 7, 13, 11, 30, 0, 0, time.UTC)
+	lines := []LineAt{at(11, 5, 100), at(11, 20, 200)} // all in the open bucket
+	closed, advanceTo, ok := PartitionClosed(lines, now, time.Hour)
+	if ok || advanceTo != 0 || len(closed) != 0 {
+		t.Fatalf("nothing should finalize: closed=%d advanceTo=%d ok=%v", len(closed), advanceTo, ok)
+	}
+}
+
+// The prefix rule holds back everything after the first open-bucket line, even a
+// later line that is itself in a closed bucket — so the cursor never skips an
+// un-finalized line when the log is written slightly out of order.
+func TestPartitionClosedStopsAtFirstOpenEvenIfLaterLineClosed(t *testing.T) {
+	now := time.Date(2026, 7, 13, 11, 30, 0, 0, time.UTC)
+	lines := []LineAt{
+		at(10, 0, 100),  // closed
+		at(11, 5, 200),  // open — stop
+		at(10, 40, 300), // closed but out of order → held back
+	}
+	closed, advanceTo, ok := PartitionClosed(lines, now, time.Hour)
+	if !ok || advanceTo != 100 || len(closed) != 1 {
+		t.Fatalf("want only first line finalized: closed=%d advanceTo=%d ok=%v", len(closed), advanceTo, ok)
+	}
+}
+
+func TestRegionRanks(t *testing.T) {
+	resolve := func(ip string) string {
+		switch ip {
+		case "1.1.1.1", "1.1.1.2":
+			return "CN"
+		case "2.2.2.2":
+			return "US"
+		default:
+			return "" // unknown → skipped
+		}
+	}
+	entries := []AccessEntry{
+		{IP: "1.1.1.1"}, {IP: "1.1.1.1"}, {IP: "1.1.1.2"}, // CN x3
+		{IP: "2.2.2.2"}, // US x1
+		{IP: "9.9.9.9"}, // unknown → skipped
+		{IP: ""},        // no IP → skipped
+	}
+	ranks := RegionRanks(entries, resolve, 10)
+	if len(ranks) != 2 || ranks[0].Kind != RankRegion || ranks[0].Key != "CN" || ranks[0].Count != 3 {
+		t.Fatalf("top region should be CN x3: %+v", ranks)
+	}
+	if ranks[1].Key != "US" || ranks[1].Count != 1 {
+		t.Fatalf("second region should be US x1: %+v", ranks)
+	}
+	// topN caps
+	if capped := RegionRanks(entries, resolve, 1); len(capped) != 1 || capped[0].Key != "CN" {
+		t.Fatalf("topN=1 should keep only CN: %+v", capped)
+	}
+	// nil resolver (no mmdb) degrades to no region data
+	if RegionRanks(entries, nil, 10) != nil {
+		t.Fatal("nil resolver must return nil")
+	}
+}
