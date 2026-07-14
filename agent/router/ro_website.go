@@ -91,6 +91,9 @@ func (a *WebsiteRouter) InitRouter(Router *gin.RouterGroup) {
 		websiteRouter.POST("/realip/config", baseApi.SetRealIPConfig)
 		websiteRouter.GET("/realip/config/:id", baseApi.GetRealIPConfig)
 
+		websiteRouter.POST("/:id/monitor/stat", baseApi.LoadWebsiteAccessStat)
+		websiteRouter.POST("/:id/monitor/rank", baseApi.LoadWebsiteAccessRank)
+
 		websiteRouter.GET("/resource/:id", baseApi.GetWebsiteResource)
 		websiteRouter.GET("/databases", baseApi.GetWebsiteDatabase)
 		websiteRouter.POST("/databases", baseApi.ChangeWebsiteDatabase)
