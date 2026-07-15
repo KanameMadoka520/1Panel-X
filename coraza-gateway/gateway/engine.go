@@ -30,14 +30,25 @@ const (
 // Engine holds the live Coraza WAF behind an atomic pointer so a ruleset reload
 // can swap it without locking the request path.
 type Engine struct {
-	waf atomic.Value // stores coraza.WAF
+	waf          atomic.Value // stores coraza.WAF
+	mode         Mode
+	bodyLimit    int
+	auditLogPath string // "" disables the attack-event audit log
 }
 
 // NewEngine compiles the CRS-backed ruleset for the given mode. A compile
 // failure is returned (never a half-built engine).
 func NewEngine(mode Mode, bodyLimit int) (*Engine, error) {
-	e := &Engine{}
-	if err := e.reloadRaw(directivesFor(mode, bodyLimit)); err != nil {
+	return NewEngineWithAudit(mode, bodyLimit, "")
+}
+
+// NewEngineWithAudit is NewEngine plus a JSON audit log: when auditLogPath is
+// non-empty, Coraza appends one JSON record per rule-matching transaction (in
+// both block and detection mode) that the agent tails into the attack-event
+// store (Phase 20). An empty path disables audit logging.
+func NewEngineWithAudit(mode Mode, bodyLimit int, auditLogPath string) (*Engine, error) {
+	e := &Engine{mode: mode, bodyLimit: bodyLimit, auditLogPath: auditLogPath}
+	if err := e.reloadRaw(directivesFor(mode, bodyLimit, auditLogPath)); err != nil {
 		return nil, fmt.Errorf("waf init failed: %w", err)
 	}
 	return e, nil
@@ -52,9 +63,11 @@ func (e *Engine) WAF() coraza.WAF {
 // (W9: compile-then-swap). On failure the running engine is kept and the error
 // returned, so a bad ruleset can never take the WAF down or leave it half-loaded.
 func (e *Engine) Reload(mode Mode, bodyLimit int) error {
-	if err := e.reloadRaw(directivesFor(mode, bodyLimit)); err != nil {
+	if err := e.reloadRaw(directivesFor(mode, bodyLimit, e.auditLogPath)); err != nil {
 		return fmt.Errorf("waf reload rejected (keeping running engine): %w", err)
 	}
+	e.mode = mode
+	e.bodyLimit = bodyLimit
 	return nil
 }
 
@@ -76,7 +89,7 @@ func (e *Engine) reloadRaw(directives string) error {
 
 // directivesFor renders the SecLang config. The CRS includes come first; our
 // engine/body directives come LAST so they win over the recommended defaults.
-func directivesFor(mode Mode, bodyLimit int) string {
+func directivesFor(mode Mode, bodyLimit int, auditLogPath string) string {
 	engineDirective := "SecRuleEngine On"
 	if mode == ModeDetection {
 		engineDirective = "SecRuleEngine DetectionOnly"
@@ -88,7 +101,7 @@ func directivesFor(mode Mode, bodyLimit int) string {
 	if inMem > inMemoryBodyCap {
 		inMem = inMemoryBodyCap
 	}
-	return fmt.Sprintf(`Include @coraza.conf-recommended
+	base := fmt.Sprintf(`Include @coraza.conf-recommended
 Include @crs-setup.conf.example
 Include @owasp_crs/*.conf
 %s
@@ -97,4 +110,18 @@ SecRequestBodyLimit %d
 SecRequestBodyInMemoryLimit %d
 SecRequestBodyLimitAction Reject
 `, engineDirective, bodyLimit, inMem)
+
+	if auditLogPath == "" {
+		return base
+	}
+	// RelevantOnly → only rule-matching transactions are logged; JSON serial →
+	// one self-contained JSON object per line for the agent tailer. Parts A
+	// (transaction/request meta) + B (request headers, incl. Host) + H (matched
+	// rule messages) + Z (terminator) are what the attack-event parser needs.
+	return base + fmt.Sprintf(`SecAuditEngine RelevantOnly
+SecAuditLogParts ABHZ
+SecAuditLogFormat json
+SecAuditLogType Serial
+SecAuditLog %s
+`, auditLogPath)
 }

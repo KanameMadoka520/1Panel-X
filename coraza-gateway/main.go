@@ -21,6 +21,7 @@ func main() {
 	upstream := flag.String("upstream", "", "upstream origin base URL, e.g. http://127.0.0.1:8080 (required)")
 	modeStr := flag.String("mode", "detection", "detection|block")
 	bodyLimit := flag.Int("body-limit", 13<<20, "max inspected request-body bytes")
+	auditLog := flag.String("audit-log", "", "path to append JSON attack-event audit records (empty disables)")
 	flag.Parse()
 
 	if *upstream == "" {
@@ -32,7 +33,7 @@ func main() {
 	}
 
 	mode := gateway.Mode(*modeStr)
-	engine, err := gateway.NewEngine(mode, *bodyLimit)
+	engine, err := gateway.NewEngineWithAudit(mode, *bodyLimit, *auditLog)
 	if err != nil {
 		log.Fatalf("coraza-gateway: %v", err)
 	}
