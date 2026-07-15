@@ -108,11 +108,21 @@ func splitRequest(req string) (method, uri, proto string) {
 }
 
 // clean bounds length and strips control characters (M1) so a forged field
-// cannot inject newlines/escape sequences into the store or the UI.
+// cannot inject newlines/escape sequences into the store or the UI. It also maps
+// the nginx placeholder "-" to empty.
 func clean(s string) string {
 	if s == "" || s == "-" {
 		return ""
 	}
+	return Clean(s)
+}
+
+// Clean is the exported control-character/length sanitizer (M1 / WAF W6): it
+// caps length at maxFieldLen and strips control characters (keeping tab), so an
+// attacker-controlled field — an access-log field or a WAF matched-data snippet —
+// cannot inject CRLF/terminal escapes into the store or UI. Unlike clean it does
+// not special-case "-".
+func Clean(s string) string {
 	if len(s) > maxFieldLen {
 		s = s[:maxFieldLen]
 	}
