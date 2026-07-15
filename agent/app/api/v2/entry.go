@@ -60,6 +60,7 @@ var (
 	websiteSSLService         = service.NewIWebsiteSSLService()
 	websiteAcmeAccountService = service.NewIWebsiteAcmeAccountService()
 	websiteStatService        = service.NewIWebsiteStatService()
+	wafEventService           = service.NewIWafEventService()
 
 	nginxService = service.NewINginxService()
 

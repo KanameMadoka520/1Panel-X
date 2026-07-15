@@ -93,6 +93,7 @@ func (a *WebsiteRouter) InitRouter(Router *gin.RouterGroup) {
 
 		websiteRouter.POST("/:id/monitor/stat", baseApi.LoadWebsiteAccessStat)
 		websiteRouter.POST("/:id/monitor/rank", baseApi.LoadWebsiteAccessRank)
+		websiteRouter.POST("/:id/waf/events", baseApi.LoadWafEvents)
 
 		websiteRouter.GET("/resource/:id", baseApi.GetWebsiteResource)
 		websiteRouter.GET("/databases", baseApi.GetWebsiteDatabase)
