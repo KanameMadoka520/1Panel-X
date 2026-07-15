@@ -179,4 +179,7 @@ func initMonitorDB() {
 	if global.WebsiteStatDB != nil {
 		_ = global.WebsiteStatDB.AutoMigrate(&model.WebsiteAccessStat{}, &model.WebsiteAccessRank{}, &model.WebsiteAccessCursor{})
 	}
+	if global.WafDB != nil {
+		_ = global.WafDB.AutoMigrate(&model.WafAttackEvent{}, &model.WafAuditCursor{})
+	}
 }

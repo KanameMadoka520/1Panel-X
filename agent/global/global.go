@@ -20,6 +20,7 @@ var (
 	CoreDB        *gorm.DB
 	AlertDB       *gorm.DB
 	WebsiteStatDB *gorm.DB
+	WafDB         *gorm.DB
 
 	LOG   *logrus.Logger
 	CONF  ServerConfig
