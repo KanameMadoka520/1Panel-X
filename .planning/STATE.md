@@ -15,7 +15,9 @@ Phase: 13 (registry+CA+enrollment), 14 (core→node mTLS proxy + agent cert pin 
 Status: `gaps_found` — automated gates PASS both modules (core nodepki 10 + node service 4 + helper 3; agent nodepki 4 + helper 3; full core go test exit 0; ESLint 0 + build:pro), adversarial review 0 confirmed defects (N7/N10/N13 adopted). Slice C (cross-network live acceptance) + browser UAT pending on a 2nd VPS. Not archived.
 Last activity: 2026-07-13 - v1.5 shipped/verified/documented. Opened v1.6: 2 recon probes (monitoring surface + WAF engine absence), design + decision docs, Phase 16 core (weblog parser + aggregator, 9 fixture tests PASS) committed. 73 ahead of baseline, all KanameMadoka520, worktree clean.
 
-Progress: v1.0–v1.5 released. v1.6 monitoring [######····] Phase 16+17 done (parser/aggregator + store/tailer/geo/API, all CI-tested), Phase 18 frontend + review + release pending. v1.7 WAF-proper [###·······] Phase 19 (real engine, 10/10 CI) + Phase 20 (attack-event store, CI) done, Phases 21-23 next. Neither v1.6 nor v1.7 released yet. v1.5 agent binary b0fbe93f.
+Progress: v1.0–v1.5 released. v1.6 monitoring [########··] Phase 16+17 (backend, CI) + Phase 18 (dashboard frontend, build:pro+ESLint clean) done; review done; release pending. v1.7 WAF-proper [####······] Phase 19 (real engine 10/10 CI) + Phase 20 (attack-event store, CI) + WAF attack-log frontend tab done; Phases 21-22 (packaging/nginx wiring, human-UAT) + 23 (full WAF config UI) next. Neither v1.6 nor v1.7 released yet. v1.5 agent binary b0fbe93f.
+
+Adversarial review (17-agent workflow, both tracks) done 2026-07-15: 13 candidates → 7 CONFIRMED, 6 refuted. All fixed + CI-tested except #7 (documented): (1) monitoring split-bucket undercount → atomic additive SaveFinalized (unique index + ON CONFLICT accumulate); (2) WAF secondary-domain mis-attribution → hostResolver includes Domains; (3/4) WAF non-idempotent ingest → TxID dedup (ON CONFLICT DO NOTHING); (5) gateway real client-IP → WithRealIPHeader(X-Real-IP); (6) response banner leak → StripFingerprintHeaders (W7); (7) log-rotation loss → documented known limitation.
 
 ## Repository Snapshot
 
