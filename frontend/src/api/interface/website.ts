@@ -771,4 +771,59 @@ export namespace Website {
         ids: number[];
         groupID: number;
     }
+
+    export interface AccessStatReq {
+        startTime?: string;
+        endTime?: string;
+    }
+
+    export interface AccessStat {
+        websiteID: number;
+        time: string;
+        pv: number;
+        uv: number;
+        bytes: number;
+        status2xx: number;
+        status3xx: number;
+        status4xx: number;
+        status5xx: number;
+    }
+
+    export interface AccessRankReq {
+        startTime?: string;
+        endTime?: string;
+        kind: string;
+        top?: number;
+    }
+
+    export interface AccessRank {
+        kind: string;
+        key: string;
+        count: number;
+    }
+
+    export interface WafEventReq {
+        startTime?: string;
+        endTime?: string;
+        category?: string;
+        page: number;
+        pageSize: number;
+    }
+
+    export interface WafEvent {
+        id: number;
+        websiteID: number;
+        time: string;
+        host: string;
+        sourceIP: string;
+        method: string;
+        uri: string;
+        ruleID: number;
+        ruleMsg: string;
+        category: string;
+        severity: string;
+        matchedData: string;
+        hitCount: number;
+        action: string;
+    }
 }

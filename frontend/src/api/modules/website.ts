@@ -401,3 +401,15 @@ export const updateWebsiteStream = (req: Website.WebsiteStreamUpdate) => {
 export const batchSetHttps = (req: Website.BatchSetHttps) => {
     return http.post(`/websites/batch/ssl`, req);
 };
+
+export const LoadWebsiteAccessStat = (id: number, req: Website.AccessStatReq) => {
+    return http.post<Website.AccessStat[]>(`/websites/${id}/monitor/stat`, req);
+};
+
+export const LoadWebsiteAccessRank = (id: number, req: Website.AccessRankReq) => {
+    return http.post<Website.AccessRank[]>(`/websites/${id}/monitor/rank`, req);
+};
+
+export const LoadWafEvents = (id: number, req: Website.WafEventReq) => {
+    return http.post<ResPage<Website.WafEvent>>(`/websites/${id}/waf/events`, req);
+};
