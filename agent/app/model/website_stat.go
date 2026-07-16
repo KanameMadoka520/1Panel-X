@@ -9,8 +9,8 @@ import "time"
 // hold-back logic in service/website_stat.go.
 type WebsiteAccessStat struct {
 	BaseModel
-	WebsiteID uint      `gorm:"index:idx_stat_site_time" json:"websiteID"`
-	Time      time.Time `gorm:"index:idx_stat_site_time" json:"time"`
+	WebsiteID uint      `gorm:"uniqueIndex:idx_stat_site_time" json:"websiteID"`
+	Time      time.Time `gorm:"uniqueIndex:idx_stat_site_time" json:"time"`
 	Pv        int64     `json:"pv"`
 	Uv        int64     `json:"uv"`
 	Bytes     int64     `json:"bytes"`
@@ -26,10 +26,10 @@ type WebsiteAccessStat struct {
 // time by summing Count grouped by (kind, key).
 type WebsiteAccessRank struct {
 	BaseModel
-	WebsiteID uint      `gorm:"index:idx_rank_site_time" json:"websiteID"`
-	Time      time.Time `gorm:"index:idx_rank_site_time" json:"time"`
-	Kind      string    `gorm:"index:idx_rank_kind" json:"kind"`
-	RankKey   string    `json:"key"`
+	WebsiteID uint      `gorm:"uniqueIndex:idx_rank_key" json:"websiteID"`
+	Time      time.Time `gorm:"uniqueIndex:idx_rank_key" json:"time"`
+	Kind      string    `gorm:"uniqueIndex:idx_rank_key" json:"kind"`
+	RankKey   string    `gorm:"uniqueIndex:idx_rank_key" json:"key"`
 	Count     int64     `json:"count"`
 }
 

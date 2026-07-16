@@ -102,6 +102,10 @@ func (s *WebsiteStatService) collectSite(statRepo repo.IWebsiteStatRepo, w model
 		offset = cursor.Offset
 	}
 	if info.Size() < offset { // rotated/truncated → re-read from the start
+		// Known limitation: the still-open (held-back) hour that lives only in the
+		// rotated-away file/backup is not recovered — up to ~1 hour of stats can be
+		// lost per rotation. The tailer reads only the live access.log; reading the
+		// rotated sibling/gz backup is a future enhancement.
 		offset = 0
 	}
 	if info.Size() == offset {
@@ -143,27 +147,24 @@ func (s *WebsiteStatService) collectSite(statRepo repo.IWebsiteStatRepo, w model
 		return nil // no bucket has closed yet; keep the cursor, persist nothing
 	}
 
-	statRows, rankRows, hours := buildRows(w.ID, closed, resolve)
+	statRows, rankRows := buildRows(w.ID, closed, resolve)
 
-	// Idempotent finalize: clear any prior rows for these buckets, then insert.
-	// Ordering (delete → insert → advance cursor) is self-healing: a crash before
-	// the cursor advance simply re-finalizes the same buckets next run.
-	if err := statRepo.DeleteHours(w.ID, hours); err != nil {
-		return err
-	}
-	if err := statRepo.BatchCreateStats(statRows); err != nil {
-		return err
-	}
-	if err := statRepo.BatchCreateRanks(rankRows); err != nil {
-		return err
-	}
-	return statRepo.SaveCursor(model.WebsiteAccessCursor{WebsiteID: w.ID, Path: logPath, Offset: advanceTo})
+	// Additive finalize in ONE transaction: each bucket row is upsert-accumulated
+	// (+=) and the cursor is advanced atomically. This is both crash-safe (a
+	// rollback leaves the cursor un-advanced, so the same lines simply
+	// re-accumulate correctly next run) and correct when the per-run byte cap
+	// (maxBytesPerRun) splits a single closed hour across runs: the later run
+	// accumulates onto the earlier row instead of replacing it, so PV/bytes/status
+	// stay exact. (Uv is per-flush distinct — exact for the common single-flush
+	// hour, a small over-count only for a hour split across runs.)
+	return statRepo.SaveFinalized(statRows, rankRows,
+		model.WebsiteAccessCursor{WebsiteID: w.ID, Path: logPath, Offset: advanceTo})
 }
 
 // buildRows groups finalized entries by hour bucket and, per bucket, produces
 // one stat row plus its top-N rank rows (uri/ip/referer/status via the pure
 // aggregator, region via the injected geo resolver).
-func buildRows(websiteID uint, entries []weblog.AccessEntry, resolve func(string) string) (stats []model.WebsiteAccessStat, ranks []model.WebsiteAccessRank, hours []time.Time) {
+func buildRows(websiteID uint, entries []weblog.AccessEntry, resolve func(string) string) (stats []model.WebsiteAccessStat, ranks []model.WebsiteAccessRank) {
 	groups := map[int64][]weblog.AccessEntry{}
 	for _, e := range entries {
 		k := e.Time.Truncate(statBucket).Unix()
@@ -171,7 +172,6 @@ func buildRows(websiteID uint, entries []weblog.AccessEntry, resolve func(string
 	}
 	for k, group := range groups {
 		bt := time.Unix(k, 0).UTC()
-		hours = append(hours, bt)
 
 		buckets, rk := weblog.Aggregate(group, statBucket, rankStoreTopN)
 		for _, b := range buckets { // exactly one bucket per single-hour group
@@ -190,7 +190,7 @@ func buildRows(websiteID uint, entries []weblog.AccessEntry, resolve func(string
 			})
 		}
 	}
-	return stats, ranks, hours
+	return stats, ranks
 }
 
 func (s *WebsiteStatService) prune(statRepo repo.IWebsiteStatRepo) {

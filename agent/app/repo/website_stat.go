@@ -5,29 +5,27 @@ import (
 
 	"github.com/1Panel-dev/1Panel/agent/app/model"
 	"github.com/1Panel-dev/1Panel/agent/global"
+	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
 type WebsiteStatRepo struct{}
 
 type IWebsiteStatRepo interface {
-	BatchCreateStats(list []model.WebsiteAccessStat) error
-	BatchCreateRanks(list []model.WebsiteAccessRank) error
+	// SaveFinalized upsert-accumulates the finalized stat/rank rows and advances
+	// the cursor in ONE transaction. Rows are added (+=) on conflict so a closed
+	// hour split across runs (by the per-run byte cap) accumulates correctly, and
+	// a crash rolls back both the rows and the cursor so the same lines re-apply
+	// cleanly next run.
+	SaveFinalized(stats []model.WebsiteAccessStat, ranks []model.WebsiteAccessRank, cursor model.WebsiteAccessCursor) error
 
-	// SumStats returns one summed row per bucket time in [start, end), ordered
-	// ascending. Grouping collapses the rare case of a bucket finalized in more
-	// than one flush into a single point.
+	// SumStats returns one summed row per bucket time in [start, end), ascending.
 	SumStats(websiteID uint, start, end time.Time) ([]model.WebsiteAccessStat, error)
-	// SumRanks returns the overall top-N for a kind across [start, end), summed
-	// per key and ordered by count desc.
+	// SumRanks returns the overall top-N for a kind across [start, end), summed per
+	// key and ordered by count desc.
 	SumRanks(websiteID uint, kind string, start, end time.Time, top int) ([]model.WebsiteAccessRank, error)
 
 	GetCursor(websiteID uint) (model.WebsiteAccessCursor, error)
-	SaveCursor(cursor model.WebsiteAccessCursor) error
-
-	// DeleteHours removes any stat/rank rows for the given bucket times so a
-	// finalized bucket can be re-written idempotently (crash-retry safe).
-	DeleteHours(websiteID uint, times []time.Time) error
 	PruneBefore(t time.Time) error
 }
 
@@ -35,18 +33,41 @@ func NewIWebsiteStatRepo() IWebsiteStatRepo {
 	return &WebsiteStatRepo{}
 }
 
-func (r *WebsiteStatRepo) BatchCreateStats(list []model.WebsiteAccessStat) error {
-	if len(list) == 0 {
-		return nil
-	}
-	return global.WebsiteStatDB.CreateInBatches(&list, 200).Error
-}
-
-func (r *WebsiteStatRepo) BatchCreateRanks(list []model.WebsiteAccessRank) error {
-	if len(list) == 0 {
-		return nil
-	}
-	return global.WebsiteStatDB.CreateInBatches(&list, 200).Error
+func (r *WebsiteStatRepo) SaveFinalized(stats []model.WebsiteAccessStat, ranks []model.WebsiteAccessRank, cursor model.WebsiteAccessCursor) error {
+	return global.WebsiteStatDB.Transaction(func(tx *gorm.DB) error {
+		for i := range stats {
+			s := stats[i]
+			if err := tx.Clauses(clause.OnConflict{
+				Columns: []clause.Column{{Name: "website_id"}, {Name: "time"}},
+				DoUpdates: clause.Assignments(map[string]interface{}{
+					"pv":        gorm.Expr("pv + ?", s.Pv),
+					"uv":        gorm.Expr("uv + ?", s.Uv),
+					"bytes":     gorm.Expr("bytes + ?", s.Bytes),
+					"status2xx": gorm.Expr("status2xx + ?", s.Status2xx),
+					"status3xx": gorm.Expr("status3xx + ?", s.Status3xx),
+					"status4xx": gorm.Expr("status4xx + ?", s.Status4xx),
+					"status5xx": gorm.Expr("status5xx + ?", s.Status5xx),
+				}),
+			}).Create(&s).Error; err != nil {
+				return err
+			}
+		}
+		for i := range ranks {
+			rk := ranks[i]
+			if err := tx.Clauses(clause.OnConflict{
+				Columns: []clause.Column{{Name: "website_id"}, {Name: "time"}, {Name: "kind"}, {Name: "rank_key"}},
+				DoUpdates: clause.Assignments(map[string]interface{}{
+					"count": gorm.Expr("`count` + ?", rk.Count),
+				}),
+			}).Create(&rk).Error; err != nil {
+				return err
+			}
+		}
+		return tx.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "website_id"}},
+			DoUpdates: clause.AssignmentColumns([]string{"path", "offset", "updated_at"}),
+		}).Create(&cursor).Error
+	})
 }
 
 func (r *WebsiteStatRepo) SumStats(websiteID uint, start, end time.Time) ([]model.WebsiteAccessStat, error) {
@@ -81,28 +102,6 @@ func (r *WebsiteStatRepo) GetCursor(websiteID uint) (model.WebsiteAccessCursor, 
 	var cursor model.WebsiteAccessCursor
 	err := global.WebsiteStatDB.Where("website_id = ?", websiteID).First(&cursor).Error
 	return cursor, err
-}
-
-// SaveCursor upserts the per-site cursor on website_id.
-func (r *WebsiteStatRepo) SaveCursor(cursor model.WebsiteAccessCursor) error {
-	// gorm stamps created_at/updated_at before the upsert, so the DoUpdates set
-	// writes a fresh updated_at on conflict.
-	return global.WebsiteStatDB.Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "website_id"}},
-		DoUpdates: clause.AssignmentColumns([]string{"path", "offset", "updated_at"}),
-	}).Create(&cursor).Error
-}
-
-func (r *WebsiteStatRepo) DeleteHours(websiteID uint, times []time.Time) error {
-	if len(times) == 0 {
-		return nil
-	}
-	if err := global.WebsiteStatDB.Where("website_id = ? AND `time` IN ?", websiteID, times).
-		Delete(&model.WebsiteAccessStat{}).Error; err != nil {
-		return err
-	}
-	return global.WebsiteStatDB.Where("website_id = ? AND `time` IN ?", websiteID, times).
-		Delete(&model.WebsiteAccessRank{}).Error
 }
 
 func (r *WebsiteStatRepo) PruneBefore(t time.Time) error {
