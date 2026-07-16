@@ -27,12 +27,20 @@
                 <el-button type="primary" :plain="index !== 'resource'" @click="changeTab('resource')">
                     {{ $t('website.source', 2) }}
                 </el-button>
+                <el-button type="primary" :plain="index !== 'monitor'" @click="changeTab('monitor')">
+                    {{ $t('website.monitor') }}
+                </el-button>
+                <el-button type="primary" :plain="index !== 'waf'" @click="changeTab('waf')">
+                    {{ $t('website.waf') }}
+                </el-button>
             </template>
             <template #main>
                 <MainDiv :heightDiff="260">
                     <Basic :website="website" v-if="index === 'basic' && website.id" :heightDiff="320"></Basic>
                     <Log :id="id" v-if="index === 'log'"></Log>
                     <Resource :id="id" v-if="index === 'resource'"></Resource>
+                    <Monitor :id="id" v-if="index === 'monitor'"></Monitor>
+                    <Waf :id="id" v-if="index === 'waf'"></Waf>
                 </MainDiv>
             </template>
         </LayoutContent>
@@ -44,6 +52,8 @@ import { onMounted, ref, watch } from 'vue';
 import Basic from './basic/index.vue';
 import Resource from './resource/index.vue';
 import Log from './log/index.vue';
+import Monitor from './monitor/index.vue';
+import Waf from './waf/index.vue';
 import WebsiteStatus from '@/views/website/website/status/index.vue';
 import { getWebsite } from '@/api/modules/website';
 import { GetRuntime } from '@/api/modules/runtime';
