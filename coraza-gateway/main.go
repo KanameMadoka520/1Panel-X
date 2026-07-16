@@ -3,13 +3,17 @@
 // before forwarding it to the site origin. It is designed to sit BEHIND nginx/
 // OpenResty (which stays the public TLS terminator and proxy_passes cleartext
 // into this gateway), so the WAF holds no private keys (W8).
+//
+// It runs in two modes: -upstream fronts a single origin; -config fronts several
+// protected sites, routing each request to its origin by Host (unknown Host is
+// denied, W12).
 package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
-	"net/http/httputil"
 	"net/url"
 	"time"
 
@@ -18,19 +22,16 @@ import (
 
 func main() {
 	listen := flag.String("listen", "127.0.0.1:9000", "loopback listen address (nginx proxy_pass target)")
-	upstream := flag.String("upstream", "", "upstream origin base URL, e.g. http://127.0.0.1:8080 (required)")
+	upstream := flag.String("upstream", "", "single-site upstream origin base URL, e.g. http://127.0.0.1:8080")
+	config := flag.String("config", "", "path to a multi-site routing config (JSON); takes precedence over -upstream")
 	modeStr := flag.String("mode", "detection", "detection|block")
 	bodyLimit := flag.Int("body-limit", 13<<20, "max inspected request-body bytes")
 	auditLog := flag.String("audit-log", "", "path to append JSON attack-event audit records (empty disables)")
 	realIP := flag.String("real-ip-header", "X-Real-IP", "trusted header carrying the true client IP set by the front proxy (empty disables)")
 	flag.Parse()
 
-	if *upstream == "" {
-		log.Fatal("coraza-gateway: -upstream is required")
-	}
-	origin, err := url.Parse(*upstream)
-	if err != nil || origin.Scheme == "" || origin.Host == "" {
-		log.Fatalf("coraza-gateway: invalid -upstream %q: %v", *upstream, err)
+	if *config == "" && *upstream == "" {
+		log.Fatal("coraza-gateway: one of -config or -upstream is required")
 	}
 
 	mode := gateway.Mode(*modeStr)
@@ -39,22 +40,31 @@ func main() {
 		log.Fatalf("coraza-gateway: %v", err)
 	}
 
-	rp := httputil.NewSingleHostReverseProxy(origin)
-	// W2: single, unambiguous HTTP framing to the origin (no h2 upgrade).
-	rp.Transport = &http.Transport{ForceAttemptHTTP2: false}
-	// W7: never leak the upstream error/topology in the body.
-	rp.ErrorHandler = func(w http.ResponseWriter, _ *http.Request, _ error) {
-		w.WriteHeader(http.StatusBadGateway)
-	}
-	// W7: strip upstream fingerprinting/banner headers from the public response.
-	rp.ModifyResponse = func(resp *http.Response) error {
-		gateway.StripFingerprintHeaders(resp.Header)
-		return nil
+	var handler http.Handler
+	var desc string
+	if *config != "" {
+		cfg, cerr := gateway.LoadConfig(*config)
+		if cerr != nil {
+			log.Fatalf("coraza-gateway: %v", cerr)
+		}
+		rt, rerr := gateway.NewRouter(cfg, engine, mode, *realIP)
+		if rerr != nil {
+			log.Fatalf("coraza-gateway: %v", rerr)
+		}
+		handler = rt
+		desc = fmt.Sprintf("%d sites", len(cfg.Sites))
+	} else {
+		origin, uerr := url.Parse(*upstream)
+		if uerr != nil || origin.Scheme == "" || origin.Host == "" {
+			log.Fatalf("coraza-gateway: invalid -upstream %q: %v", *upstream, uerr)
+		}
+		handler = gateway.NewHandler(engine, gateway.NewReverseProxy(origin), mode).WithRealIPHeader(*realIP)
+		desc = origin.String()
 	}
 
 	srv := &http.Server{
 		Addr:    *listen,
-		Handler: gateway.NewHandler(engine, rp, mode).WithRealIPHeader(*realIP),
+		Handler: handler,
 		// W3: the public listener must bound slow-loris / header abuse itself.
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
@@ -63,6 +73,6 @@ func main() {
 		MaxHeaderBytes:    1 << 20,
 	}
 
-	log.Printf("coraza-gateway: listening on %s -> %s (mode=%s)", *listen, origin, mode)
+	log.Printf("coraza-gateway: listening on %s -> %s (mode=%s)", *listen, desc, mode)
 	log.Fatal(srv.ListenAndServe())
 }
