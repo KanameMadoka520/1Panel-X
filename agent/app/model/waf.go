@@ -8,6 +8,7 @@ import "time"
 // before it is stored (W6).
 type WafAttackEvent struct {
 	BaseModel
+	TxID        string    `gorm:"uniqueIndex" json:"txID"`
 	WebsiteID   uint      `gorm:"index:idx_waf_site_time" json:"websiteID"`
 	Time        time.Time `gorm:"index:idx_waf_site_time" json:"time"`
 	Host        string    `json:"host"`

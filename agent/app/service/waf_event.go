@@ -116,6 +116,7 @@ func buildEvents(lines [][]byte, resolve func(host string) uint) []model.WafAtta
 			action = "blocked"
 		}
 		out = append(out, model.WafAttackEvent{
+			TxID:        ev.TxID,
 			WebsiteID:   resolve(ev.Host),
 			Time:        ev.Time,
 			Host:        ev.Host,
@@ -134,14 +135,20 @@ func buildEvents(lines [][]byte, resolve func(host string) uint) []model.WafAtta
 	return out
 }
 
-// hostResolver builds a host→websiteID map from the site registry (primary
-// domain), so an event's Host is attributed to the owning website. Unknown hosts
-// map to 0.
+// hostResolver builds a host→websiteID map from the site registry — the primary
+// domain AND every additional/aliased domain (WebsiteRepo.List preloads Domains)
+// — so an attack on any of a site's hostnames is attributed to it, not lost to
+// websiteID 0. Limitation: hostnames are matched without port, so two managed
+// sites sharing the same hostname on different ports would collide (last wins);
+// this is rare and acceptable for the first slice.
 func hostResolver() func(string) uint {
 	byHost := map[string]uint{}
 	if sites, err := repo.NewIWebsiteRepo().List(); err == nil {
 		for i := range sites {
 			byHost[normalizeHost(sites[i].PrimaryDomain)] = sites[i].ID
+			for _, d := range sites[i].Domains {
+				byHost[normalizeHost(d.Domain)] = sites[i].ID
+			}
 		}
 	}
 	return func(host string) uint {

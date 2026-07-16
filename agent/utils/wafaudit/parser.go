@@ -18,6 +18,7 @@ import (
 
 // Event is one parsed, sanitized WAF attack event (one blocked/flagged request).
 type Event struct {
+	TxID        string // Coraza transaction id — a stable per-request key for dedup
 	Time        time.Time
 	Host        string
 	SourceIP    string
@@ -35,6 +36,7 @@ type Event struct {
 // corazaRecord is the subset of Coraza's JSON audit schema we consume.
 type corazaRecord struct {
 	Transaction struct {
+		ID            string `json:"id"`
 		UnixTimestamp int64  `json:"unix_timestamp"`
 		ClientIP      string `json:"client_ip"`
 		ServerID      string `json:"server_id"`
@@ -72,6 +74,7 @@ func ParseRecord(line []byte) (Event, bool) {
 	}
 	primary := selectPrimary(errMsgs)
 	return Event{
+		TxID:        weblog.Clean(rec.Transaction.ID),
 		Time:        time.Unix(0, rec.Transaction.UnixTimestamp).UTC(),
 		Host:        weblog.Clean(hostOf(&rec)),
 		SourceIP:    weblog.Clean(rec.Transaction.ClientIP),

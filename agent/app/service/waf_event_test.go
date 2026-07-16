@@ -25,8 +25,8 @@ func setupWafTestDB(t *testing.T) {
 
 func TestBuildEventsMapsHostAndAction(t *testing.T) {
 	lines := [][]byte{
-		[]byte(`{"transaction":{"unix_timestamp":1,"client_ip":"1.1.1.1","request":{"method":"GET","uri":"/a","headers":{"host":["a.example"]}},"is_interrupted":true},"messages":[{"error_message":"[id \"942100\"] [msg \"SQLi\"] [severity \"critical\"] [tag \"attack-sqli\"]"}]}`),
-		[]byte(`{"transaction":{"unix_timestamp":2,"client_ip":"2.2.2.2","request":{"method":"GET","uri":"/b","headers":{"host":["b.example"]}},"is_interrupted":false},"messages":[{"error_message":"[id \"941100\"] [msg \"XSS\"] [severity \"critical\"] [tag \"attack-xss\"]"}]}`),
+		[]byte(`{"transaction":{"id":"tx-a","unix_timestamp":1,"client_ip":"1.1.1.1","request":{"method":"GET","uri":"/a","headers":{"host":["a.example"]}},"is_interrupted":true},"messages":[{"error_message":"[id \"942100\"] [msg \"SQLi\"] [severity \"critical\"] [tag \"attack-sqli\"]"}]}`),
+		[]byte(`{"transaction":{"id":"tx-b","unix_timestamp":2,"client_ip":"2.2.2.2","request":{"method":"GET","uri":"/b","headers":{"host":["b.example"]}},"is_interrupted":false},"messages":[{"error_message":"[id \"941100\"] [msg \"XSS\"] [severity \"critical\"] [tag \"attack-xss\"]"}]}`),
 		[]byte(`not a json record`), // must be skipped, not crash
 	}
 	resolve := func(host string) uint {
@@ -45,6 +45,34 @@ func TestBuildEventsMapsHostAndAction(t *testing.T) {
 	if evs[1].WebsiteID != 0 || evs[1].Action != "detected" || evs[1].Category != "xss" {
 		t.Fatalf("event 1 wrong: %+v", evs[1])
 	}
+	if evs[0].TxID != "tx-a" || evs[1].TxID != "tx-b" {
+		t.Fatalf("transaction id not carried: %q %q", evs[0].TxID, evs[1].TxID)
+	}
+}
+
+// Re-ingesting the same audit records (crash between BatchCreate and cursor save)
+// must not duplicate events — deduped on the Coraza transaction id.
+func TestWafIngestIdempotent(t *testing.T) {
+	setupWafTestDB(t)
+	wafRepo := repo.NewIWafRepo()
+	now := time.Now().UTC()
+	events := []model.WafAttackEvent{
+		{TxID: "tx-1", WebsiteID: 1, Time: now, Category: "sqli", Action: "blocked"},
+		{TxID: "tx-2", WebsiteID: 1, Time: now, Category: "xss", Action: "blocked"},
+	}
+	if err := wafRepo.BatchCreate(events); err != nil {
+		t.Fatalf("create 1: %v", err)
+	}
+	if err := wafRepo.BatchCreate(events); err != nil {
+		t.Fatalf("create 2 (retry): %v", err)
+	}
+	_, total, err := wafRepo.List(1, now.AddDate(0, 0, -1), now.Add(time.Minute), "", 0, 0)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if total != 2 {
+		t.Fatalf("idempotent ingest must keep 2 (not 4), got %d", total)
+	}
 }
 
 func TestWafStoreListFilterAndPrune(t *testing.T) {
@@ -52,10 +80,10 @@ func TestWafStoreListFilterAndPrune(t *testing.T) {
 	wafRepo := repo.NewIWafRepo()
 	now := time.Now().UTC()
 	events := []model.WafAttackEvent{
-		{WebsiteID: 1, Time: now.Add(-1 * time.Hour), Category: "sqli", SourceIP: "1.1.1.1", Action: "blocked"},
-		{WebsiteID: 1, Time: now.Add(-2 * time.Hour), Category: "xss", SourceIP: "2.2.2.2", Action: "blocked"},
-		{WebsiteID: 2, Time: now.Add(-1 * time.Hour), Category: "sqli", SourceIP: "3.3.3.3", Action: "blocked"},
-		{WebsiteID: 1, Time: now.AddDate(0, 0, -60), Category: "sqli", SourceIP: "old", Action: "blocked"},
+		{TxID: "e1", WebsiteID: 1, Time: now.Add(-1 * time.Hour), Category: "sqli", SourceIP: "1.1.1.1", Action: "blocked"},
+		{TxID: "e2", WebsiteID: 1, Time: now.Add(-2 * time.Hour), Category: "xss", SourceIP: "2.2.2.2", Action: "blocked"},
+		{TxID: "e3", WebsiteID: 2, Time: now.Add(-1 * time.Hour), Category: "sqli", SourceIP: "3.3.3.3", Action: "blocked"},
+		{TxID: "e4", WebsiteID: 1, Time: now.AddDate(0, 0, -60), Category: "sqli", SourceIP: "old", Action: "blocked"},
 	}
 	if err := wafRepo.BatchCreate(events); err != nil {
 		t.Fatalf("create: %v", err)

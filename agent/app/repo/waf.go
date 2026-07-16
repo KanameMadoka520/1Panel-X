@@ -26,11 +26,18 @@ func NewIWafRepo() IWafRepo {
 	return &WafRepo{}
 }
 
+// BatchCreate inserts events, skipping any whose Coraza transaction id is already
+// stored (ON CONFLICT DO NOTHING on tx_id). This makes ingestion idempotent: if
+// the tailer crashes after inserting but before advancing its cursor, the same
+// audit lines re-read next run are dropped as duplicates instead of double-counted.
 func (r *WafRepo) BatchCreate(list []model.WafAttackEvent) error {
 	if len(list) == 0 {
 		return nil
 	}
-	return global.WafDB.CreateInBatches(&list, 200).Error
+	return global.WafDB.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "tx_id"}},
+		DoNothing: true,
+	}).CreateInBatches(&list, 200).Error
 }
 
 func (r *WafRepo) List(websiteID uint, start, end time.Time, category string, limit, offset int) ([]model.WafAttackEvent, int64, error) {
