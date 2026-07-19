@@ -13,39 +13,27 @@ import (
 	"github.com/corazawaf/coraza/v3"
 )
 
-// Mode selects enforcement behaviour.
-//
-//	ModeBlock     — disruptive rules return 403 (fail-closed on engine error, W1).
-//	ModeDetection — rules only log; requests pass (explicitly-labelled fail-open).
 type Mode string
 
 const (
 	ModeBlock     Mode = "block"
 	ModeDetection Mode = "detection"
 
-	defaultBodyLimit = 13 << 20  // 13 MiB (W3: bound request-body buffering)
-	inMemoryBodyCap  = 128 << 10 // 128 KiB kept in memory before spooling
+	defaultBodyLimit = 13 << 20
+	inMemoryBodyCap  = 128 << 10
 )
 
-// Engine holds the live Coraza WAF behind an atomic pointer so a ruleset reload
-// can swap it without locking the request path.
 type Engine struct {
-	waf          atomic.Value // stores coraza.WAF
+	waf          atomic.Value
 	mode         Mode
 	bodyLimit    int
-	auditLogPath string // "" disables the attack-event audit log
+	auditLogPath string
 }
 
-// NewEngine compiles the CRS-backed ruleset for the given mode. A compile
-// failure is returned (never a half-built engine).
 func NewEngine(mode Mode, bodyLimit int) (*Engine, error) {
 	return NewEngineWithAudit(mode, bodyLimit, "")
 }
 
-// NewEngineWithAudit is NewEngine plus a JSON audit log: when auditLogPath is
-// non-empty, Coraza appends one JSON record per rule-matching transaction (in
-// both block and detection mode) that the agent tails into the attack-event
-// store (Phase 20). An empty path disables audit logging.
 func NewEngineWithAudit(mode Mode, bodyLimit int, auditLogPath string) (*Engine, error) {
 	e := &Engine{mode: mode, bodyLimit: bodyLimit, auditLogPath: auditLogPath}
 	if err := e.reloadRaw(directivesFor(mode, bodyLimit, auditLogPath)); err != nil {
@@ -54,14 +42,16 @@ func NewEngineWithAudit(mode Mode, bodyLimit int, auditLogPath string) (*Engine,
 	return e, nil
 }
 
-// WAF returns the currently-live engine (safe for concurrent request handling).
 func (e *Engine) WAF() coraza.WAF {
 	return e.waf.Load().(coraza.WAF)
 }
 
-// Reload compiles a candidate engine and only swaps it in if it builds cleanly
-// (W9: compile-then-swap). On failure the running engine is kept and the error
-// returned, so a bad ruleset can never take the WAF down or leave it half-loaded.
+// ForMode returns an independently compiled engine with the same body and audit
+// settings. It is used when site policies mix detection and block mode.
+func (e *Engine) ForMode(mode Mode) (*Engine, error) {
+	return NewEngineWithAudit(mode, e.bodyLimit, e.auditLogPath)
+}
+
 func (e *Engine) Reload(mode Mode, bodyLimit int) error {
 	if err := e.reloadRaw(directivesFor(mode, bodyLimit, e.auditLogPath)); err != nil {
 		return fmt.Errorf("waf reload rejected (keeping running engine): %w", err)
@@ -71,15 +61,8 @@ func (e *Engine) Reload(mode Mode, bodyLimit int) error {
 	return nil
 }
 
-// reloadRaw builds a WAF from arbitrary directives and atomically swaps it in on
-// success only. Kept unexported so tests can exercise the compile-then-swap
-// guarantee with a deliberately-broken ruleset.
 func (e *Engine) reloadRaw(directives string) error {
-	waf, err := coraza.NewWAF(
-		coraza.NewWAFConfig().
-			WithRootFS(coreruleset.FS).
-			WithDirectives(directives),
-	)
+	waf, err := coraza.NewWAF(coraza.NewWAFConfig().WithRootFS(coreruleset.FS).WithDirectives(directives))
 	if err != nil {
 		return err
 	}
@@ -87,8 +70,6 @@ func (e *Engine) reloadRaw(directives string) error {
 	return nil
 }
 
-// directivesFor renders the SecLang config. The CRS includes come first; our
-// engine/body directives come LAST so they win over the recommended defaults.
 func directivesFor(mode Mode, bodyLimit int, auditLogPath string) string {
 	engineDirective := "SecRuleEngine On"
 	if mode == ModeDetection {
@@ -110,14 +91,9 @@ SecRequestBodyLimit %d
 SecRequestBodyInMemoryLimit %d
 SecRequestBodyLimitAction Reject
 `, engineDirective, bodyLimit, inMem)
-
 	if auditLogPath == "" {
 		return base
 	}
-	// RelevantOnly → only rule-matching transactions are logged; JSON serial →
-	// one self-contained JSON object per line for the agent tailer. Parts A
-	// (transaction/request meta) + B (request headers, incl. Host) + H (matched
-	// rule messages) + Z (terminator) are what the attack-event parser needs.
 	return base + fmt.Sprintf(`SecAuditEngine RelevantOnly
 SecAuditLogParts ABHZ
 SecAuditLogFormat json

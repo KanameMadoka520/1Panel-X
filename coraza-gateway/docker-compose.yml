@@ -1,0 +1,35 @@
+services:
+  waf-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: 1panel-x/coraza-gateway:local
+    container_name: ${WAF_CONTAINER_NAME:-1panel-waf-gateway}
+    restart: unless-stopped
+    command:
+      - -listen
+      - 127.0.0.1:9000
+      - -config
+      - /etc/1panel-waf/gateway.json
+      - -mode
+      - ${WAF_MODE:-detection}
+      - -audit-log
+      - /var/log/1panel-waf/audit.log
+      - -real-ip-header
+      - X-Real-IP
+    network_mode: host
+    volumes:
+      - ./config:/etc/1panel-waf:ro
+      - ./audit:/var/log/1panel-waf
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    healthcheck:
+      test: ["CMD", "/busybox/wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9000/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 3

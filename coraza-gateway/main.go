@@ -15,6 +15,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"time"
 
 	"github.com/1Panel-dev/1Panel/coraza-gateway/gateway"
@@ -32,6 +33,9 @@ func main() {
 
 	if *config == "" && *upstream == "" {
 		log.Fatal("coraza-gateway: one of -config or -upstream is required")
+	}
+	if *listen != "127.0.0.1:9000" && os.Getenv("CORAZA_GATEWAY_ALLOW_NONLOOPBACK") != "1" {
+		log.Fatal("coraza-gateway: refusing non-loopback listener; set CORAZA_GATEWAY_ALLOW_NONLOOPBACK=1 only for an isolated container network")
 	}
 
 	mode := gateway.Mode(*modeStr)
@@ -51,14 +55,15 @@ func main() {
 		if rerr != nil {
 			log.Fatalf("coraza-gateway: %v", rerr)
 		}
-		handler = rt
+		handler = gateway.WithHealth(rt, len(cfg.Sites), mode)
 		desc = fmt.Sprintf("%d sites", len(cfg.Sites))
 	} else {
 		origin, uerr := url.Parse(*upstream)
 		if uerr != nil || origin.Scheme == "" || origin.Host == "" {
 			log.Fatalf("coraza-gateway: invalid -upstream %q: %v", *upstream, uerr)
 		}
-		handler = gateway.NewHandler(engine, gateway.NewReverseProxy(origin), mode).WithRealIPHeader(*realIP)
+		gatewayHandler := gateway.NewHandler(engine, gateway.NewReverseProxy(origin), mode).WithRealIPHeader(*realIP)
+		handler = gateway.WithHealth(gatewayHandler, 1, mode)
 		desc = origin.String()
 	}
 
