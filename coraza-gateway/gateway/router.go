@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -33,16 +34,39 @@ type Router struct {
 	handlers map[string]http.Handler
 }
 
-// NewRouter builds the per-site handler table from the routing config.
 func NewRouter(cfg Config, engine *Engine, mode Mode, realIPHeader string) (*Router, error) {
 	rt := &Router{handlers: make(map[string]http.Handler, len(cfg.Sites))}
+	engines := make(map[Mode]*Engine)
 	for _, s := range cfg.Sites {
-		origin, err := url.Parse(s.Upstream)
-		if err != nil || origin.Scheme == "" || origin.Host == "" {
-			return nil, fmt.Errorf("router: site %q invalid upstream %q", s.Host, s.Upstream)
+		host := normalizeHost(s.Host)
+		if host == "" {
+			return nil, fmt.Errorf("router: invalid host %q", s.Host)
 		}
-		h := NewHandler(engine, NewReverseProxy(origin), mode).WithRealIPHeader(realIPHeader)
-		rt.handlers[normalizeHost(s.Host)] = h
+		if _, exists := rt.handlers[host]; exists {
+			return nil, fmt.Errorf("router: duplicate normalized host %q", host)
+		}
+		origin, err := url.Parse(s.Upstream)
+		if err != nil || origin.Scheme == "" || origin.Host == "" ||
+			(origin.Scheme != "http" && origin.Scheme != "https") {
+			return nil, fmt.Errorf("router: site %q invalid HTTP(S) upstream %q", s.Host, s.Upstream)
+		}
+		modeForSite := mode
+		if s.Mode != "" {
+			modeForSite = s.Mode
+		}
+		policyEngine := engine
+		if modeForSite != mode {
+			if _, exists := engines[modeForSite]; !exists {
+				candidate, err := engine.ForMode(modeForSite)
+				if err != nil {
+					return nil, fmt.Errorf("router: compile site %q policy: %w", s.Host, err)
+				}
+				engines[modeForSite] = candidate
+			}
+			policyEngine = engines[modeForSite]
+		}
+		h := NewHandler(policyEngine, NewReverseProxy(origin), modeForSite).WithRealIPHeader(realIPHeader)
+		rt.handlers[host] = h
 	}
 	return rt, nil
 }
@@ -57,12 +81,61 @@ func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	writeBlockPage(w)
 }
 
-// normalizeHost lower-cases and strips any :port so the routing key matches
-// regardless of how the front proxy presents the Host header.
+// normalizeHost lower-cases a valid HTTP Host and removes an optional port.
+// net.SplitHostPort handles bracketed IPv6 correctly; unbracketed strings with
+// multiple colons are rejected because they are not valid HTTP Host values.
 func normalizeHost(h string) string {
 	h = strings.ToLower(strings.TrimSpace(h))
-	if i := strings.IndexByte(h, ':'); i >= 0 {
+	if h == "" {
+		return ""
+	}
+	if ip := net.ParseIP(h); ip != nil {
+		return h
+	}
+	if strings.HasPrefix(h, "[") {
+		if host, port, err := net.SplitHostPort(h); err == nil {
+			if !validPort(port) {
+				return ""
+			}
+			return strings.TrimSpace(host)
+		}
+		if strings.HasSuffix(h, "]") {
+			return strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(h, "["), "]"))
+		}
+		return ""
+	}
+	if strings.Count(h, ":") > 1 {
+		return ""
+	}
+	if host, port, err := net.SplitHostPort(h); err == nil {
+		if !validPort(port) {
+			return ""
+		}
+		return strings.TrimSpace(host)
+	}
+	if i := strings.LastIndexByte(h, ':'); i >= 0 {
+		port := h[i+1:]
+		if port == "" {
+			return ""
+		}
+		for _, c := range port {
+			if c < '0' || c > '9' {
+				return ""
+			}
+		}
 		h = h[:i]
 	}
-	return h
+	return strings.TrimSpace(h)
+}
+
+func validPort(port string) bool {
+	if port == "" {
+		return false
+	}
+	for _, c := range port {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
 }

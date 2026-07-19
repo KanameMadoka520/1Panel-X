@@ -15,15 +15,79 @@ func TestParseConfig(t *testing.T) {
 		t.Fatalf("good config should parse 2 sites: err=%v sites=%d", err, len(cfg.Sites))
 	}
 
+	if got := cfg.Sites[0].Host; got != "a.example" {
+		t.Fatalf("host should be canonicalized: %q", got)
+	}
+
 	for _, bad := range []string{
 		`{`, // invalid json
-		`{"sites":[{"host":"","upstream":"http://x:1"}]}`, // empty host
-		`{"sites":[{"host":"a","upstream":"not a url"}]}`, // upstream not absolute
-		`{"sites":[{"host":"a","upstream":""}]}`,          // empty upstream
+		`{"sites":[{"host":"","upstream":"http://x:1"}]}`,                                                           // empty host
+		`{"sites":[{"host":"a","upstream":"not a url"}]}`,                                                           // upstream not absolute
+		`{"sites":[{"host":"a","upstream":""}]}`,                                                                    // empty upstream
+		`{"sites":[{"host":"a","upstream":"file:///etc/passwd"}]}`,                                                  // unsupported scheme
+		`{"sites":[{"host":"a","upstream":"http://user:pass@127.0.0.1"}]}`,                                          // embedded credentials
+		`{"sites":[{"host":"a.example","upstream":"http://x:1"},{"host":"A.EXAMPLE:443","upstream":"http://y:2"}]}`, // normalized collision
+		`{"sites":[{"host":"bad:port","upstream":"http://x:1"}]}`,                                                   // malformed Host port
+		`{"sites":[{"host":"a","upstream":"http://x:1","mode":"permit-all"}]}`,                                      // invalid policy mode
 	} {
 		if _, err := ParseConfig([]byte(bad)); err == nil {
 			t.Errorf("should reject config: %s", bad)
 		}
+	}
+}
+
+func TestParseConfigCanonicalizesHost(t *testing.T) {
+	cfg, err := ParseConfig([]byte(`{"sites":[{"host":" Example.COM:443 ","upstream":"https://127.0.0.1:8443"},{"host":"[2001:db8::1]:8443","upstream":"http://127.0.0.1:8080"}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Sites[0].Host != "example.com" || cfg.Sites[1].Host != "2001:db8::1" {
+		t.Fatalf("unexpected canonical hosts: %#v", cfg.Sites)
+	}
+}
+
+func TestNewRouterRejectsDuplicateNormalizedHost(t *testing.T) {
+	eng, err := NewEngine(ModeDetection, 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = NewRouter(Config{Sites: []SiteConfig{
+		{Host: "example.com", Upstream: "http://127.0.0.1:8081"},
+		{Host: "EXAMPLE.COM:443", Upstream: "http://127.0.0.1:8082"},
+	}}, eng, ModeDetection, "")
+	if err == nil {
+		t.Fatal("duplicate normalized hosts must be rejected")
+	}
+}
+
+func TestRouterHonorsPerSiteMode(t *testing.T) {
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer origin.Close()
+	eng, err := NewEngine(ModeDetection, 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rt, err := NewRouter(Config{Sites: []SiteConfig{
+		{Host: "detect.example", Upstream: origin.URL, Mode: ModeDetection},
+		{Host: "block.example", Upstream: origin.URL, Mode: ModeBlock},
+	}}, eng, ModeDetection, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := func(host string) int {
+		req := httptest.NewRequest(http.MethodGet, "http://"+host+sqliTarget, nil)
+		req.Host = host
+		rr := httptest.NewRecorder()
+		rt.ServeHTTP(rr, req)
+		return rr.Code
+	}
+	if got := request("detect.example"); got != http.StatusNoContent {
+		t.Fatalf("detection site should pass attack to origin: %d", got)
+	}
+	if got := request("block.example"); got != http.StatusForbidden {
+		t.Fatalf("block site should stop attack: %d", got)
 	}
 }
 
