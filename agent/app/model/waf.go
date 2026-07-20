@@ -31,3 +31,14 @@ type WafAuditCursor struct {
 	Path   string `gorm:"uniqueIndex" json:"path"`
 	Offset int64  `json:"offset"`
 }
+
+// WafSitePolicy is the control-plane intent for one managed website. The actual
+// protected state is derived from gateway readiness plus nginx routing, never
+// inferred from Enabled alone.
+type WafSitePolicy struct {
+	BaseModel
+	WebsiteID uint   `gorm:"uniqueIndex" json:"websiteID"`
+	Enabled   bool   `json:"enabled"`
+	Mode      string `gorm:"size:16;not null;default:detection" json:"mode"`
+	LastError string `gorm:"size:2048" json:"lastError"`
+}

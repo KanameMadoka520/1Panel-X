@@ -2,15 +2,13 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"strconv"
+
 	"github.com/1Panel-dev/1Panel/agent/app/dto/request"
 	"github.com/1Panel-dev/1Panel/agent/app/model"
 	"github.com/1Panel-dev/1Panel/agent/app/repo"
 	"github.com/1Panel-dev/1Panel/agent/constant"
-	"github.com/1Panel-dev/1Panel/agent/utils/files"
-	"path"
-	"strconv"
 )
 
 func (w WebsiteService) CreateWebsiteDomain(create request.WebsiteDomainCreate) ([]model.WebsiteDomain, error) {
@@ -34,51 +32,6 @@ func (w WebsiteService) CreateWebsiteDomain(create request.WebsiteDomainCreate) 
 	go func() {
 		_ = OperateFirewallPort(nil, addPorts)
 	}()
-
-	nginxInstall, err := getAppInstallByKey(constant.AppOpenresty)
-	if err != nil {
-		return nil, err
-	}
-	wafDataPath := path.Join(nginxInstall.GetPath(), "1pwaf", "data")
-	fileOp := files.NewFileOp()
-	if fileOp.Stat(wafDataPath) {
-		websitesConfigPath := path.Join(wafDataPath, "conf", "sites.json")
-		content, err := fileOp.GetContent(websitesConfigPath)
-		if err != nil {
-			return nil, err
-		}
-		var websitesArray []request.WafWebsite
-		if content != nil {
-			if err := json.Unmarshal(content, &websitesArray); err != nil {
-				return nil, err
-			}
-		}
-		for index, wafWebsite := range websitesArray {
-			if wafWebsite.Key == website.Alias {
-				wafSite := request.WafWebsite{
-					Key:     website.Alias,
-					Domains: wafWebsite.Domains,
-					Host:    wafWebsite.Host,
-				}
-				for _, domain := range domainModels {
-					wafSite.Domains = append(wafSite.Domains, domain.Domain)
-					wafSite.Host = append(wafSite.Host, domain.Domain+":"+strconv.Itoa(domain.Port))
-				}
-				if len(wafSite.Host) == 0 {
-					wafSite.Host = []string{}
-				}
-				websitesArray[index] = wafSite
-				break
-			}
-		}
-		websitesContent, err := json.Marshal(websitesArray)
-		if err != nil {
-			return nil, err
-		}
-		if err := fileOp.SaveFileWithByte(websitesConfigPath, websitesContent, constant.DirPerm); err != nil {
-			return nil, err
-		}
-	}
 
 	if err = addListenAndServerName(website, domainModels); err != nil {
 		return nil, err
@@ -120,63 +73,6 @@ func (w WebsiteService) DeleteWebsiteDomain(domainId uint) error {
 			stringBinds[i] = strconv.Itoa(ports[i])
 		}
 		if err := deleteListenAndServerName(website, stringBinds, domains); err != nil {
-			return err
-		}
-	}
-
-	nginxInstall, err := getAppInstallByKey(constant.AppOpenresty)
-	if err != nil {
-		return err
-	}
-	wafDataPath := path.Join(nginxInstall.GetPath(), "1pwaf", "data")
-	fileOp := files.NewFileOp()
-	if fileOp.Stat(wafDataPath) {
-		websitesConfigPath := path.Join(wafDataPath, "conf", "sites.json")
-		content, err := fileOp.GetContent(websitesConfigPath)
-		if err != nil {
-			return err
-		}
-		var websitesArray []request.WafWebsite
-		var newWebsitesArray []request.WafWebsite
-		if content != nil {
-			if err := json.Unmarshal(content, &websitesArray); err != nil {
-				return err
-			}
-		}
-		for _, wafWebsite := range websitesArray {
-			if wafWebsite.Key == website.Alias {
-				wafSite := wafWebsite
-				oldDomains := wafSite.Domains
-				var newDomains []string
-				for _, domain := range oldDomains {
-					if domain == webSiteDomain.Domain {
-						continue
-					}
-					newDomains = append(newDomains, domain)
-				}
-				wafSite.Domains = newDomains
-				oldHostArray := wafSite.Host
-				var newHostArray []string
-				for _, host := range oldHostArray {
-					if host == webSiteDomain.Domain+":"+strconv.Itoa(webSiteDomain.Port) {
-						continue
-					}
-					newHostArray = append(newHostArray, host)
-				}
-				wafSite.Host = newHostArray
-				if len(wafSite.Host) == 0 {
-					wafSite.Host = []string{}
-				}
-				newWebsitesArray = append(newWebsitesArray, wafSite)
-			} else {
-				newWebsitesArray = append(newWebsitesArray, wafWebsite)
-			}
-		}
-		websitesContent, err := json.Marshal(newWebsitesArray)
-		if err != nil {
-			return err
-		}
-		if err = fileOp.SaveFileWithByte(websitesConfigPath, websitesContent, constant.DirPerm); err != nil {
 			return err
 		}
 	}

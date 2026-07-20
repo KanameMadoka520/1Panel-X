@@ -19,6 +19,11 @@ type IWafRepo interface {
 	GetCursor(path string) (model.WafAuditCursor, error)
 	SaveCursor(cursor model.WafAuditCursor) error
 
+	ListPolicies() ([]model.WafSitePolicy, error)
+	GetPolicy(websiteID uint) (model.WafSitePolicy, error)
+	SavePolicy(policy model.WafSitePolicy) error
+	DeletePolicy(websiteID uint) error
+
 	PruneBefore(t time.Time) error
 }
 
@@ -70,6 +75,29 @@ func (r *WafRepo) SaveCursor(cursor model.WafAuditCursor) error {
 		Columns:   []clause.Column{{Name: "path"}},
 		DoUpdates: clause.AssignmentColumns([]string{"offset", "updated_at"}),
 	}).Create(&cursor).Error
+}
+
+func (r *WafRepo) ListPolicies() ([]model.WafSitePolicy, error) {
+	var policies []model.WafSitePolicy
+	err := global.WafDB.Find(&policies).Error
+	return policies, err
+}
+
+func (r *WafRepo) GetPolicy(websiteID uint) (model.WafSitePolicy, error) {
+	var policy model.WafSitePolicy
+	err := global.WafDB.Where("website_id = ?", websiteID).First(&policy).Error
+	return policy, err
+}
+
+func (r *WafRepo) SavePolicy(policy model.WafSitePolicy) error {
+	return global.WafDB.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "website_id"}},
+		DoUpdates: clause.AssignmentColumns([]string{"enabled", "mode", "last_error", "updated_at"}),
+	}).Create(&policy).Error
+}
+
+func (r *WafRepo) DeletePolicy(websiteID uint) error {
+	return global.WafDB.Where("website_id = ?", websiteID).Delete(&model.WafSitePolicy{}).Error
 }
 
 func (r *WafRepo) PruneBefore(t time.Time) error {

@@ -11,3 +11,8 @@ type WafEventSearch struct {
 	Page      int       `json:"page"`
 	PageSize  int       `json:"pageSize"`
 }
+
+type WafSiteUpdate struct {
+	Enabled bool   `json:"enabled"`
+	Mode    string `json:"mode" validate:"required,oneof=detection block"`
+}

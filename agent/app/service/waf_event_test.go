@@ -17,7 +17,7 @@ func setupWafTestDB(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open temp waf db: %v", err)
 	}
-	if err := db.AutoMigrate(&model.WafAttackEvent{}, &model.WafAuditCursor{}); err != nil {
+	if err := db.AutoMigrate(&model.WafAttackEvent{}, &model.WafAuditCursor{}, &model.WafSitePolicy{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	global.WafDB = db
@@ -72,6 +72,31 @@ func TestWafIngestIdempotent(t *testing.T) {
 	}
 	if total != 2 {
 		t.Fatalf("idempotent ingest must keep 2 (not 4), got %d", total)
+	}
+}
+
+func TestWafPolicyStoreUpsertAndDelete(t *testing.T) {
+	setupWafTestDB(t)
+	wafRepo := repo.NewIWafRepo()
+	if err := wafRepo.SavePolicy(model.WafSitePolicy{WebsiteID: 9, Enabled: true, Mode: "detection"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := wafRepo.SavePolicy(model.WafSitePolicy{WebsiteID: 9, Enabled: true, Mode: "block"}); err != nil {
+		t.Fatal(err)
+	}
+	policy, err := wafRepo.GetPolicy(9)
+	if err != nil || !policy.Enabled || policy.Mode != "block" {
+		t.Fatalf("unexpected policy: %+v err=%v", policy, err)
+	}
+	policies, err := wafRepo.ListPolicies()
+	if err != nil || len(policies) != 1 {
+		t.Fatalf("unexpected policies: %+v err=%v", policies, err)
+	}
+	if err := wafRepo.DeletePolicy(9); err != nil {
+		t.Fatal(err)
+	}
+	if policies, err = wafRepo.ListPolicies(); err != nil || len(policies) != 0 {
+		t.Fatalf("policy should be deleted: %+v err=%v", policies, err)
 	}
 }
 

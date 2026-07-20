@@ -32,3 +32,35 @@ func (b *BaseApi) LoadWafEvents(c *gin.Context) {
 	}
 	helper.SuccessWithData(c, res)
 }
+
+func (b *BaseApi) GetWafStatus(c *gin.Context) {
+	id, err := helper.GetParamID(c)
+	if err != nil {
+		helper.BadRequest(c, err)
+		return
+	}
+	res, err := wafControlService.GetStatus(id)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, res)
+}
+
+func (b *BaseApi) UpdateWafSite(c *gin.Context) {
+	id, err := helper.GetParamID(c)
+	if err != nil {
+		helper.BadRequest(c, err)
+		return
+	}
+	var req request.WafSiteUpdate
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	res, err := wafControlService.Update(id, req)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, res)
+}

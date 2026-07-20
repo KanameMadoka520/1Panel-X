@@ -24,7 +24,7 @@ func TestBuildDeterministicMultiDomainConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(cfg.Sites) != 3 || cfg.Version != Version {
+	if len(cfg.Sites) != 3 || cfg.Version != Version || len(cfg.Generation) != 64 {
 		t.Fatalf("unexpected config: %#v", cfg)
 	}
 	if cfg.Sites[0].Host != "a.example" || cfg.Sites[0].Mode != ModeDetection {

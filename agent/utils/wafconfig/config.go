@@ -1,6 +1,8 @@
 package wafconfig
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -33,8 +35,9 @@ type Site struct {
 // GatewayConfig mirrors the data-plane JSON contract without importing the
 // separate coraza-gateway Go module.
 type GatewayConfig struct {
-	Version int           `json:"version"`
-	Sites   []GatewaySite `json:"sites"`
+	Version    int           `json:"version"`
+	Generation string        `json:"generation,omitempty"`
+	Sites      []GatewaySite `json:"sites"`
 }
 
 type GatewaySite struct {
@@ -103,6 +106,12 @@ func Build(sites []Site) (GatewayConfig, error) {
 		}
 		return cfg.Sites[i].WebsiteID < cfg.Sites[j].WebsiteID
 	})
+	generationInput, err := json.Marshal(cfg.Sites)
+	if err != nil {
+		return GatewayConfig{}, err
+	}
+	digest := sha256.Sum256(generationInput)
+	cfg.Generation = hex.EncodeToString(digest[:])
 	return cfg, nil
 }
 

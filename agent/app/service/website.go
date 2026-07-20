@@ -489,9 +489,6 @@ func (w WebsiteService) CreateWebsite(create request.WebsiteCreate) (err error) 
 			return err
 		}
 		if website.Type != constant.Stream {
-			if err = createWafConfig(website, domains); err != nil {
-				return err
-			}
 			if create.Type == constant.Runtime {
 				runtime, err = runtimeRepo.GetFirst(context.Background(), repo.WithByID(create.RuntimeID))
 				if err != nil {
@@ -740,11 +737,8 @@ func (w WebsiteService) DeleteWebsite(req request.WebsiteDelete) error {
 	if err = delNginxConfig(website, req.ForceDelete); err != nil {
 		return err
 	}
-
-	if website.Type != constant.Stream {
-		if err = delWafConfig(website, req.ForceDelete); err != nil {
-			return err
-		}
+	if err := NewIWafControlService().Remove(website.ID); err != nil && !req.ForceDelete {
+		return err
 	}
 
 	if checkIsLinkApp(website) && req.DeleteApp {

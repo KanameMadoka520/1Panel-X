@@ -1,6 +1,26 @@
 <template>
     <div>
         <el-alert :title="$t('website.wafTip')" type="info" :closable="false" class="waf-tip" />
+        <div class="waf-control">
+            <div class="waf-control-copy">
+                <strong>{{ $t('website.wafProtection') }}</strong>
+                <span>{{ protectionDescription }}</span>
+            </div>
+            <el-switch
+                v-model="enabled"
+                :loading="saving"
+                :disabled="loadingStatus || !status.supported"
+                @change="updateConfig"
+            />
+            <el-select v-model="mode" :disabled="saving || !enabled" size="small" class="waf-mode" @change="updateConfig">
+                <el-option value="detection" :label="$t('website.wafDetectionMode')" />
+                <el-option value="block" :label="$t('website.wafBlockMode')" />
+            </el-select>
+            <el-tag v-if="status.protected" type="success">{{ $t('website.wafProtected') }}</el-tag>
+            <el-tag v-else-if="enabled" type="warning">{{ $t('website.wafPending') }}</el-tag>
+            <el-tag v-else type="info">{{ $t('website.wafDisabled') }}</el-tag>
+        </div>
+        <el-alert v-if="status.lastError" :title="status.lastError" type="error" :closable="false" class="waf-error" />
         <div class="waf-bar">
             <el-radio-group v-model="range" @change="search" size="small">
                 <el-radio-button label="24h">{{ $t('website.monitorRange24h') }}</el-radio-button>
@@ -53,9 +73,12 @@
 </template>
 
 <script lang="ts" setup>
-import { onMounted, reactive, ref } from 'vue';
-import { LoadWafEvents } from '@/api/modules/website';
+import { onMounted, reactive, ref, computed } from 'vue';
+import { useI18n } from 'vue-i18n';
+import { GetWafStatus, LoadWafEvents, UpdateWafSite } from '@/api/modules/website';
 import { Website } from '@/api/interface/website';
+
+const { t: $t } = useI18n();
 
 const props = defineProps({
     id: {
@@ -68,6 +91,26 @@ const range = ref('7d');
 const category = ref('');
 const categories = ['sqli', 'xss', 'rce', 'lfi', 'rfi', 'php', 'protocol', 'scanner'];
 const data = ref<Website.WafEvent[]>([]);
+const status = reactive<Website.WafSiteStatus>({
+    websiteID: props.id,
+    supported: false,
+    enabled: false,
+    mode: 'detection',
+    installed: false,
+    ready: false,
+    routed: false,
+    protected: false,
+    lastError: '',
+});
+const enabled = ref(false);
+const mode = ref<Website.WafSiteUpdate['mode']>('detection');
+const loadingStatus = ref(false);
+const saving = ref(false);
+const protectionDescription = computed(() => {
+    if (!status.supported) return $t('website.wafProtectionDescriptionUnsupported');
+    if (status.protected) return $t('website.wafProtectionDescriptionProtected');
+    return $t('website.wafProtectionDescriptionEnable');
+});
 const paginationConfig = reactive({
     cacheSizeKey: 'waf-event-page-size',
     currentPage: 1,
@@ -105,7 +148,36 @@ const search = () => {
     });
 };
 
+const loadStatus = async () => {
+    if (!props.id) return;
+    loadingStatus.value = true;
+    try {
+        const res = await GetWafStatus(props.id);
+        Object.assign(status, res.data);
+        enabled.value = res.data.enabled;
+        mode.value = res.data.mode;
+    } finally {
+        loadingStatus.value = false;
+    }
+};
+
+const updateConfig = async () => {
+    if (!props.id || saving.value) return;
+    saving.value = true;
+    try {
+        const res = await UpdateWafSite(props.id, { enabled: enabled.value, mode: mode.value });
+        Object.assign(status, res.data);
+        enabled.value = res.data.enabled;
+        mode.value = res.data.mode;
+    } catch {
+        await loadStatus();
+    } finally {
+        saving.value = false;
+    }
+};
+
 onMounted(() => {
+    loadStatus();
     search();
 });
 </script>
@@ -118,6 +190,32 @@ onMounted(() => {
     display: flex;
     gap: 12px;
     align-items: center;
+    margin-bottom: 12px;
+}
+.waf-control {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+    padding: 12px 14px;
+    margin-bottom: 12px;
+    border: 1px solid var(--el-border-color-light);
+}
+.waf-control-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    flex: 1;
+    min-width: 240px;
+}
+.waf-control-copy span {
+    color: var(--el-text-color-secondary);
+    font-size: 12px;
+}
+.waf-mode {
+    width: 145px;
+}
+.waf-error {
     margin-bottom: 12px;
 }
 .waf-cat {

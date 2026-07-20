@@ -410,6 +410,14 @@ export const LoadWebsiteAccessRank = (id: number, req: Website.AccessRankReq) =>
     return http.post<Website.AccessRank[]>(`/websites/${id}/monitor/rank`, req);
 };
 
+export const GetWafStatus = (id: number) => {
+    return http.get<Website.WafSiteStatus>(`/websites/${id}/waf/status`);
+};
+
+export const UpdateWafSite = (id: number, req: Website.WafSiteUpdate) => {
+    return http.post<Website.WafSiteStatus>(`/websites/${id}/waf/config`, req);
+};
+
 export const LoadWafEvents = (id: number, req: Website.WafEventReq) => {
     return http.post<ResPage<Website.WafEvent>>(`/websites/${id}/waf/events`, req);
 };

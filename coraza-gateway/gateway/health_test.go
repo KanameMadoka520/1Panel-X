@@ -13,7 +13,7 @@ func TestWithHealthReportsReadyWithoutCallingSiteHandler(t *testing.T) {
 		called = true
 		w.WriteHeader(http.StatusTeapot)
 	})
-	h := WithHealth(site, 3, ModeBlock)
+	h := WithHealth(site, 3, ModeBlock, "generation-1")
 
 	req := httptest.NewRequest(http.MethodGet, "http://127.0.0.1/healthz", nil)
 	rr := httptest.NewRecorder()
@@ -25,10 +25,18 @@ func TestWithHealthReportsReadyWithoutCallingSiteHandler(t *testing.T) {
 	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)
 	}
-	if body.Status != "ready" || body.Sites != 3 || body.Mode != ModeBlock {
+	if body.Status != "ready" || body.Sites != 3 || body.Mode != ModeBlock || body.Generation != "generation-1" {
 		t.Fatalf("unexpected health body: %#v", body)
 	}
 
+	req = httptest.NewRequest(http.MethodGet, "http://site.example/healthz", nil)
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusTeapot || !called {
+		t.Fatalf("public-host health path must reach site handler: %d called=%v", rr.Code, called)
+	}
+
+	called = false
 	req = httptest.NewRequest(http.MethodGet, "http://site.example/", nil)
 	rr = httptest.NewRecorder()
 	h.ServeHTTP(rr, req)

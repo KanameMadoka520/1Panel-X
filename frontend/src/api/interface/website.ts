@@ -802,6 +802,23 @@ export namespace Website {
         count: number;
     }
 
+    export interface WafSiteStatus {
+        websiteID: number;
+        supported: boolean;
+        enabled: boolean;
+        mode: 'detection' | 'block';
+        installed: boolean;
+        ready: boolean;
+        routed: boolean;
+        protected: boolean;
+        lastError: string;
+    }
+
+    export interface WafSiteUpdate {
+        enabled: boolean;
+        mode: 'detection' | 'block';
+    }
+
     export interface WafEventReq {
         startTime?: string;
         endTime?: string;

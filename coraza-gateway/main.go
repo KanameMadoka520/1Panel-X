@@ -55,7 +55,7 @@ func main() {
 		if rerr != nil {
 			log.Fatalf("coraza-gateway: %v", rerr)
 		}
-		handler = gateway.WithHealth(rt, len(cfg.Sites), mode)
+		handler = gateway.WithHealth(rt, len(cfg.Sites), mode, cfg.Generation)
 		desc = fmt.Sprintf("%d sites", len(cfg.Sites))
 	} else {
 		origin, uerr := url.Parse(*upstream)
@@ -63,7 +63,7 @@ func main() {
 			log.Fatalf("coraza-gateway: invalid -upstream %q: %v", *upstream, uerr)
 		}
 		gatewayHandler := gateway.NewHandler(engine, gateway.NewReverseProxy(origin), mode).WithRealIPHeader(*realIP)
-		handler = gateway.WithHealth(gatewayHandler, 1, mode)
+		handler = gateway.WithHealth(gatewayHandler, 1, mode, "")
 		desc = origin.String()
 	}
 

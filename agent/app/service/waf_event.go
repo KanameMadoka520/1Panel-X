@@ -37,7 +37,7 @@ func NewIWafEventService() IWafEventService {
 // records to (mapped into the gateway container by the Phase 21 packaging) and
 // the agent tails here.
 func GetWafAuditLogPath() string {
-	return path.Join(global.Dir.DataDir, "waf", "audit.log")
+	return path.Join(global.Dir.DataDir, "waf", "audit", "audit.log")
 }
 
 // Collect tails the gateway audit log, ingests new attack events, and prunes old

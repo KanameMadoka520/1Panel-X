@@ -21,8 +21,9 @@ type SiteConfig struct {
 
 // Config is the gateway's versioned per-site routing table.
 type Config struct {
-	Version int          `json:"version,omitempty"`
-	Sites   []SiteConfig `json:"sites"`
+	Version    int          `json:"version,omitempty"`
+	Generation string       `json:"generation,omitempty"`
+	Sites      []SiteConfig `json:"sites"`
 }
 
 // LoadConfig reads and validates the routing config from a file.
