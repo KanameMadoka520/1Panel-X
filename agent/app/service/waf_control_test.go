@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/1Panel-dev/1Panel/agent/app/model"
@@ -25,7 +26,11 @@ func TestSwitchRootProxyAndRoutingDetection(t *testing.T) {
 	if !isWafRouted(file) {
 		t.Fatal("proxy should be recognized as routed through WAF")
 	}
-	if err := switchRootProxy(file, "http://127.0.0.1:8080"); err != nil {
+	content, err := os.ReadFile(file)
+	if err != nil || !strings.Contains(string(content), "client_max_body_size 13m;") {
+		t.Fatalf("WAF route must align nginx request body limit: %q err=%v", content, err)
+	}
+	if err := restoreRootProxy(file, "http://127.0.0.1:8080"); err != nil {
 		t.Fatal(err)
 	}
 	if isWafRouted(file) {
@@ -33,7 +38,7 @@ func TestSwitchRootProxyAndRoutingDetection(t *testing.T) {
 	}
 	got, err := os.ReadFile(file)
 	if err != nil || string(got) != original {
-		t.Fatalf("restore mismatch: %q err=%v", got, err)
+		t.Fatalf("origin restore mismatch: %q err=%v", got, err)
 	}
 }
 

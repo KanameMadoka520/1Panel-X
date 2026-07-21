@@ -1,6 +1,55 @@
 package wafconfig
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
+
+func TestManagedDirectiveRestoresPreviousValue(t *testing.T) {
+	for _, original := range []string{
+		`location ^~ / {
+    proxy_pass http://127.0.0.1:8080;
+}`,
+		`location ^~ / {
+    client_max_body_size 50m;
+    proxy_pass http://127.0.0.1:8080;
+}`,
+	} {
+		managed, err := EnsureManagedDirective(original, "client_max_body_size", "13m")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(managed, "client_max_body_size 13m; "+managedDirectiveMarker) {
+			t.Fatalf("managed marker missing: %s", managed)
+		}
+		restored, err := RestoreManagedDirective(managed, "client_max_body_size")
+		if err != nil || restored != original {
+			t.Fatalf("managed restore mismatch: %q err=%v", restored, err)
+		}
+	}
+}
+
+func TestEnsureDirectiveAddsAndUpdatesBodyLimit(t *testing.T) {
+	original := `location ^~ / {
+    proxy_pass http://127.0.0.1:8080;
+    proxy_set_header Host $host;
+}`
+	added, err := EnsureDirective(original, "client_max_body_size", "13m")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(added, "    client_max_body_size 13m;\n    proxy_pass") {
+		t.Fatalf("directive was not inserted before proxy_pass: %s", added)
+	}
+	updated, err := EnsureDirective(strings.Replace(added, "13m", "20m", 1), "client_max_body_size", "13m")
+	if err != nil {
+		t.Fatal(err)
+	}
+	removed, err := RemoveDirective(updated, "client_max_body_size")
+	if err != nil || removed != original {
+		t.Fatalf("directive removal did not restore original: %q err=%v", removed, err)
+	}
+}
 
 func TestReplaceProxyPassPreservesLocationDirectives(t *testing.T) {
 	old := `location ^~ / {

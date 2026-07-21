@@ -25,7 +25,10 @@ import (
 	"gorm.io/gorm"
 )
 
-const wafGatewayProxyPass = "http://127.0.0.1:9000"
+const (
+	wafGatewayProxyPass = "http://127.0.0.1:9000"
+	wafMaxBodySize      = "13m"
+)
 
 var wafControlMu sync.Mutex
 
@@ -230,7 +233,7 @@ func (s *WafControlService) update(websiteID uint, req request.WafSiteUpdate) (r
 		}
 	} else if proxyExisted && isWafRouted(proxyPath) {
 		origin := normalizedWebsiteOrigin(website)
-		if err := switchRootProxy(proxyPath, origin); err != nil {
+		if err := restoreRootProxy(proxyPath, origin); err != nil {
 			return fail(err)
 		}
 	}
@@ -398,6 +401,28 @@ func switchRootProxy(filePath, target string) error {
 		return err
 	}
 	updated, _, err := wafconfig.ReplaceProxyPass(string(content), target)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSuffix(target, "/") == wafGatewayProxyPass {
+		updated, err = wafconfig.EnsureManagedDirective(updated, "client_max_body_size", wafMaxBodySize)
+		if err != nil {
+			return err
+		}
+	}
+	return wafconfig.WriteAtomic(filePath, []byte(updated), constant.DirPerm)
+}
+
+func restoreRootProxy(filePath, target string) error {
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		return err
+	}
+	updated, _, err := wafconfig.ReplaceProxyPass(string(content), target)
+	if err != nil {
+		return err
+	}
+	updated, err = wafconfig.RestoreManagedDirective(updated, "client_max_body_size")
 	if err != nil {
 		return err
 	}

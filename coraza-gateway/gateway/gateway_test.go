@@ -138,6 +138,19 @@ func TestOversizeBodyRejected(t *testing.T) {
 	}
 }
 
+func TestChunkedOversizeBodyRejected(t *testing.T) {
+	reached := false
+	h := buildGateway(t, ModeBlock, 512, &reached)
+	req := httptest.NewRequest(http.MethodPost, "/upload", strings.NewReader(strings.Repeat("a", 4096)))
+	req.ContentLength = -1
+	req.TransferEncoding = []string{"chunked"}
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	if rr.Code < 400 || reached {
+		t.Fatalf("chunked oversize body should be rejected pre-upstream: code=%d reached=%v", rr.Code, reached)
+	}
+}
+
 // W1 recover policy, exercised directly across the four (mode, ran) combinations.
 func TestOnPanicPolicy(t *testing.T) {
 	newH := func(mode Mode, reached *bool) *Handler {

@@ -18,6 +18,12 @@ func writeBlockPage(w http.ResponseWriter) {
 	_, _ = w.Write([]byte(blockPageHTML))
 }
 
+func writeRequestTooLarge(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusRequestEntityTooLarge)
+	_, _ = w.Write([]byte("request body too large\n"))
+}
+
 // blockWriter records the response status and whether a body was written, so the
 // handler can attach a block page to a bodiless WAF interruption without
 // clobbering a real upstream response.

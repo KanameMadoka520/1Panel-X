@@ -54,6 +54,11 @@ func (h *Handler) applyRealIP(r *http.Request) {
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.applyRealIP(r)
+	// Content-Length is rejected before Coraza reads the stream. Production nginx
+	// also enforces the same 13 MiB ceiling and returns its stable public 413.
+	if h.rejectOversizeBody(w, r) {
+		return
+	}
 	// ran records whether the upstream was actually invoked, so we can tell a
 	// WAF interruption (upstream never ran) from a real upstream 4xx/5xx, and so
 	// the panic path (W1) knows whether it may fail open.
@@ -81,6 +86,17 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !ran && bw.status >= 400 && !bw.wroteBody {
 		writeBlockPage(bw)
 	}
+}
+
+func (h *Handler) rejectOversizeBody(w http.ResponseWriter, r *http.Request) bool {
+	if h.engine.bodyLimit <= 0 || r.Body == nil {
+		return false
+	}
+	if r.ContentLength > int64(h.engine.bodyLimit) {
+		writeRequestTooLarge(w)
+		return true
+	}
+	return false
 }
 
 // onPanic implements the W1 recover policy. A per-request evaluation panic must
