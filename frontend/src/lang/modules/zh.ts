@@ -3246,6 +3246,9 @@ const message = {
         wafRegionModeDenyHint: '列表中的国家/地区被拦截，其余正常放行。',
         wafRegionPlaceholder: '选择国家/地区，留空表示不做限制',
         wafRegionNone: '未设置地区限制',
+        wafRegionOn: '已启用',
+        wafRegionOnButEmpty: '已启用，但还没选地区——地区为空时不做任何限制。',
+        wafRegionOff: '已关闭。地区列表会保留，随时可以再打开。',
         wafRegionGranularity:
             '粒度为国家/地区。IP 库带的省份只有名称没有稳定编码，按名称匹配会在库措辞变动时悄悄失效，所以这里不提供省份级。',
         wafRegionNoDatabase: '未安装 IP 地址库，地区访问限制暂时无法生效。装好地址库后此项才可配置。',

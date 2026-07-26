@@ -60,6 +60,10 @@ type WafRealIP struct {
 type WafRegionPolicy struct {
 	Mode    string   `json:"mode" validate:"omitempty,oneof=allow deny"`
 	Regions []string `json:"regions" validate:"omitempty,max=512,dive,len=2"`
+	// Enabled is the panel's master toggle. It is positive here because that is
+	// what the operator sees; the stored and emitted form is the negative
+	// "disabled", so an absent field keeps an existing policy in force.
+	Enabled bool `json:"enabled"`
 }
 
 // WafRulePolicy is a detection policy. Fields are "disable" flags so the zero

@@ -1096,7 +1096,9 @@ func regionPolicyFromRequest(in *request.WafRegionPolicy) *wafconfig.RegionPolic
 	if in == nil {
 		return nil
 	}
-	return &wafconfig.RegionPolicy{Mode: in.Mode, Regions: in.Regions}
+	// The panel shows a positive toggle; the stored form is the negative, so an
+	// older row without the field keeps its policy in force.
+	return &wafconfig.RegionPolicy{Mode: in.Mode, Regions: in.Regions, Disabled: !in.Enabled}
 }
 
 func regionPolicyToResponse(p *wafconfig.RegionPolicy) *response.WafRegionPolicy {
@@ -1107,7 +1109,7 @@ func regionPolicyToResponse(p *wafconfig.RegionPolicy) *response.WafRegionPolicy
 	if regions == nil {
 		regions = []string{}
 	}
-	return &response.WafRegionPolicy{Mode: p.Mode, Regions: regions}
+	return &response.WafRegionPolicy{Mode: p.Mode, Regions: regions, Enabled: !p.Disabled}
 }
 
 func regionPolicyValue(p *wafconfig.RegionPolicy) response.WafRegionPolicy {
@@ -1129,6 +1131,8 @@ func normalizeRegionRequest(in *request.WafRegionPolicy) (*wafconfig.RegionPolic
 	if err != nil {
 		return nil, fmt.Errorf("invalid WAF region policy: %w", err)
 	}
+	// Only an ACTIVE policy needs the database. Storing a switched-off one with
+	// no database installed is harmless and lets an operator prepare the list.
 	if !normalized.IsZero() && !wafGeoAvailable() {
 		return nil, fmt.Errorf("region access control needs the IP address database at %s, which is not installed", GetWafGeoDBPath())
 	}

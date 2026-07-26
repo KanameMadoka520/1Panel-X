@@ -262,6 +262,24 @@ export interface Country {
     en: string;
 }
 
+// These four are pinned rather than taken from the browser.
+//
+// Two reasons, both concrete. Intl.DisplayNames wording for TW/HK/MO varies with
+// the browser's ICU version, so the same panel would read differently on two
+// machines. And the address database treats CN, HK, MO and TW as four separate
+// entries, so an operator picking "中国大陆" must be able to see that Hong Kong,
+// Macau and Taiwan are separately selectable rather than assume they are covered.
+const PINNED: Record<string, { zh: string; en: string }> = {
+    CN: { zh: '中国大陆', en: 'Chinese mainland' },
+    HK: { zh: '中国香港', en: 'Hong Kong, China' },
+    MO: { zh: '中国澳门', en: 'Macao, China' },
+    TW: { zh: '中国台湾', en: 'Taiwan, China' },
+};
+
+// PINNED_ORDER is listed first, matching how the four appear at the top of the
+// upstream product's picker.
+const PINNED_ORDER = ['CN', 'HK', 'MO', 'TW'];
+
 // Intl.DisplayNames is available in every browser this panel supports, but a
 // failure here must not take the whole page down — the code itself is a usable
 // label, just a less friendly one.
@@ -277,8 +295,20 @@ const displayName = (locale: string) => {
 const zhName = displayName('zh-CN');
 const enName = displayName('en');
 
-export const COUNTRIES: Country[] = CODES.map((code) => ({
-    code,
-    zh: zhName(code),
-    en: enName(code),
-})).sort((a, b) => a.code.localeCompare(b.code));
+const resolve = (code: string): Country => {
+    const pinned = PINNED[code];
+    return {
+        code,
+        zh: pinned ? pinned.zh : zhName(code),
+        en: pinned ? pinned.en : enName(code),
+    };
+};
+
+// The pinned four first, then everything else sorted by its Chinese name — the
+// order an operator scanning the list expects, and the one the upstream product
+// uses.
+const rest = CODES.filter((code) => !PINNED_ORDER.includes(code))
+    .map(resolve)
+    .sort((a, b) => a.zh.localeCompare(b.zh, 'zh-Hans-CN'));
+
+export const COUNTRIES: Country[] = [...PINNED_ORDER.map(resolve), ...rest];

@@ -32,11 +32,18 @@ type RegionPolicy struct {
 	// Regions are ISO 3166-1 alpha-2 country codes. Empty means no region
 	// control at all, whatever Mode says.
 	Regions []string `json:"regions,omitempty"`
+	// Disabled switches the control off while KEEPING the region list, which is
+	// what the panel's master toggle does. It is a negative so its zero value
+	// means "active": a stored policy that predates this field was written by an
+	// operator who meant it to apply.
+	Disabled bool `json:"disabled,omitempty"`
 }
 
-// IsZero reports the "no region control" policy, which is emitted as an absent
-// object so the config stays small and older gateways keep working.
-func (p *RegionPolicy) IsZero() bool { return p == nil || len(p.Regions) == 0 }
+// IsZero reports a policy the data plane has nothing to do with, which is
+// emitted as an absent object so the config stays small.
+func (p *RegionPolicy) IsZero() bool {
+	return p == nil || len(p.Regions) == 0 || p.Disabled
+}
 
 // NormalizeRegionPolicy validates and canonicalizes a policy. Canonical ordering
 // keeps the config-generation digest stable for an unchanged policy.

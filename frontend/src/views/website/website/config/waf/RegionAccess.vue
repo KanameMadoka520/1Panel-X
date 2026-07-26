@@ -26,6 +26,15 @@
         </div>
 
         <div class="waf-rg-row">
+            <el-switch
+                :model-value="value.enabled"
+                :disabled="locked"
+                @update:model-value="(on: boolean) => write({ enabled: on })"
+            />
+            <span class="waf-rg-hint">{{ enabledHint }}</span>
+        </div>
+
+        <div class="waf-rg-row">
             <el-radio-group :model-value="value.mode" :disabled="locked" size="small" @update:model-value="setMode">
                 <el-radio-button label="deny">{{ $t('website.wafRegionModeDeny') }}</el-radio-button>
                 <el-radio-button label="allow">{{ $t('website.wafRegionModeAllow') }}</el-radio-button>
@@ -73,7 +82,7 @@ const props = withDefaults(
 );
 const emit = defineEmits<{ (e: 'update:modelValue', value: Website.WafRegionPolicy | null): void }>();
 
-const DEFAULT_POLICY: Website.WafRegionPolicy = { mode: 'deny', regions: [] };
+const DEFAULT_POLICY: Website.WafRegionPolicy = { mode: 'deny', regions: [], enabled: false };
 
 const inherited = computed(() => props.scope === 'site' && props.modelValue === null);
 
@@ -84,8 +93,18 @@ const locked = computed(() => props.disabled || inherited.value || !props.geoAva
 
 const value = computed<Website.WafRegionPolicy>(() => {
     const source = props.modelValue ?? props.effective ?? DEFAULT_POLICY;
-    return { mode: source.mode || 'deny', regions: source.regions ?? [] };
+    return { mode: source.mode || 'deny', regions: source.regions ?? [], enabled: !!source.enabled };
 });
+
+// The toggle switches the control off WITHOUT discarding the list, so an
+// operator can park a policy and turn it back on later.
+const enabledHint = computed(() =>
+    value.value.enabled
+        ? value.value.regions.length
+            ? $t('website.wafRegionOn')
+            : $t('website.wafRegionOnButEmpty')
+        : $t('website.wafRegionOff'),
+);
 
 const label = (c: Country) => (locale.value.startsWith('zh') ? c.zh : c.en);
 
@@ -112,7 +131,11 @@ const write = (patch: Partial<Website.WafRegionPolicy>) => {
 };
 
 const setMode = (mode: string | number | boolean | undefined) => write({ mode: String(mode) });
-const setRegions = (regions: string[]) => write({ regions: [...regions].sort() });
+// Picking regions turns the control on: an operator who has just chosen
+// countries has said what they want, and leaving the switch off would quietly
+// enforce nothing.
+const setRegions = (regions: string[]) =>
+    write({ regions: [...regions].sort(), enabled: value.value.enabled || regions.length > 0 });
 
 // Detaching copies the currently effective policy so switching to an override
 // changes nothing until the operator actually edits something.

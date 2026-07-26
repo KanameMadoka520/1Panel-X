@@ -314,7 +314,7 @@ const status = reactive<Website.WafSiteStatus>({
         bannedUploadExts: [],
     },
     region: null,
-    effectiveRegion: { mode: 'deny', regions: [] },
+    effectiveRegion: { mode: 'deny', regions: [], enabled: false },
     geoAvailable: false,
     realIp: { mode: '', header: '' },
     cdnHeaders: [],
@@ -351,7 +351,7 @@ const globalForm = reactive<Website.WafGlobalConfig>({
     denyList: [],
     rateLimits: [],
 });
-const globalRegion = ref<Website.WafRegionPolicy>({ mode: 'deny', regions: [] });
+const globalRegion = ref<Website.WafRegionPolicy>({ mode: 'deny', regions: [], enabled: false });
 // Reported by the server: false means the IP address database region control
 // needs is not installed, so the control is shown as unavailable rather than as
 // a switch that cannot take effect.
@@ -476,7 +476,7 @@ const syncGlobal = (data: Website.WafGlobalConfig) => {
         allowedMethods: [],
         bannedUploadExts: [],
     };
-    globalRegion.value = data.region || { mode: 'deny', regions: [] };
+    globalRegion.value = data.region || { mode: 'deny', regions: [], enabled: false };
     globalGeoAvailable.value = data.geoAvailable;
     globalBlockPage.status = data.blockPage?.status || 403;
     globalBlockPage.html = data.blockPage?.html || '';

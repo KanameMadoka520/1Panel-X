@@ -47,10 +47,18 @@ var regionCodePattern = regexp.MustCompile(`^[A-Za-z]{2}$`)
 type RegionPolicy struct {
 	Mode    RegionMode `json:"mode,omitempty"`
 	Regions []string   `json:"regions,omitempty"`
+	// Disabled switches the control off while KEEPING the region list, which is
+	// what the panel's master toggle does.
+	//
+	// It is expressed as a negative so its zero value means "active": a config
+	// that carries a region list but predates this field was written by an
+	// operator who meant it to apply, and a new field must not silently switch
+	// their policy off.
+	Disabled bool `json:"disabled,omitempty"`
 }
 
 // IsZero reports the "no region control" policy.
-func (p *RegionPolicy) IsZero() bool { return p == nil || len(p.Regions) == 0 }
+func (p *RegionPolicy) IsZero() bool { return p == nil || len(p.Regions) == 0 || p.Disabled }
 
 // normalizeRegions upper-cases, de-duplicates and sorts the country codes.
 func normalizeRegions(regions []string) ([]string, error) {
@@ -97,6 +105,8 @@ func (p *RegionPolicy) validate() error {
 		p.Mode = ""
 		return nil
 	}
+	// A switched-off policy is still validated: an operator who turns it back on
+	// must not discover only then that what they stored was unusable.
 	switch p.Mode {
 	case RegionAllow, RegionDeny:
 	case "":

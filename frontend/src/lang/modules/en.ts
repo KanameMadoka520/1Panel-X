@@ -3502,6 +3502,9 @@ const message = {
         wafRegionModeDenyHint: 'The listed countries are refused; everything else passes as usual.',
         wafRegionPlaceholder: 'Pick countries; leave empty for no restriction',
         wafRegionNone: 'No region restriction',
+        wafRegionOn: 'Active',
+        wafRegionOnButEmpty: 'Active, but no region is selected — an empty list restricts nothing.',
+        wafRegionOff: 'Off. The region list is kept and can be switched back on at any time.',
         wafRegionGranularity:
             'Granularity is the country. The address database carries a province name but no stable province code, and matching on a display name would break silently the first time that wording changed — so province level is not offered.',
         wafRegionNoDatabase:

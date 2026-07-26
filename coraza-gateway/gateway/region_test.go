@@ -144,6 +144,43 @@ func TestMissingAddressDatabaseIsNotFatalOnItsOwn(t *testing.T) {
 	}
 }
 
+// The master toggle switches the control off while KEEPING the list, and it is
+// stored as a NEGATIVE so a policy written before the field existed stays in
+// force. A new field must never silently switch an operator's policy off.
+func TestRegionMasterToggle(t *testing.T) {
+	var reached bool
+	geo := fakeGeo{"203.0.113.7": "RU"}
+	off := &RegionPolicy{Mode: RegionDeny, Regions: []string{"RU"}, Disabled: true}
+
+	if !off.IsZero() {
+		t.Fatal("a switched-off policy must restrict nothing")
+	}
+	h := buildRegionHandler(t, off, geo, &reached, nil)
+	reached = false
+	if code := serveFromAddr(h, "203.0.113.7:1234"); code != http.StatusOK || !reached {
+		t.Fatalf("a switched-off policy must let the request through, got %d reached=%v", code, reached)
+	}
+	// Absent field (the pre-existing config shape) keeps the policy active.
+	cfg, err := ParseConfig([]byte(`{"sites":[{"host":"a.example","upstream":"http://127.0.0.1:1",
+		"region":{"mode":"deny","regions":["RU"]}}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Sites[0].Region.IsZero() {
+		t.Fatal("a policy written before the toggle existed must stay in force")
+	}
+	// A switched-off policy is still validated, so turning it back on cannot
+	// surprise the operator with a value that was never usable.
+	bad := &RegionPolicy{Mode: "sideways", Regions: []string{"RU"}, Disabled: true}
+	if err := bad.validate(); err == nil {
+		t.Fatal("a switched-off policy must still be validated")
+	}
+	// And it needs no address database while it is off.
+	if _, err := newRegionMatcher(off, nil, "a.example"); err != nil {
+		t.Fatalf("a switched-off policy must not require the address database: %v", err)
+	}
+}
+
 // An empty region list means no control at all, whatever the mode says, so an
 // unfinished form cannot lock every visitor out.
 func TestEmptyRegionListIsNoControl(t *testing.T) {

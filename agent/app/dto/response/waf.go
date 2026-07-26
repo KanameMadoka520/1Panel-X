@@ -145,6 +145,7 @@ type WafRealIP struct {
 type WafRegionPolicy struct {
 	Mode    string   `json:"mode"`
 	Regions []string `json:"regions"`
+	Enabled bool     `json:"enabled"`
 }
 
 // WafGlobalConfig echoes the stored panel-wide defaults with canonicalized lists.
