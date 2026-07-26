@@ -12,7 +12,13 @@
                 :disabled="loadingStatus || !status.supported"
                 @change="updateConfig"
             />
-            <el-select v-model="mode" :disabled="saving || !enabled" size="small" class="waf-mode" @change="updateConfig">
+            <el-select
+                v-model="mode"
+                :disabled="saving || !enabled"
+                size="small"
+                class="waf-mode"
+                @change="updateConfig"
+            >
                 <el-option value="detection" :label="$t('website.wafDetectionMode')" />
                 <el-option value="block" :label="$t('website.wafBlockMode')" />
             </el-select>
@@ -21,6 +27,45 @@
             <el-tag v-else type="info">{{ $t('website.wafDisabled') }}</el-tag>
         </div>
         <el-alert v-if="status.lastError" :title="status.lastError" type="error" :closable="false" class="waf-error" />
+
+        <div class="waf-acl">
+            <div class="waf-acl-head">
+                <strong>{{ $t('website.wafAccessControl') }}</strong>
+                <span>{{ $t('website.wafAccessControlTip') }}</span>
+            </div>
+            <div class="waf-acl-lists">
+                <div class="waf-acl-col">
+                    <label>{{ $t('website.wafDenyList') }}</label>
+                    <span class="waf-acl-hint">{{ $t('website.wafDenyListTip') }}</span>
+                    <el-input
+                        v-model="denyText"
+                        type="textarea"
+                        :rows="6"
+                        :disabled="!status.supported"
+                        :placeholder="aclPlaceholder"
+                        resize="vertical"
+                    />
+                </div>
+                <div class="waf-acl-col">
+                    <label>{{ $t('website.wafAllowList') }}</label>
+                    <span class="waf-acl-hint">{{ $t('website.wafAllowListTip') }}</span>
+                    <el-input
+                        v-model="allowText"
+                        type="textarea"
+                        :rows="6"
+                        :disabled="!status.supported"
+                        :placeholder="aclPlaceholder"
+                        resize="vertical"
+                    />
+                </div>
+            </div>
+            <div class="waf-acl-actions">
+                <el-button type="primary" size="small" :loading="saving" :disabled="!status.supported" @click="saveAcl">
+                    {{ $t('commons.button.save') }}
+                </el-button>
+            </div>
+        </div>
+
         <div class="waf-bar">
             <el-radio-group v-model="range" @change="search" size="small">
                 <el-radio-button label="24h">{{ $t('website.monitorRange24h') }}</el-radio-button>
@@ -96,6 +141,8 @@ const status = reactive<Website.WafSiteStatus>({
     supported: false,
     enabled: false,
     mode: 'detection',
+    allowList: [],
+    denyList: [],
     installed: false,
     ready: false,
     routed: false,
@@ -104,6 +151,9 @@ const status = reactive<Website.WafSiteStatus>({
 });
 const enabled = ref(false);
 const mode = ref<Website.WafSiteUpdate['mode']>('detection');
+const allowText = ref('');
+const denyText = ref('');
+const aclPlaceholder = '203.0.113.10\n198.51.100.0/24\n2001:db8::/32';
 const loadingStatus = ref(false);
 const saving = ref(false);
 const protectionDescription = computed(() => {
@@ -148,14 +198,28 @@ const search = () => {
     });
 };
 
+// textarea (one entry per line) -> trimmed, blank-dropped array; the agent is the
+// authority that canonicalizes/validates/dedupes, so we only strip obvious noise.
+const linesToList = (text: string) =>
+    text
+        .split('\n')
+        .map((l) => l.trim())
+        .filter((l) => l.length > 0);
+
+const syncFromStatus = (data: Website.WafSiteStatus) => {
+    Object.assign(status, data);
+    enabled.value = data.enabled;
+    mode.value = data.mode;
+    allowText.value = (data.allowList || []).join('\n');
+    denyText.value = (data.denyList || []).join('\n');
+};
+
 const loadStatus = async () => {
     if (!props.id) return;
     loadingStatus.value = true;
     try {
         const res = await GetWafStatus(props.id);
-        Object.assign(status, res.data);
-        enabled.value = res.data.enabled;
-        mode.value = res.data.mode;
+        syncFromStatus(res.data);
     } finally {
         loadingStatus.value = false;
     }
@@ -165,16 +229,21 @@ const updateConfig = async () => {
     if (!props.id || saving.value) return;
     saving.value = true;
     try {
-        const res = await UpdateWafSite(props.id, { enabled: enabled.value, mode: mode.value });
-        Object.assign(status, res.data);
-        enabled.value = res.data.enabled;
-        mode.value = res.data.mode;
+        const res = await UpdateWafSite(props.id, {
+            enabled: enabled.value,
+            mode: mode.value,
+            allowList: linesToList(allowText.value),
+            denyList: linesToList(denyText.value),
+        });
+        syncFromStatus(res.data);
     } catch {
         await loadStatus();
     } finally {
         saving.value = false;
     }
 };
+
+const saveAcl = () => updateConfig();
 
 onMounted(() => {
     loadStatus();
@@ -220,5 +289,42 @@ onMounted(() => {
 }
 .waf-cat {
     width: 150px;
+}
+.waf-acl {
+    padding: 12px 14px;
+    margin-bottom: 12px;
+    border: 1px solid var(--el-border-color-light);
+}
+.waf-acl-head {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    margin-bottom: 10px;
+}
+.waf-acl-head span {
+    color: var(--el-text-color-secondary);
+    font-size: 12px;
+}
+.waf-acl-lists {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+.waf-acl-col {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 1;
+    min-width: 260px;
+}
+.waf-acl-col label {
+    font-weight: 500;
+}
+.waf-acl-hint {
+    color: var(--el-text-color-secondary);
+    font-size: 12px;
+}
+.waf-acl-actions {
+    margin-top: 10px;
 }
 </style>

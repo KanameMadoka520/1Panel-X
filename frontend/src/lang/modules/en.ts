@@ -3418,6 +3418,13 @@ const message = {
         wafProtectionDescriptionUnsupported: 'Only reverse-proxy websites are currently supported.',
         wafProtectionDescriptionProtected: 'The gateway is ready and OpenResty is routing through the WAF.',
         wafProtectionDescriptionEnable: 'Enable a mode to apply the real Coraza gateway to this site.',
+        wafAccessControl: 'Access lists',
+        wafAccessControlTip: 'One IP or CIDR per line; the gateway allows or blocks by these lists once saved.',
+        wafDenyList: 'Deny list',
+        wafDenyListTip: 'Matched sources get 403 in both detection and block modes (evaluated before the rule engine).',
+        wafAllowList: 'Allow list',
+        wafAllowListTip:
+            'Matched sources skip rule-engine inspection but are still proxied through the hardened gateway; empty means no source is trusted.',
         wafSourceIp: 'Source IP',
         wafRule: 'Rule',
         wafCategory: 'Category',

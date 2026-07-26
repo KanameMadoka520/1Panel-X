@@ -126,6 +126,8 @@ func (s *WafControlService) GetStatus(websiteID uint) (response.WafSiteStatus, e
 	if err == nil {
 		status.Enabled = policy.Enabled
 		status.Mode = normalizedPolicyMode(policy.Mode)
+		status.AllowList = splitIPLines(policy.AllowIPs)
+		status.DenyList = splitIPLines(policy.DenyIPs)
 		status.LastError = policy.LastError
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return status, err
@@ -172,6 +174,14 @@ func (s *WafControlService) update(websiteID uint, req request.WafSiteUpdate) (r
 	if mode != wafconfig.ModeDetection && mode != wafconfig.ModeBlock {
 		return response.WafSiteStatus{}, fmt.Errorf("invalid WAF mode %q", req.Mode)
 	}
+	allowList, err := wafconfig.NormalizeIPList(req.AllowList)
+	if err != nil {
+		return response.WafSiteStatus{}, fmt.Errorf("invalid WAF allow list: %w", err)
+	}
+	denyList, err := wafconfig.NormalizeIPList(req.DenyList)
+	if err != nil {
+		return response.WafSiteStatus{}, fmt.Errorf("invalid WAF deny list: %w", err)
+	}
 
 	wafRepo := repo.NewIWafRepo()
 	oldPolicy, oldPolicyErr := wafRepo.GetPolicy(websiteID)
@@ -179,7 +189,13 @@ func (s *WafControlService) update(websiteID uint, req request.WafSiteUpdate) (r
 	proxyPath := rootProxyPath(website)
 	oldProxy, proxyExisted := readOptional(proxyPath)
 
-	candidate := model.WafSitePolicy{WebsiteID: websiteID, Enabled: req.Enabled, Mode: string(mode)}
+	candidate := model.WafSitePolicy{
+		WebsiteID: websiteID,
+		Enabled:   req.Enabled,
+		Mode:      string(mode),
+		AllowIPs:  strings.Join(allowList, "\n"),
+		DenyIPs:   strings.Join(denyList, "\n"),
+	}
 	if err := wafRepo.SavePolicy(candidate); err != nil {
 		return response.WafSiteStatus{}, err
 	}
@@ -341,7 +357,14 @@ func (s *WafControlService) writeGatewayConfig() (string, error) {
 		if !ok || !policy.Enabled {
 			continue
 		}
-		inputs = append(inputs, wafconfig.Site{Website: website, Domains: website.Domains, Enabled: true, Mode: wafconfig.Mode(normalizedPolicyMode(policy.Mode))})
+		inputs = append(inputs, wafconfig.Site{
+			Website:  website,
+			Domains:  website.Domains,
+			Enabled:  true,
+			Mode:     wafconfig.Mode(normalizedPolicyMode(policy.Mode)),
+			AllowIPs: splitIPLines(policy.AllowIPs),
+			DenyIPs:  splitIPLines(policy.DenyIPs),
+		})
 	}
 	cfg, err := wafconfig.Build(inputs)
 	if err != nil {
@@ -444,6 +467,23 @@ func normalizedWebsiteOrigin(website model.Website) string {
 		origin = "http://" + origin
 	}
 	return origin
+}
+
+// splitIPLines expands the newline-separated IP/CIDR text stored on a policy back
+// into a trimmed slice, dropping blank lines. The stored text is already
+// canonical (written from wafconfig.NormalizeIPList), so no re-validation here.
+func splitIPLines(s string) []string {
+	if strings.TrimSpace(s) == "" {
+		return nil
+	}
+	parts := strings.Split(s, "\n")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 func normalizedPolicyMode(mode string) string {

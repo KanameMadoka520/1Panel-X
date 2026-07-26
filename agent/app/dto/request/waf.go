@@ -15,4 +15,9 @@ type WafEventSearch struct {
 type WafSiteUpdate struct {
 	Enabled bool   `json:"enabled"`
 	Mode    string `json:"mode" validate:"required,oneof=detection block"`
+	// AllowList/DenyList are IP or CIDR entries. They are normalized and validated
+	// server-side; the per-entry/length caps here only bound obviously abusive
+	// input before that authoritative check.
+	AllowList []string `json:"allowList" validate:"omitempty,max=512,dive,max=64"`
+	DenyList  []string `json:"denyList" validate:"omitempty,max=512,dive,max=64"`
 }

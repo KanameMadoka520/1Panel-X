@@ -92,7 +92,7 @@ func (r *WafRepo) GetPolicy(websiteID uint) (model.WafSitePolicy, error) {
 func (r *WafRepo) SavePolicy(policy model.WafSitePolicy) error {
 	return global.WafDB.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "website_id"}},
-		DoUpdates: clause.AssignmentColumns([]string{"enabled", "mode", "last_error", "updated_at"}),
+		DoUpdates: clause.AssignmentColumns([]string{"enabled", "mode", "allow_ips", "deny_ips", "last_error", "updated_at"}),
 	}).Create(&policy).Error
 }
 

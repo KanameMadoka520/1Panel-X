@@ -21,6 +21,9 @@ type Handler struct {
 	// address. Only safe because the sole supported topology is behind that
 	// trusted proxy (W8/W12); empty disables it.
 	realIPHeader string
+	// acl is the per-site explicit operator IP allow/deny list, evaluated before
+	// the CRS engine. nil means no ACL configured.
+	acl *ipACL
 }
 
 func NewHandler(engine *Engine, upstream http.Handler, mode Mode) *Handler {
@@ -31,6 +34,15 @@ func NewHandler(engine *Engine, upstream http.Handler, mode Mode) *Handler {
 // handler for chaining.
 func (h *Handler) WithRealIPHeader(header string) *Handler {
 	h.realIPHeader = header
+	return h
+}
+
+// WithIPACL attaches an explicit operator IP allow/deny list and returns the
+// handler for chaining. A nil or empty ACL is a no-op.
+func (h *Handler) WithIPACL(acl *ipACL) *Handler {
+	if !acl.empty() {
+		h.acl = acl
+	}
 	return h
 }
 
@@ -54,9 +66,26 @@ func (h *Handler) applyRealIP(r *http.Request) {
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.applyRealIP(r)
+	// The explicit operator ACL is evaluated before anything else: a denied IP is
+	// refused with the same generic 403 as an unknown Host, regardless of mode,
+	// and never reaches the body reader or the CRS engine.
+	decision := aclNormal
+	if h.acl != nil {
+		decision = h.acl.decide(clientIP(r.RemoteAddr))
+		if decision == aclDeny {
+			writeForbidden(w)
+			return
+		}
+	}
 	// Content-Length is rejected before Coraza reads the stream. Production nginx
 	// also enforces the same 13 MiB ceiling and returns its stable public 413.
 	if h.rejectOversizeBody(w, r) {
+		return
+	}
+	// A trusted (allow-listed) client bypasses CRS inspection but is still proxied
+	// through the same hardened reverse proxy.
+	if decision == aclAllow {
+		h.serveTrusted(w, r)
 		return
 	}
 	// ran records whether the upstream was actually invoked, so we can tell a
@@ -86,6 +115,18 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !ran && bw.status >= 400 && !bw.wroteBody {
 		writeBlockPage(bw)
 	}
+}
+
+// serveTrusted forwards an allow-listed request straight to the origin without
+// CRS inspection. It keeps a recover guard so an upstream panic still fails
+// closed (generic 403) rather than crashing the connection.
+func (h *Handler) serveTrusted(w http.ResponseWriter, r *http.Request) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			writeForbidden(w)
+		}
+	}()
+	h.upstream.ServeHTTP(w, r)
 }
 
 func (h *Handler) rejectOversizeBody(w http.ResponseWriter, r *http.Request) bool {

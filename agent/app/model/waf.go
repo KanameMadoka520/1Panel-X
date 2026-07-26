@@ -40,5 +40,10 @@ type WafSitePolicy struct {
 	WebsiteID uint   `gorm:"uniqueIndex" json:"websiteID"`
 	Enabled   bool   `json:"enabled"`
 	Mode      string `gorm:"size:16;not null;default:detection" json:"mode"`
+	// AllowIPs and DenyIPs are newline-separated canonical IP/CIDR entries. Allow
+	// entries are trusted clients that bypass CRS inspection but are still
+	// proxied; deny entries are refused with a 403 regardless of Mode (deny wins).
+	AllowIPs  string `gorm:"type:text" json:"allowIPs"`
+	DenyIPs   string `gorm:"type:text" json:"denyIPs"`
 	LastError string `gorm:"size:2048" json:"lastError"`
 }

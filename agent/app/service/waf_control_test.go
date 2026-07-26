@@ -51,6 +51,20 @@ func TestNormalizedWebsiteOrigin(t *testing.T) {
 	}
 }
 
+func TestSplitIPLines(t *testing.T) {
+	if got := splitIPLines(""); got != nil {
+		t.Fatalf("empty text must yield nil, got %#v", got)
+	}
+	if got := splitIPLines("   \n  \n"); got != nil {
+		t.Fatalf("blank-only text must yield nil, got %#v", got)
+	}
+	got := splitIPLines("1.2.3.4\n 10.0.0.0/8 \n\n2001:db8::1")
+	want := []string{"1.2.3.4", "10.0.0.0/8", "2001:db8::1"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("got %#v want %#v", got, want)
+	}
+}
+
 func TestNormalizedPolicyModeDefaultsToDetection(t *testing.T) {
 	if got := normalizedPolicyMode(""); got != "detection" {
 		t.Fatalf("got %q", got)

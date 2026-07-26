@@ -65,7 +65,13 @@ func NewRouter(cfg Config, engine *Engine, mode Mode, realIPHeader string) (*Rou
 			}
 			policyEngine = engines[modeForSite]
 		}
-		h := NewHandler(policyEngine, NewReverseProxy(origin), modeForSite).WithRealIPHeader(realIPHeader)
+		acl, err := newIPACL(s.AllowIPs, s.DenyIPs)
+		if err != nil {
+			return nil, fmt.Errorf("router: site %q %w", s.Host, err)
+		}
+		h := NewHandler(policyEngine, NewReverseProxy(origin), modeForSite).
+			WithRealIPHeader(realIPHeader).
+			WithIPACL(acl)
 		rt.handlers[host] = h
 	}
 	return rt, nil
@@ -77,8 +83,7 @@ func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// W12: unknown/forged Host selects no site → deny, never bypass.
-	w.WriteHeader(http.StatusForbidden)
-	writeBlockPage(w)
+	writeForbidden(w)
 }
 
 // normalizeHost lower-cases a valid HTTP Host and removes an optional port.

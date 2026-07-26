@@ -807,6 +807,8 @@ export namespace Website {
         supported: boolean;
         enabled: boolean;
         mode: 'detection' | 'block';
+        allowList: string[];
+        denyList: string[];
         installed: boolean;
         ready: boolean;
         routed: boolean;
@@ -817,6 +819,8 @@ export namespace Website {
     export interface WafSiteUpdate {
         enabled: boolean;
         mode: 'detection' | 'block';
+        allowList: string[];
+        denyList: string[];
     }
 
     export interface WafEventReq {

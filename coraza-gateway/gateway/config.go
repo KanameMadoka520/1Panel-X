@@ -17,6 +17,11 @@ type SiteConfig struct {
 	Host      string `json:"host"`
 	Upstream  string `json:"upstream"`
 	Mode      Mode   `json:"mode,omitempty"`
+	// AllowIPs are trusted client addresses/CIDRs that bypass CRS inspection but
+	// are still proxied. DenyIPs are refused with a 403 before inspection. Both
+	// are explicit operator ACLs honored regardless of Mode; deny wins.
+	AllowIPs []string `json:"allowIps,omitempty"`
+	DenyIPs  []string `json:"denyIps,omitempty"`
 }
 
 // Config is the gateway's versioned per-site routing table.
@@ -69,6 +74,12 @@ func ParseConfig(data []byte) (Config, error) {
 		}
 		if strings.TrimSpace(u.Hostname()) == "" {
 			return Config{}, fmt.Errorf("waf config: site %q has invalid HTTP(S) upstream %q", host, c.Sites[i].Upstream)
+		}
+		if _, err := parseIPNets(c.Sites[i].AllowIPs); err != nil {
+			return Config{}, fmt.Errorf("waf config: site %q allow %w", host, err)
+		}
+		if _, err := parseIPNets(c.Sites[i].DenyIPs); err != nil {
+			return Config{}, fmt.Errorf("waf config: site %q deny %w", host, err)
 		}
 	}
 	return c, nil
