@@ -135,6 +135,28 @@ func (b *BaseApi) DeleteWafIPGroups(c *gin.Context) {
 	helper.SuccessWithData(c, res)
 }
 
+func (b *BaseApi) GetWafBans(c *gin.Context) {
+	res, err := wafBanService.List()
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, res)
+}
+
+func (b *BaseApi) ReleaseWafBan(c *gin.Context) {
+	var req request.WafBanRelease
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	res, err := wafBanService.Release(req.IP)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, res)
+}
+
 func (b *BaseApi) UpdateWafGlobal(c *gin.Context) {
 	var req request.WafGlobalUpdate
 	if err := helper.CheckBindAndValidate(&req, c); err != nil {

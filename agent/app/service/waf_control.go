@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -105,6 +107,38 @@ func GetWafConfigPath() string {
 	return path.Join(GetWafDir(), "config", "gateway.json")
 }
 
+// GetWafAdminTokenPath is the shared secret the control plane and the gateway
+// use for the loopback management API. It lives in the config directory that is
+// already mounted read-only into the container, so no new mount is needed.
+func GetWafAdminTokenPath() string {
+	return path.Join(GetWafDir(), "config", "admin.token")
+}
+
+// ensureWafAdminToken creates the management secret once and returns it. The
+// gateway disables its management API when the file is absent, so a failure
+// here degrades to "no remote management" rather than breaking traffic.
+func ensureWafAdminToken() (string, error) {
+	tokenPath := GetWafAdminTokenPath()
+	if data, err := os.ReadFile(tokenPath); err == nil {
+		if token := strings.TrimSpace(string(data)); token != "" {
+			return token, nil
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return "", err
+	}
+	var buf [32]byte
+	if _, err := rand.Read(buf[:]); err != nil {
+		return "", err
+	}
+	token := hex.EncodeToString(buf[:])
+	// 0600: only the panel process and root may read it. The container reads it
+	// through the same bind mount as the rest of the config.
+	if err := wafconfig.WriteAtomic(tokenPath, []byte(token+"\n"), 0600); err != nil {
+		return "", err
+	}
+	return token, nil
+}
+
 func GetWafComposePath() string {
 	return path.Join(GetWafDir(), "docker-compose.yml")
 }
@@ -124,6 +158,9 @@ func EnsureWafRuntimeFiles() (bool, error) {
 		return false, err
 	}
 	if err := os.MkdirAll(path.Join(GetWafDir(), "audit"), 0750); err != nil {
+		return false, err
+	}
+	if _, err := ensureWafAdminToken(); err != nil {
 		return false, err
 	}
 	composePath := GetWafComposePath()

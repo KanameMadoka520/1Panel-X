@@ -3179,6 +3179,18 @@ const message = {
         wafGlobalDefaultMode: '默认模式',
         wafGlobalTip:
             '全局默认作用于所有启用 WAF 的网站：默认模式仅对“跟随全局”的站点生效；全局名单会并入每个站点的名单（拒绝仍优先于放行）。',
+        wafBans: '封锁记录',
+        wafBansScope: '当前生效的临时封禁，由频率限制自动产生。',
+        wafBansTip:
+            '临时封禁保存在 WAF 网关进程内：保存配置不会清空，网关容器重启或升级会清空。需要永久封禁请加入黑名单。',
+        wafBansEmpty: '当前没有生效中的封禁。',
+        wafBansUnavailable: 'WAF 网关不可达，封禁数据保存在网关中，暂时无法读取。',
+        wafBansOverflow: '限频计数器已达上限并被丢弃过，说明来源 IP 极度分散，统计可能不完整。',
+        wafBanReason: '触发规则',
+        wafBanSite: '触发站点',
+        wafBanAt: '封禁时间',
+        wafBanUntil: '解封时间',
+        wafBanRelease: '解封',
         wafLists: '黑白名单',
         wafListsScope: '面板级名单，对所有启用 WAF 的网站生效。',
         wafListsTip:

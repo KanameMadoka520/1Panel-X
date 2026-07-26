@@ -840,6 +840,21 @@ export namespace Website {
         rateLimits: WafRateLimit[];
     }
 
+    export interface WafBan {
+        ip: string;
+        kind: string;
+        host: string;
+        websiteId: number;
+        bannedAt: string;
+        expiresAt: string;
+    }
+
+    export interface WafBanState {
+        bans: WafBan[];
+        trackedCounters: number;
+        counterOverflow: boolean;
+    }
+
     export type WafListName = 'deny' | 'allow';
     export type WafListTarget = 'ip' | 'ipgroup' | 'url' | 'ua';
     export type WafListMatch = 'exact' | 'prefix' | 'contains' | 'regex' | '';

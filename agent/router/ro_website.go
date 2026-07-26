@@ -103,6 +103,8 @@ func (a *WebsiteRouter) InitRouter(Router *gin.RouterGroup) {
 		websiteRouter.POST("/waf/lists/entry/del", baseApi.DeleteWafListEntries)
 		websiteRouter.POST("/waf/lists/group", baseApi.SaveWafIPGroup)
 		websiteRouter.POST("/waf/lists/group/del", baseApi.DeleteWafIPGroups)
+		websiteRouter.GET("/waf/bans", baseApi.GetWafBans)
+		websiteRouter.POST("/waf/bans/release", baseApi.ReleaseWafBan)
 
 		websiteRouter.GET("/resource/:id", baseApi.GetWebsiteResource)
 		websiteRouter.GET("/databases", baseApi.GetWebsiteDatabase)

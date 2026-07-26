@@ -32,6 +32,7 @@ func main() {
 	auditLog := flag.String("audit-log", "", "path to append JSON attack-event audit records (empty disables)")
 	eventLog := flag.String("event-log", "", "path to append JSON records for non-CRS enforcement decisions (empty disables)")
 	realIP := flag.String("real-ip-header", "X-Real-IP", "trusted header carrying the true client IP set by the front proxy (empty disables)")
+	adminTokenFile := flag.String("admin-token-file", "", "file holding the shared secret for the loopback management API (empty disables it)")
 	flag.Parse()
 
 	if *config == "" && *upstream == "" {
@@ -89,6 +90,11 @@ func main() {
 		handler = gateway.WithHealth(gatewayHandler, 1, mode, "")
 		desc = origin.String()
 	}
+
+	// The management API sits outside the router so no protected site can shadow
+	// it, and behind a shared token because the loopback check alone is not a
+	// boundary under network_mode host.
+	handler = gateway.WithAdmin(handler, enforcer, gateway.ReadAdminToken(*adminTokenFile))
 
 	srv := &http.Server{
 		Addr:    *listen,

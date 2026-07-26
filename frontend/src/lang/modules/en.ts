@@ -3423,6 +3423,20 @@ const message = {
         wafGlobalDefaultMode: 'Default mode',
         wafGlobalTip:
             "Global defaults apply to every WAF-enabled website: the default mode only affects sites set to inherit, and global lists are merged into each site's lists (deny still wins over allow).",
+        wafBans: 'Temporary bans',
+        wafBansScope: 'Bans currently in force, produced automatically by the frequency limits.',
+        wafBansTip:
+            'Temporary bans live in the WAF gateway process: saving configuration does not clear them, but restarting or upgrading the gateway container does. Use the blacklist for a permanent block.',
+        wafBansEmpty: 'No bans are currently in force.',
+        wafBansUnavailable:
+            'The WAF gateway is unreachable; bans are held in the gateway and cannot be read right now.',
+        wafBansOverflow:
+            'Rate-limit counters hit their bound and were dropped, so source addresses are extremely dispersed and counting may be incomplete.',
+        wafBanReason: 'Triggered by',
+        wafBanSite: 'Triggering site',
+        wafBanAt: 'Banned at',
+        wafBanUntil: 'Expires at',
+        wafBanRelease: 'Release',
         wafLists: 'Access lists (panel-wide)',
         wafListsScope: 'Panel-wide lists; they apply to every WAF-enabled website.',
         wafListsTip:

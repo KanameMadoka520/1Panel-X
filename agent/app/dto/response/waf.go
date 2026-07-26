@@ -1,5 +1,7 @@
 package response
 
+import "time"
+
 // WafSiteStatus separates operator intent from verified data-plane state.
 // Protected is true only when the gateway is ready and nginx is actually routed
 // through it; Enabled alone never claims protection.
@@ -33,6 +35,27 @@ type WafRateLimit struct {
 	Threshold int    `json:"threshold"`
 	BanSec    int    `json:"banSec"`
 	PerURL    bool   `json:"perUrl"`
+}
+
+// WafBan is one temporary block currently in force in the gateway.
+type WafBan struct {
+	IP        string    `json:"ip"`
+	Kind      string    `json:"kind"`
+	Host      string    `json:"host"`
+	WebsiteID uint      `json:"websiteId"`
+	BannedAt  time.Time `json:"bannedAt"`
+	ExpiresAt time.Time `json:"expiresAt"`
+}
+
+// WafBanState is the gateway's live enforcement state.
+type WafBanState struct {
+	Bans []WafBan `json:"bans"`
+	// TrackedCounters and CounterOverflow expose how much rate-limit state the
+	// gateway is holding. CounterOverflow means the tracker had to drop windows
+	// to stay bounded, so a flood outran it — surfaced rather than hidden,
+	// because it looks exactly like an absence of attacks otherwise.
+	TrackedCounters int  `json:"trackedCounters"`
+	CounterOverflow bool `json:"counterOverflow"`
 }
 
 // WafListEntry is one stored black/white list row.

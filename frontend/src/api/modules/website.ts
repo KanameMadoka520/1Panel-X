@@ -430,6 +430,14 @@ export const UpdateWafGlobal = (req: Website.WafGlobalConfig) => {
     return http.post<Website.WafGlobalConfig>(`/websites/waf/global`, req);
 };
 
+export const GetWafBans = () => {
+    return http.get<Website.WafBanState>(`/websites/waf/bans`);
+};
+
+export const ReleaseWafBan = (ip: string) => {
+    return http.post<Website.WafBanState>(`/websites/waf/bans/release`, { ip });
+};
+
 export const GetWafLists = () => {
     return http.get<Website.WafLists>(`/websites/waf/lists`);
 };

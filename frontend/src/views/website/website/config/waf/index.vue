@@ -72,6 +72,14 @@
 
         <div class="waf-acl">
             <div class="waf-acl-head">
+                <strong>{{ $t('website.wafBans') }}</strong>
+                <span>{{ $t('website.wafBansScope') }}</span>
+            </div>
+            <BanRecords />
+        </div>
+
+        <div class="waf-acl">
+            <div class="waf-acl-head">
                 <strong>{{ $t('website.wafLists') }}</strong>
                 <span>{{ $t('website.wafListsScope') }}</span>
             </div>
@@ -196,6 +204,7 @@ import { Website } from '@/api/interface/website';
 import { MsgSuccess } from '@/utils/message';
 import RateLimits from './RateLimits.vue';
 import BlackWhiteLists from './BlackWhiteLists.vue';
+import BanRecords from './BanRecords.vue';
 
 const { t: $t } = useI18n();
 

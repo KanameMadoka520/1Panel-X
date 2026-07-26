@@ -57,6 +57,11 @@ type WafIPGroupSave struct {
 	Remark  string   `json:"remark" validate:"omitempty,max=256"`
 }
 
+// WafBanRelease lifts a temporary ban ahead of its expiry.
+type WafBanRelease struct {
+	IP string `json:"ip" validate:"required,ip"`
+}
+
 // WafListDelete removes list rows or IP groups by id.
 type WafListDelete struct {
 	IDs []uint `json:"ids" validate:"required,min=1,max=500"`

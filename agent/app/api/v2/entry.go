@@ -63,6 +63,7 @@ var (
 	wafEventService           = service.NewIWafEventService()
 	wafControlService         = service.NewIWafControlService()
 	wafListService            = service.NewIWafListService()
+	wafBanService             = service.NewIWafBanService()
 
 	nginxService = service.NewINginxService()
 
