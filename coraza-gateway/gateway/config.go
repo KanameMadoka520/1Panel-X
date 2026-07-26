@@ -30,6 +30,8 @@ type SiteConfig struct {
 	// Rules is this site's detection policy. Absent means the fully-protecting
 	// default, so a config that predates this field never loses protection.
 	Rules *RulePolicy `json:"rules,omitempty"`
+	// Region is this site's geographic access control. Absent means none.
+	Region *RegionPolicy `json:"region,omitempty"`
 }
 
 // RulePolicy is the per-site detection policy.
@@ -247,6 +249,11 @@ func ParseConfig(data []byte) (Config, error) {
 		// in particular a method token that could inject engine directives.
 		if _, err := c.Sites[i].enginePolicy(ModeDetection); err != nil {
 			return Config{}, fmt.Errorf("waf config: site %q %w", host, err)
+		}
+		// Region codes are canonicalized in place so the matcher and the parse
+		// step can never disagree about what was configured.
+		if err := c.Sites[i].Region.validate(); err != nil {
+			return Config{}, fmt.Errorf("waf config: site %q region policy: %w", host, err)
 		}
 	}
 	return c, nil

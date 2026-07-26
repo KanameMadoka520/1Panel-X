@@ -90,6 +90,25 @@
 
         <div class="waf-acl">
             <div class="waf-acl-head">
+                <strong>{{ $t('website.wafRegion') }}</strong>
+                <span>{{ $t('website.wafRegionTip') }}</span>
+            </div>
+            <RegionAccess
+                v-model="siteRegion"
+                :effective="status.effectiveRegion"
+                :geo-available="status.geoAvailable"
+                scope="site"
+                :disabled="!status.supported"
+            />
+            <div class="waf-acl-actions">
+                <el-button type="primary" size="small" :loading="saving" :disabled="!status.supported" @click="saveAcl">
+                    {{ $t('commons.button.save') }}
+                </el-button>
+            </div>
+        </div>
+
+        <div class="waf-acl">
+            <div class="waf-acl-head">
                 <strong>{{ $t('website.wafBans') }}</strong>
                 <span>{{ $t('website.wafBansScope') }}</span>
             </div>
@@ -217,6 +236,11 @@
                 <span class="waf-acl-hint">{{ $t('website.wafGlobalDefaultRulesTip') }}</span>
                 <DefaultRules v-model="globalRules" scope="global" />
             </div>
+            <div class="waf-global-rl">
+                <label>{{ $t('website.wafRegion') }}</label>
+                <span class="waf-acl-hint">{{ $t('website.wafGlobalRegionTip') }}</span>
+                <RegionAccess v-model="globalRegion" :geo-available="globalGeoAvailable" scope="global" />
+            </div>
             <template #footer>
                 <el-button @click="globalOpen = false">{{ $t('commons.button.cancel') }}</el-button>
                 <el-button type="primary" :loading="globalSaving" @click="saveGlobal">
@@ -238,6 +262,7 @@ import BlackWhiteLists from './BlackWhiteLists.vue';
 import BanRecords from './BanRecords.vue';
 import DefaultRules from './DefaultRules.vue';
 import CustomRules from './CustomRules.vue';
+import RegionAccess from './RegionAccess.vue';
 
 const { t: $t } = useI18n();
 
@@ -270,6 +295,9 @@ const status = reactive<Website.WafSiteStatus>({
         allowedMethods: [],
         bannedUploadExts: [],
     },
+    region: null,
+    effectiveRegion: { mode: 'deny', regions: [] },
+    geoAvailable: false,
     installed: false,
     ready: false,
     routed: false,
@@ -282,6 +310,7 @@ const allowText = ref('');
 const denyText = ref('');
 const rateLimits = ref<Website.WafRateLimit[]>([]);
 const siteRules = ref<Website.WafRulePolicy | null>(null);
+const siteRegion = ref<Website.WafRegionPolicy | null>(null);
 const globalRules = ref<Website.WafRulePolicy>({
     disableSqli: false,
     disableXss: false,
@@ -301,6 +330,11 @@ const globalForm = reactive<Website.WafGlobalConfig>({
     denyList: [],
     rateLimits: [],
 });
+const globalRegion = ref<Website.WafRegionPolicy>({ mode: 'deny', regions: [] });
+// Reported by the server: false means the IP address database region control
+// needs is not installed, so the control is shown as unavailable rather than as
+// a switch that cannot take effect.
+const globalGeoAvailable = ref(true);
 const globalAllowText = ref('');
 const globalDenyText = ref('');
 const inheritModeLabel = computed(() => {
@@ -365,6 +399,7 @@ const syncFromStatus = (data: Website.WafSiteStatus) => {
     denyText.value = (data.denyList || []).join('\n');
     rateLimits.value = data.rateLimits || [];
     siteRules.value = data.rules ?? null;
+    siteRegion.value = data.region ?? null;
 };
 
 const loadStatus = async () => {
@@ -389,6 +424,7 @@ const updateConfig = async () => {
             denyList: linesToList(denyText.value),
             rateLimits: rateLimits.value,
             rules: siteRules.value,
+            region: siteRegion.value,
         });
         syncFromStatus(res.data);
     } catch {
@@ -412,6 +448,8 @@ const syncGlobal = (data: Website.WafGlobalConfig) => {
         allowedMethods: [],
         bannedUploadExts: [],
     };
+    globalRegion.value = data.region || { mode: 'deny', regions: [] };
+    globalGeoAvailable.value = data.geoAvailable;
     globalAllowText.value = (data.allowList || []).join('\n');
     globalDenyText.value = (data.denyList || []).join('\n');
 };
@@ -436,6 +474,7 @@ const saveGlobal = async () => {
             denyList: linesToList(globalDenyText.value),
             rateLimits: globalForm.rateLimits,
             rules: globalRules.value,
+            region: globalRegion.value,
         });
         syncGlobal(res.data);
         globalOpen.value = false;

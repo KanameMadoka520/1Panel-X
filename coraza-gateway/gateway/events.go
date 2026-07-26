@@ -34,6 +34,10 @@ const (
 	// distinct from the lists so the panel can tell "my rule fired" from "my
 	// blacklist fired".
 	EventCustomRule EventKind = "custom-rule"
+	// EventRegion is a refusal by the geographic access policy. The record names
+	// the country that produced it, or just "region" when the address database
+	// could not place the client at all.
+	EventRegion EventKind = "region"
 )
 
 const (

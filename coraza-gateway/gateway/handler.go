@@ -31,6 +31,10 @@ type Handler struct {
 	// custom holds the operator-authored condition/action rules. They are
 	// evaluated after the panel-wide lists and before the site's own IP list.
 	custom *customMatcher
+	// region is this site's geographic access control. nil means none configured;
+	// it is never nil merely because the address database is missing — that case
+	// fails the config instead.
+	region *regionMatcher
 	// site identifies which protected website this handler serves, so a decision
 	// can be attributed to it in the enforcement journal.
 	site siteRef
@@ -61,6 +65,15 @@ func (h *Handler) WithLists(m *listMatcher) *Handler {
 func (h *Handler) WithCustomRules(m *customMatcher) *Handler {
 	if !m.empty() {
 		h.custom = m
+	}
+	return h
+}
+
+// WithRegion attaches the site's geographic access control. A nil or empty
+// matcher is a no-op.
+func (h *Handler) WithRegion(m *regionMatcher) *Handler {
+	if !m.empty() {
+		h.region = m
 	}
 	return h
 }
@@ -183,6 +196,21 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if decision == aclAllow {
 		h.serveTrusted(w, r)
 		return
+	}
+	// Region control sits AFTER the explicit allow shortcut above — an operator
+	// exemption outranks a geographic policy, the same way it outranks bans and
+	// frequency limits — and before the automatic mechanisms, because it is
+	// itself a deliberate decision rather than a heuristic.
+	if h.region != nil {
+		if refused, country := h.region.refuses(clientAddr); refused {
+			label := "region"
+			if country != "" {
+				label += ":" + country
+			}
+			h.recordEvent(r, EventRegion, label, "blocked")
+			writeForbidden(w)
+			return
+		}
 	}
 	// A client already banned is refused before any counting: letting a banned
 	// client keep feeding the counters that banned it would extend its own ban

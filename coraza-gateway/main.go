@@ -33,6 +33,7 @@ func main() {
 	eventLog := flag.String("event-log", "", "path to append JSON records for non-CRS enforcement decisions (empty disables)")
 	realIP := flag.String("real-ip-header", "X-Real-IP", "trusted header carrying the true client IP set by the front proxy (empty disables)")
 	adminTokenFile := flag.String("admin-token-file", "", "file holding the shared secret for the loopback management API (empty disables it)")
+	geoDB := flag.String("geoip-db", "", "path to the MaxMind-format IP address database used by region access control (empty disables it)")
 	flag.Parse()
 
 	if *config == "" && *upstream == "" {
@@ -54,12 +55,21 @@ func main() {
 	// silently un-ban everyone.
 	enforcer := gateway.NewEnforcer(journal)
 
+	// A configured-but-unopenable address database is fatal rather than a
+	// warning: coming up without it would leave every region policy silently
+	// unenforced while the panel reported the gateway ready.
+	geo, err := gateway.OpenGeoDB(*geoDB)
+	if err != nil {
+		log.Fatalf("coraza-gateway: %v", err)
+	}
+	defer func() { _ = geo.Close() }()
+
 	// The engine reports rule matches to the enforcer, which is the only way the
 	// attack-frequency limit can work in detection mode: nothing is interrupted
 	// there, so the response status carries no signal at all.
-	engine, err := gateway.NewEngineWithObserver(mode, *bodyLimit, *auditLog, enforcer.AttackObserver())
-	if err != nil {
-		log.Fatalf("coraza-gateway: %v", err)
+	engine, engineErr := gateway.NewEngineWithObserver(mode, *bodyLimit, *auditLog, enforcer.AttackObserver())
+	if engineErr != nil {
+		log.Fatalf("coraza-gateway: %v", engineErr)
 	}
 
 	var handler http.Handler
@@ -70,7 +80,7 @@ func main() {
 		// this process's in-memory enforcement state, so the container restart is
 		// kept as the control plane's fallback, not its normal path.
 		build := func(cfg gateway.Config) (*gateway.Router, error) {
-			return gateway.NewRouterWithEnforcer(cfg, engine, mode, *realIP, journal, enforcer)
+			return gateway.NewRouterWithGeo(cfg, engine, mode, *realIP, journal, enforcer, geo)
 		}
 		live, rerr := gateway.NewReloadableRouter(*config, mode, build)
 		if rerr != nil {

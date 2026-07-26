@@ -39,6 +39,7 @@ type Site struct {
 	DenyIPs    []string
 	RateLimits []RateLimit
 	Rules      *RulePolicy
+	Region     *RegionPolicy
 }
 
 // GatewayConfig mirrors the data-plane JSON contract without importing the
@@ -82,6 +83,8 @@ type GatewaySite struct {
 	// Rules is omitted when it is the fully-protecting default, so an older
 	// gateway that does not know the field still enforces full protection.
 	Rules *RulePolicy `json:"rules,omitempty"`
+	// Region is omitted when no region control is configured.
+	Region *RegionPolicy `json:"region,omitempty"`
 }
 
 // Build creates a deterministic routing table from the panel's authoritative
@@ -176,6 +179,17 @@ func BuildWithOptions(sites []Site, opts BuildOptions) (GatewayConfig, error) {
 			}
 		}
 
+		var region *RegionPolicy
+		if input.Region != nil {
+			normalized, err := NormalizeRegionPolicy(*input.Region)
+			if err != nil {
+				return GatewayConfig{}, fmt.Errorf("waf config: website %q region: %w", alias, err)
+			}
+			if !normalized.IsZero() {
+				region = &normalized
+			}
+		}
+
 		for _, domain := range input.Domains {
 			host, err := normalizeHost(domain.Domain)
 			if err != nil {
@@ -195,6 +209,7 @@ func BuildWithOptions(sites []Site, opts BuildOptions) (GatewayConfig, error) {
 				DenyIPs:    denyIPs,
 				RateLimits: rateLimits,
 				Rules:      rules,
+				Region:     region,
 			})
 		}
 	}

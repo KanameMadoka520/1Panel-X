@@ -56,6 +56,9 @@ type WafSitePolicy struct {
 	// RuleOptions is this site's detection policy as JSON. Empty means the site
 	// has stored none of its own and inherits the panel-wide default whole.
 	RuleOptions string `gorm:"type:text" json:"ruleOptions"`
+	// RegionRules is this site's geographic access control as JSON. Empty means
+	// the site has stored none of its own and inherits the panel-wide default.
+	RegionRules string `gorm:"type:text" json:"regionRules"`
 	LastError   string `gorm:"size:2048" json:"lastError"`
 }
 
@@ -126,4 +129,7 @@ type WafGlobalPolicy struct {
 	RateLimits string `gorm:"type:text" json:"rateLimits"`
 	// RuleOptions is the panel-wide detection policy as JSON.
 	RuleOptions string `gorm:"type:text" json:"ruleOptions"`
+	// RegionRules is the panel-wide geographic access control as JSON. A site
+	// that stores none of its own inherits this whole.
+	RegionRules string `gorm:"type:text" json:"regionRules"`
 }

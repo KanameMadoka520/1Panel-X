@@ -25,11 +25,19 @@ type WafSiteStatus struct {
 	// default); EffectiveRules is what the gateway actually enforces.
 	Rules          *WafRulePolicy `json:"rules"`
 	EffectiveRules WafRulePolicy  `json:"effectiveRules"`
-	Installed      bool           `json:"installed"`
-	Ready          bool           `json:"ready"`
-	Routed         bool           `json:"routed"`
-	Protected      bool           `json:"protected"`
-	LastError      string         `json:"lastError"`
+	// Region is this site's own geographic access control (null when it follows
+	// the panel default); EffectiveRegion is what the gateway actually enforces.
+	Region          *WafRegionPolicy `json:"region"`
+	EffectiveRegion WafRegionPolicy  `json:"effectiveRegion"`
+	// GeoAvailable reports whether the IP address database region control needs
+	// is actually installed. It is surfaced so the UI can say the control is
+	// unavailable instead of offering a switch that cannot take effect.
+	GeoAvailable bool   `json:"geoAvailable"`
+	Installed    bool   `json:"installed"`
+	Ready        bool   `json:"ready"`
+	Routed       bool   `json:"routed"`
+	Protected    bool   `json:"protected"`
+	LastError    string `json:"lastError"`
 }
 
 // WafRateLimit mirrors one stored frequency limit.
@@ -122,11 +130,19 @@ type WafRulePolicy struct {
 	BannedUploadExts []string `json:"bannedUploadExts"`
 }
 
+// WafRegionPolicy mirrors a stored geographic access policy.
+type WafRegionPolicy struct {
+	Mode    string   `json:"mode"`
+	Regions []string `json:"regions"`
+}
+
 // WafGlobalConfig echoes the stored panel-wide defaults with canonicalized lists.
 type WafGlobalConfig struct {
-	DefaultMode string         `json:"defaultMode"`
-	AllowList   []string       `json:"allowList"`
-	DenyList    []string       `json:"denyList"`
-	RateLimits  []WafRateLimit `json:"rateLimits"`
-	Rules       WafRulePolicy  `json:"rules"`
+	DefaultMode  string          `json:"defaultMode"`
+	AllowList    []string        `json:"allowList"`
+	DenyList     []string        `json:"denyList"`
+	RateLimits   []WafRateLimit  `json:"rateLimits"`
+	Rules        WafRulePolicy   `json:"rules"`
+	Region       WafRegionPolicy `json:"region"`
+	GeoAvailable bool            `json:"geoAvailable"`
 }

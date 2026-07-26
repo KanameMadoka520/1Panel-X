@@ -3237,6 +3237,18 @@ const message = {
         wafListMatchExact: '完全匹配',
         wafListMatchRegex: '正则',
         wafListMatchSuffix: '后缀',
+        wafRegion: '地区访问限制',
+        wafRegionTip: '按客户端所在国家/地区放行或拦截。局域网和回环地址不受此项约束。',
+        wafGlobalRegionTip: '未单独设置的网站沿用这里的地区策略。',
+        wafRegionModeAllow: '仅允许',
+        wafRegionModeDeny: '禁止',
+        wafRegionModeAllowHint: '只有列表中的国家/地区可以访问，其余一律拦截——包括 IP 库查不到归属的地址。',
+        wafRegionModeDenyHint: '列表中的国家/地区被拦截，其余正常放行。',
+        wafRegionPlaceholder: '选择国家/地区，留空表示不做限制',
+        wafRegionNone: '未设置地区限制',
+        wafRegionGranularity:
+            '粒度为国家/地区。IP 库带的省份只有名称没有稳定编码，按名称匹配会在库措辞变动时悄悄失效，所以这里不提供省份级。',
+        wafRegionNoDatabase: '未安装 IP 地址库，地区访问限制暂时无法生效。装好地址库后此项才可配置。',
         wafRulesCustom: '自定义规则',
         wafRulesCustomTip:
             '自己写条件和动作：条件全部满足才命中。命中拦截会直接返回 403；放行会跳过规则集检测并直接回源；仅记录只留一条记录，不改变请求去向。',

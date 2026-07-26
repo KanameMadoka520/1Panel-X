@@ -1,4 +1,4 @@
-# 1panel-x-waf-compose-version: 3
+# 1panel-x-waf-compose-version: 4
 # The version marker above lets the agent tell an outdated deployed compose file
 # from a current one. EnsureWafRuntimeFiles rewrites the file (and recreates the
 # container) when the embedded asset is newer, so packaging changes — new mounts,
@@ -23,10 +23,17 @@ services:
       - X-Real-IP
       - -admin-token-file
       - /etc/1panel-waf/admin.token
+      - -geoip-db
+      - /etc/1panel-waf-geo/GeoIP.mmdb
     network_mode: host
     volumes:
       - ./config:/etc/1panel-waf:ro
       - ./audit:/var/log/1panel-waf
+      # The panel's own IP address database, read-only. It may not exist: the
+      # gateway then starts without region access control, and any site that
+      # actually configures a region policy is refused by name rather than
+      # silently left unprotected.
+      - ../geo:/etc/1panel-waf-geo:ro
     security_opt:
       - no-new-privileges:true
     cap_drop:

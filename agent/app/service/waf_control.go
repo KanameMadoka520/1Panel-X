@@ -255,6 +255,18 @@ func (s *WafControlService) GetStatus(websiteID uint) (response.WafSiteStatus, e
 	}
 	status.Rules = rulePolicyToResponse(siteRules)
 	status.EffectiveRules = rulePolicyValue(wafconfig.MergeRulePolicy(globalRules, siteRules))
+
+	siteRegion, err := parseRegionPolicy(policy.RegionRules)
+	if err != nil {
+		status.LastError = strings.TrimSpace(status.LastError + " " + err.Error())
+	}
+	globalRegion, err := parseRegionPolicy(globalPolicy.RegionRules)
+	if err != nil {
+		status.LastError = strings.TrimSpace(status.LastError + " " + err.Error())
+	}
+	status.Region = regionPolicyToResponse(siteRegion)
+	status.EffectiveRegion = regionPolicyValue(wafconfig.MergeRegionPolicy(globalRegion, siteRegion))
+	status.GeoAvailable = wafGeoAvailable()
 	status.Installed = files.NewFileOp().Stat(GetWafConfigPath())
 	generation := ""
 	if status.Installed {
@@ -333,6 +345,14 @@ func (s *WafControlService) update(websiteID uint, req request.WafSiteUpdate) (r
 	if err != nil {
 		return response.WafSiteStatus{}, err
 	}
+	siteRegion, err := normalizeRegionRequest(req.Region)
+	if err != nil {
+		return response.WafSiteStatus{}, err
+	}
+	siteRegionJSON, err := marshalRegionPolicy(siteRegion)
+	if err != nil {
+		return response.WafSiteStatus{}, err
+	}
 
 	wafRepo := repo.NewIWafRepo()
 	oldPolicy, oldPolicyErr := wafRepo.GetPolicy(websiteID)
@@ -348,6 +368,7 @@ func (s *WafControlService) update(websiteID uint, req request.WafSiteUpdate) (r
 		DenyIPs:     strings.Join(denyList, "\n"),
 		RateLimits:  siteLimitsJSON,
 		RuleOptions: siteRulesJSON,
+		RegionRules: siteRegionJSON,
 	}
 	if err := wafRepo.SavePolicy(candidate); err != nil {
 		return response.WafSiteStatus{}, err
@@ -459,12 +480,18 @@ func (s *WafControlService) GetGlobal() (response.WafGlobalConfig, error) {
 	if err != nil {
 		return response.WafGlobalConfig{}, err
 	}
+	region, err := parseRegionPolicy(policy.RegionRules)
+	if err != nil {
+		return response.WafGlobalConfig{}, err
+	}
 	return response.WafGlobalConfig{
-		DefaultMode: normalizedPolicyMode(policy.DefaultMode),
-		AllowList:   splitIPLines(policy.AllowIPs),
-		DenyList:    splitIPLines(policy.DenyIPs),
-		RateLimits:  rateLimitsToResponse(limits),
-		Rules:       rulePolicyValue(rules),
+		DefaultMode:  normalizedPolicyMode(policy.DefaultMode),
+		AllowList:    splitIPLines(policy.AllowIPs),
+		DenyList:     splitIPLines(policy.DenyIPs),
+		RateLimits:   rateLimitsToResponse(limits),
+		Rules:        rulePolicyValue(rules),
+		Region:       regionPolicyValue(region),
+		GeoAvailable: wafGeoAvailable(),
 	}, nil
 }
 
@@ -511,6 +538,14 @@ func (s *WafControlService) UpdateGlobal(req request.WafGlobalUpdate) (response.
 	if err != nil {
 		return response.WafGlobalConfig{}, err
 	}
+	globalRegion, err := normalizeRegionRequest(req.Region)
+	if err != nil {
+		return response.WafGlobalConfig{}, err
+	}
+	globalRegionJSON, err := marshalRegionPolicy(globalRegion)
+	if err != nil {
+		return response.WafGlobalConfig{}, err
+	}
 
 	wafRepo := repo.NewIWafRepo()
 	oldGlobal, oldGlobalErr := wafRepo.GetGlobalPolicy()
@@ -525,6 +560,7 @@ func (s *WafControlService) UpdateGlobal(req request.WafGlobalUpdate) (response.
 		DenyIPs:     strings.Join(denyList, "\n"),
 		RateLimits:  globalLimitsJSON,
 		RuleOptions: globalRulesJSON,
+		RegionRules: globalRegionJSON,
 	}); err != nil {
 		return response.WafGlobalConfig{}, err
 	}
@@ -658,6 +694,10 @@ func (s *WafControlService) writeGatewayConfig() (string, error) {
 	if err != nil {
 		return "", err
 	}
+	globalRegion, err := parseRegionPolicy(globalPolicy.RegionRules)
+	if err != nil {
+		return "", err
+	}
 	listEntries, err := wafRepo.ListEntries()
 	if err != nil {
 		return "", err
@@ -708,6 +748,10 @@ func (s *WafControlService) writeGatewayConfig() (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("website %q: %w", website.Alias, err)
 		}
+		siteRegion, err := parseRegionPolicy(policy.RegionRules)
+		if err != nil {
+			return "", fmt.Errorf("website %q: %w", website.Alias, err)
+		}
 		mergedLimits, _ := splitAttackLimit(mergeRateLimits(globalSiteLimits, siteLimits))
 		inputs = append(inputs, wafconfig.Site{
 			Website:    website,
@@ -718,6 +762,7 @@ func (s *WafControlService) writeGatewayConfig() (string, error) {
 			DenyIPs:    denyIPs,
 			RateLimits: mergedLimits,
 			Rules:      wafconfig.MergeRulePolicy(globalRules, siteRules),
+			Region:     wafconfig.MergeRegionPolicy(globalRegion, siteRegion),
 		})
 	}
 	cfg, err := wafconfig.BuildWithOptions(inputs, wafconfig.BuildOptions{
@@ -931,6 +976,89 @@ func rateLimitsFromRequest(in []request.WafRateLimit) []wafconfig.RateLimit {
 		})
 	}
 	return out
+}
+
+// --- region-policy storage helpers ------------------------------------------
+
+// GetWafGeoDBPath is the address database region access control reads. It is the
+// panel's own database, mounted read-only into the gateway container, so region
+// control needs no separate download.
+func GetWafGeoDBPath() string {
+	return path.Join(global.Dir.DataDir, "geo", "GeoIP.mmdb")
+}
+
+// wafGeoAvailable reports whether region control can actually be enforced. It is
+// surfaced to the UI so the control can be shown as unavailable rather than as a
+// switch that silently does nothing.
+func wafGeoAvailable() bool {
+	info, err := os.Stat(GetWafGeoDBPath())
+	return err == nil && !info.IsDir() && info.Size() > 0
+}
+
+func parseRegionPolicy(raw string) (*wafconfig.RegionPolicy, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	var p wafconfig.RegionPolicy
+	if err := json.Unmarshal([]byte(raw), &p); err != nil {
+		return nil, fmt.Errorf("stored WAF region policy is unreadable: %w", err)
+	}
+	return &p, nil
+}
+
+func marshalRegionPolicy(p *wafconfig.RegionPolicy) (string, error) {
+	if p == nil {
+		return "", nil
+	}
+	data, err := json.Marshal(*p)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+func regionPolicyFromRequest(in *request.WafRegionPolicy) *wafconfig.RegionPolicy {
+	if in == nil {
+		return nil
+	}
+	return &wafconfig.RegionPolicy{Mode: in.Mode, Regions: in.Regions}
+}
+
+func regionPolicyToResponse(p *wafconfig.RegionPolicy) *response.WafRegionPolicy {
+	if p == nil {
+		return nil
+	}
+	regions := p.Regions
+	if regions == nil {
+		regions = []string{}
+	}
+	return &response.WafRegionPolicy{Mode: p.Mode, Regions: regions}
+}
+
+func regionPolicyValue(p *wafconfig.RegionPolicy) response.WafRegionPolicy {
+	if converted := regionPolicyToResponse(p); converted != nil {
+		return *converted
+	}
+	return response.WafRegionPolicy{Regions: []string{}}
+}
+
+// normalizeRegionRequest validates an incoming region policy and refuses one the
+// data plane could not enforce. Saying so here, naming the missing database, is
+// far better than letting the gateway refuse the whole config later.
+func normalizeRegionRequest(in *request.WafRegionPolicy) (*wafconfig.RegionPolicy, error) {
+	raw := regionPolicyFromRequest(in)
+	if raw == nil {
+		return nil, nil
+	}
+	normalized, err := wafconfig.NormalizeRegionPolicy(*raw)
+	if err != nil {
+		return nil, fmt.Errorf("invalid WAF region policy: %w", err)
+	}
+	if !normalized.IsZero() && !wafGeoAvailable() {
+		return nil, fmt.Errorf("region access control needs the IP address database at %s, which is not installed", GetWafGeoDBPath())
+	}
+	return &normalized, nil
 }
 
 // --- detection-policy storage helpers --------------------------------------

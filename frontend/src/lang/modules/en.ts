@@ -3491,6 +3491,21 @@ const message = {
         wafListMatchExact: 'Exact',
         wafListMatchRegex: 'Regex',
         wafListMatchSuffix: 'Suffix',
+        wafRegion: 'Region access control',
+        wafRegionTip:
+            'Admit or refuse clients by the country they connect from. Private and loopback addresses are never region-restricted.',
+        wafGlobalRegionTip: 'Sites that set none of their own follow the region policy configured here.',
+        wafRegionModeAllow: 'Allow only',
+        wafRegionModeDeny: 'Block',
+        wafRegionModeAllowHint:
+            'Only the listed countries may connect; everything else is refused, including an address the database cannot place.',
+        wafRegionModeDenyHint: 'The listed countries are refused; everything else passes as usual.',
+        wafRegionPlaceholder: 'Pick countries; leave empty for no restriction',
+        wafRegionNone: 'No region restriction',
+        wafRegionGranularity:
+            'Granularity is the country. The address database carries a province name but no stable province code, and matching on a display name would break silently the first time that wording changed — so province level is not offered.',
+        wafRegionNoDatabase:
+            'The IP address database is not installed, so region access control cannot take effect yet. Install it to configure this.',
         wafRulesCustom: 'Custom rules',
         wafRulesCustomTip:
             'Write your own conditions and action: a rule fires only when every condition holds. Block answers 403 outright; allow skips rule-set inspection and goes straight to the origin; log only leaves a record and changes nothing about where the request goes.',

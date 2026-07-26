@@ -51,6 +51,14 @@ func NewRouterWithJournal(cfg Config, engine *Engine, mode Mode, realIPHeader st
 // The enforcer is owned by the process, not by the routing table, so rebuilding
 // the table on a config reload does not reset live bans or counters.
 func NewRouterWithEnforcer(cfg Config, engine *Engine, mode Mode, realIPHeader string, journal *EventJournal, enforcer *Enforcer) (*Router, error) {
+	return NewRouterWithGeo(cfg, engine, mode, realIPHeader, journal, enforcer, nil)
+}
+
+// NewRouterWithGeo builds the routing table with an address database available
+// for region access control. A site that configures a region policy without a
+// database is a hard error, so the gateway can never report itself ready while
+// silently enforcing none of it.
+func NewRouterWithGeo(cfg Config, engine *Engine, mode Mode, realIPHeader string, journal *EventJournal, enforcer *Enforcer, geo *GeoDB) (*Router, error) {
 	rt := &Router{handlers: make(map[string]http.Handler, len(cfg.Sites)), journal: journal}
 	// The attack limit lives on the process-wide enforcer, so a reload updates the
 	// threshold without discarding the counts accumulated so far.
@@ -95,11 +103,16 @@ func NewRouterWithEnforcer(cfg Config, engine *Engine, mode Mode, realIPHeader s
 		if err != nil {
 			return nil, fmt.Errorf("router: site %q %w", s.Host, err)
 		}
+		region, err := newRegionMatcher(s.Region, geo, host)
+		if err != nil {
+			return nil, fmt.Errorf("router: %w", err)
+		}
 		h := NewHandler(policyEngine, NewReverseProxy(origin), modeForSite).
 			WithRealIPHeader(realIPHeader).
 			WithIPACL(acl).
 			WithLists(lists).
 			WithCustomRules(custom).
+			WithRegion(region).
 			WithSite(siteRef{WebsiteID: s.WebsiteID, Host: host}).
 			WithJournal(journal).
 			WithEnforcer(enforcer, s.RateLimits)

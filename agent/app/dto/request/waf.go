@@ -39,6 +39,16 @@ type WafSiteUpdate struct {
 	// the panel-wide default wholesale. Absent means the site keeps following the
 	// panel default.
 	Rules *WafRulePolicy `json:"rules"`
+	// Region follows the same whole-or-nothing rule as Rules.
+	Region *WafRegionPolicy `json:"region"`
+}
+
+// WafRegionPolicy is geographic access control. Regions are ISO 3166-1 alpha-2
+// country codes; an empty list means no region control at all, whatever Mode
+// says, so an unfinished form cannot lock every visitor out.
+type WafRegionPolicy struct {
+	Mode    string   `json:"mode" validate:"omitempty,oneof=allow deny"`
+	Regions []string `json:"regions" validate:"omitempty,max=512,dive,len=2"`
 }
 
 // WafRulePolicy is a detection policy. Fields are "disable" flags so the zero
@@ -116,9 +126,10 @@ type WafListDelete struct {
 // WafGlobalUpdate replaces the panel-wide WAF defaults: the mode applied to
 // "inherit" sites plus IP lists merged into every enabled site.
 type WafGlobalUpdate struct {
-	DefaultMode string         `json:"defaultMode" validate:"required,oneof=detection block"`
-	AllowList   []string       `json:"allowList" validate:"omitempty,max=512,dive,max=64"`
-	DenyList    []string       `json:"denyList" validate:"omitempty,max=512,dive,max=64"`
-	RateLimits  []WafRateLimit `json:"rateLimits" validate:"omitempty,max=8,dive"`
-	Rules       *WafRulePolicy `json:"rules"`
+	DefaultMode string           `json:"defaultMode" validate:"required,oneof=detection block"`
+	AllowList   []string         `json:"allowList" validate:"omitempty,max=512,dive,max=64"`
+	DenyList    []string         `json:"denyList" validate:"omitempty,max=512,dive,max=64"`
+	RateLimits  []WafRateLimit   `json:"rateLimits" validate:"omitempty,max=8,dive"`
+	Rules       *WafRulePolicy   `json:"rules"`
+	Region      *WafRegionPolicy `json:"region"`
 }

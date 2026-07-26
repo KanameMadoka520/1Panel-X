@@ -829,6 +829,13 @@ export namespace Website {
         // panel default); effectiveRules is what the gateway actually enforces.
         rules: WafRulePolicy | null;
         effectiveRules: WafRulePolicy;
+        // region follows the same whole-or-nothing rule as rules.
+        region: WafRegionPolicy | null;
+        effectiveRegion: WafRegionPolicy;
+        // geoAvailable is false when the IP address database region control
+        // needs is not installed, so the UI can say the control is unavailable
+        // rather than offer a switch that cannot take effect.
+        geoAvailable: boolean;
         installed: boolean;
         ready: boolean;
         routed: boolean;
@@ -845,6 +852,7 @@ export namespace Website {
         // Present makes it this site's own policy, replacing the panel default
         // wholesale; null keeps the site following the panel default.
         rules: WafRulePolicy | null;
+        region: WafRegionPolicy | null;
     }
 
     export interface WafRulePolicy {
@@ -857,6 +865,13 @@ export namespace Website {
         // Extensions refused when they name an uploaded file. Empty applies no
         // extension check of our own.
         bannedUploadExts: string[];
+    }
+
+    // Geographic access control. Regions are ISO 3166-1 alpha-2 country codes;
+    // an empty list means no region control at all, whatever mode says.
+    export interface WafRegionPolicy {
+        mode: string;
+        regions: string[];
     }
 
     // A custom rule's conditions are ANDed; the rule list order is the
@@ -928,6 +943,8 @@ export namespace Website {
         denyList: string[];
         rateLimits: WafRateLimit[];
         rules: WafRulePolicy;
+        region: WafRegionPolicy;
+        geoAvailable: boolean;
     }
 
     export interface WafEventReq {
