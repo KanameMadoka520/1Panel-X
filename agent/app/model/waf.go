@@ -95,12 +95,17 @@ type WafListEntry struct {
 
 // WafCustomRule is one operator-authored condition/action rule.
 //
-// Rules are panel-wide and ORDER MATTERS: the data plane resolves the first
-// matching rule, so Priority is the operator's own ordering and is part of the
-// policy rather than a display preference.
+// Rules belong to ONE website, matching where the upstream product puts them,
+// and ORDER MATTERS: the data plane resolves the first matching rule, so
+// Priority is the operator's own ordering and is part of the policy rather than
+// a display preference.
 type WafCustomRule struct {
 	BaseModel
-	Name string `gorm:"size:64" json:"name"`
+	WebsiteID uint `gorm:"index;not null" json:"websiteID"`
+	// Name is required and identifies the rule in enforcement records. It is not
+	// editable after creation: a record already written under the old name would
+	// otherwise point at a rule that no longer answers to it.
+	Name string `gorm:"size:64;not null" json:"name"`
 	// Action is "deny", "allow" or "log".
 	Action string `gorm:"size:8;not null;default:deny" json:"action"`
 	// Conditions is the JSON array of ANDed conditions. It is stored as JSON

@@ -147,9 +147,9 @@
         <div class="waf-acl">
             <div class="waf-acl-head">
                 <strong>{{ $t('website.wafRulesCustom') }}</strong>
-                <span>{{ $t('website.wafListsScope') }}</span>
+                <span>{{ $t('website.wafRealIpScope') }}</span>
             </div>
-            <CustomRules />
+            <CustomRules :id="props.id" />
         </div>
 
         <div class="waf-acl">

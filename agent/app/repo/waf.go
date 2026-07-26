@@ -43,10 +43,11 @@ type IWafRepo interface {
 	SaveUploadRule(rule *model.WafUploadRule) error
 	DeleteUploadRules(websiteID uint, ids []uint) error
 
-	ListCustomRules() ([]model.WafCustomRule, error)
+	ListCustomRules(websiteID uint) ([]model.WafCustomRule, error)
+	ListAllCustomRules() ([]model.WafCustomRule, error)
 	SaveCustomRule(rule *model.WafCustomRule) error
-	DeleteCustomRules(ids []uint) error
-	ReorderCustomRules(ids []uint) error
+	DeleteCustomRules(websiteID uint, ids []uint) error
+	ReorderCustomRules(websiteID uint, ids []uint) error
 
 	PruneBefore(t time.Time) error
 }
@@ -222,9 +223,17 @@ func (r *WafRepo) DeleteUploadRules(websiteID uint, ids []uint) error {
 // ListCustomRules returns the rules in the operator's evaluation order. The id
 // tiebreak keeps two rules that share a priority in a stable order rather than
 // letting the database choose one per read.
-func (r *WafRepo) ListCustomRules() ([]model.WafCustomRule, error) {
+func (r *WafRepo) ListCustomRules(websiteID uint) ([]model.WafCustomRule, error) {
 	var out []model.WafCustomRule
-	err := global.WafDB.Order("priority asc, id asc").Find(&out).Error
+	err := global.WafDB.Where("website_id = ?", websiteID).
+		Order("priority asc, id asc").Find(&out).Error
+	return out, err
+}
+
+// ListAllCustomRules returns every site's rules, for config generation.
+func (r *WafRepo) ListAllCustomRules() ([]model.WafCustomRule, error) {
+	var out []model.WafCustomRule
+	err := global.WafDB.Order("website_id asc, priority asc, id asc").Find(&out).Error
 	return out, err
 }
 
@@ -235,28 +244,32 @@ func (r *WafRepo) SaveCustomRule(rule *model.WafCustomRule) error {
 		return global.WafDB.Create(rule).Error
 	}
 	return global.WafDB.Model(rule).
-		Select("name", "action", "conditions", "priority", "remark", "enabled", "updated_at").
+		Select("action", "conditions", "priority", "remark", "enabled", "updated_at").
 		Updates(rule).Error
 }
 
-func (r *WafRepo) DeleteCustomRules(ids []uint) error {
+// DeleteCustomRules removes rules, scoped to the website that owns them so a
+// forged id cannot reach another site's rows.
+func (r *WafRepo) DeleteCustomRules(websiteID uint, ids []uint) error {
 	if len(ids) == 0 {
 		return nil
 	}
-	return global.WafDB.Where("id in (?)", ids).Delete(&model.WafCustomRule{}).Error
+	return global.WafDB.Where("website_id = ? and id in (?)", websiteID, ids).
+		Delete(&model.WafCustomRule{}).Error
 }
 
 // ReorderCustomRules rewrites the evaluation order from the given id sequence.
 // It runs in one transaction: a half-applied reorder would leave two rules
 // claiming the same position, and with deny/allow rules that changes which one
 // decides a request.
-func (r *WafRepo) ReorderCustomRules(ids []uint) error {
+func (r *WafRepo) ReorderCustomRules(websiteID uint, ids []uint) error {
 	if len(ids) == 0 {
 		return nil
 	}
 	return global.WafDB.Transaction(func(tx *gorm.DB) error {
 		for i, id := range ids {
-			if err := tx.Model(&model.WafCustomRule{}).Where("id = ?", id).
+			if err := tx.Model(&model.WafCustomRule{}).
+				Where("website_id = ? and id = ?", websiteID, id).
 				Update("priority", i).Error; err != nil {
 				return err
 			}

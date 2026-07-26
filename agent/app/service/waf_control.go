@@ -773,11 +773,7 @@ func (s *WafControlService) writeGatewayConfig() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	customRows, err := wafRepo.ListCustomRules()
-	if err != nil {
-		return "", err
-	}
-	customRules, err := enabledCustomRules(customRows)
+	customRows, err := wafRepo.ListAllCustomRules()
 	if err != nil {
 		return "", err
 	}
@@ -827,6 +823,10 @@ func (s *WafControlService) writeGatewayConfig() (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("website %q: %w", website.Alias, err)
 		}
+		siteCustomRules, err := enabledCustomRules(customRows, website.ID)
+		if err != nil {
+			return "", fmt.Errorf("website %q: %w", website.Alias, err)
+		}
 		mergedLimits, _ := splitAttackLimit(mergeRateLimits(globalSiteLimits, siteLimits))
 		inputs = append(inputs, wafconfig.Site{
 			Website:    website,
@@ -840,15 +840,15 @@ func (s *WafControlService) writeGatewayConfig() (string, error) {
 				wafconfig.MergeRulePolicy(globalRules, siteRules),
 				enabledUploadRules(uploadRows, website.ID, policy.UploadLimit),
 			),
-			Region: wafconfig.MergeRegionPolicy(globalRegion, siteRegion),
-			RealIP: siteRealIP,
+			Region:      wafconfig.MergeRegionPolicy(globalRegion, siteRegion),
+			RealIP:      siteRealIP,
+			CustomRules: siteCustomRules,
 		})
 	}
 	cfg, err := wafconfig.BuildWithOptions(inputs, wafconfig.BuildOptions{
 		AttackRateLimit: attackLimit,
 		Lists:           enabledListRules(listEntries),
 		IPGroups:        ipGroupsToConfig(ipGroups),
-		CustomRules:     customRules,
 		BlockPage:       blockPage,
 		Log:             logSettings,
 	})

@@ -3,6 +3,9 @@ package wafconfig
 import (
 	"reflect"
 	"testing"
+
+	"github.com/1Panel-dev/1Panel/agent/app/model"
+	"github.com/1Panel-dev/1Panel/agent/constant"
 )
 
 func TestNormalizeCustomRulesCanonicalizesWithoutReordering(t *testing.T) {
@@ -69,38 +72,45 @@ func TestNormalizeCustomRulesRejectsUnusableRules(t *testing.T) {
 // config generation — otherwise the gateway would keep the old order while the
 // panel showed the new one.
 func TestCustomRuleOrderAffectsGeneration(t *testing.T) {
-	deny := CustomRule{Action: CustomActionDeny, Conditions: []CustomCondition{{Field: CustomFieldPath, Pattern: "/a"}}}
-	allow := CustomRule{Action: CustomActionAllow, Conditions: []CustomCondition{{Field: CustomFieldPath, Pattern: "/a"}}}
+	deny := CustomRule{Name: "deny-a", Action: CustomActionDeny, Conditions: []CustomCondition{{Field: CustomFieldPath, Pattern: "/a"}}}
+	allow := CustomRule{Name: "allow-a", Action: CustomActionAllow, Conditions: []CustomCondition{{Field: CustomFieldPath, Pattern: "/a"}}}
 
-	first, err := BuildWithOptions(nil, BuildOptions{CustomRules: []CustomRule{deny, allow}})
-	if err != nil {
-		t.Fatal(err)
+	build := func(rules ...CustomRule) GatewayConfig {
+		cfg, err := Build([]Site{{
+			Website:     model.Website{BaseModel: model.BaseModel{ID: 1}, Type: constant.Proxy, Alias: "alpha", Proxy: "127.0.0.1:8080"},
+			Domains:     []model.WebsiteDomain{{Domain: "a.example"}},
+			Enabled:     true,
+			CustomRules: rules,
+		}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return cfg
 	}
-	second, err := BuildWithOptions(nil, BuildOptions{CustomRules: []CustomRule{allow, deny}})
-	if err != nil {
-		t.Fatal(err)
-	}
+
+	first := build(deny, allow)
+	second := build(allow, deny)
 	if first.Generation == second.Generation {
 		t.Fatal("swapping two rules must change the config generation")
 	}
-	if !reflect.DeepEqual(first.CustomRules[0].Action, CustomActionDeny) {
-		t.Fatalf("the emitted order must match the input: %+v", first.CustomRules)
+	if !reflect.DeepEqual(first.Sites[0].CustomRules[0].Action, CustomActionDeny) {
+		t.Fatalf("the emitted order must match the input: %+v", first.Sites[0].CustomRules)
 	}
 	// An unchanged policy must not churn the generation, or every unrelated save
 	// would force a needless gateway reload.
-	again, err := BuildWithOptions(nil, BuildOptions{CustomRules: []CustomRule{deny, allow}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if again.Generation != first.Generation {
+	if build(deny, allow).Generation != first.Generation {
 		t.Fatal("an unchanged rule list must produce a stable generation")
 	}
 }
 
 func TestBuildRejectsInvalidCustomRule(t *testing.T) {
-	if _, err := BuildWithOptions(nil, BuildOptions{
-		CustomRules: []CustomRule{{Action: CustomActionDeny}},
-	}); err == nil {
+	_, err := Build([]Site{{
+		Website:     model.Website{BaseModel: model.BaseModel{ID: 1}, Type: constant.Proxy, Alias: "alpha", Proxy: "127.0.0.1:8080"},
+		Domains:     []model.WebsiteDomain{{Domain: "a.example"}},
+		Enabled:     true,
+		CustomRules: []CustomRule{{Name: "broken", Action: CustomActionDeny}},
+	}})
+	if err == nil {
 		t.Fatal("a rule with no conditions must fail config generation")
 	}
 }

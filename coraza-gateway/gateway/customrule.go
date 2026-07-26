@@ -22,11 +22,18 @@ import (
 type CustomField string
 
 const (
-	FieldIP        CustomField = "ip"
-	FieldHost      CustomField = "host"
-	FieldMethod    CustomField = "method"
-	FieldURI       CustomField = "uri"
+	FieldIP     CustomField = "ip"
+	FieldHost   CustomField = "host"
+	FieldMethod CustomField = "method"
+	// FieldURL is what the panel calls "URL" and is the request PATH, without the
+	// query string. That is the reading the upstream product's own examples
+	// require: a rule written as `^/manage(/login)?$` would never match if the
+	// query string were included.
+	FieldURL CustomField = "url"
+	// FieldPath is FieldURL under its older name, still accepted so a rule stored
+	// before the rename keeps evaluating.
 	FieldPath      CustomField = "path"
+	FieldURI       CustomField = "uri"
 	FieldQuery     CustomField = "query"
 	FieldUserAgent CustomField = "ua"
 	FieldReferer   CustomField = "referer"
@@ -198,7 +205,8 @@ func compileCustomCondition(c CustomCondition) (compiledCondition, error) {
 			return compiledCondition{}, err
 		}
 		out.nets = nets
-	case FieldHost, FieldMethod, FieldURI, FieldPath, FieldQuery, FieldUserAgent, FieldReferer, FieldHeader, FieldCookie:
+	case FieldHost, FieldMethod, FieldURL, FieldPath, FieldURI, FieldQuery,
+		FieldUserAgent, FieldReferer, FieldHeader, FieldCookie:
 		switch c.Match {
 		case ListMatchRegex:
 			// Go's regexp is RE2: matching is linear in the input, so a hostile
@@ -232,7 +240,7 @@ func (c compiledCondition) value(r *http.Request) string {
 		return r.Method
 	case FieldURI:
 		return r.URL.RequestURI()
-	case FieldPath:
+	case FieldURL, FieldPath:
 		return r.URL.Path
 	case FieldQuery:
 		return r.URL.RawQuery

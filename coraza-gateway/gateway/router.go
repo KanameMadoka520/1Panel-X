@@ -77,10 +77,6 @@ func NewRouterWithGeo(cfg Config, engine *Engine, mode Mode, realIPHeader string
 	if err != nil {
 		return nil, fmt.Errorf("router: %w", err)
 	}
-	custom, err := newCustomMatcher(cfg.CustomRules)
-	if err != nil {
-		return nil, fmt.Errorf("router: %w", err)
-	}
 	cache := newEngineCache(engine, enginePolicy{Mode: mode})
 	for _, s := range cfg.Sites {
 		host := normalizeHost(s.Host)
@@ -114,6 +110,10 @@ func NewRouterWithGeo(cfg Config, engine *Engine, mode Mode, realIPHeader string
 		region, err := newRegionMatcher(s.Region, geo, host)
 		if err != nil {
 			return nil, fmt.Errorf("router: %w", err)
+		}
+		custom, err := newCustomMatcher(s.CustomRules)
+		if err != nil {
+			return nil, fmt.Errorf("router: site %q %w", s.Host, err)
 		}
 		h := NewHandler(policyEngine, NewReverseProxy(origin), modeForSite).
 			WithRealIP(newRealIPResolver(s.RealIP, realIPHeader)).

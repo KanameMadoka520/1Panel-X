@@ -16,8 +16,7 @@ func buildCustomGateway(t *testing.T, rules []CustomRule, reached *bool, journal
 		t.Fatalf("engine: %v", err)
 	}
 	cfg := Config{
-		Sites:       []SiteConfig{{Host: "a.example", Upstream: "http://127.0.0.1:1"}},
-		CustomRules: rules,
+		Sites: []SiteConfig{{Host: "a.example", Upstream: "http://127.0.0.1:1", CustomRules: rules}},
 	}
 	rt, err := NewRouterWithJournal(cfg, engine, ModeBlock, "", journal)
 	if err != nil {
@@ -203,12 +202,11 @@ func TestPanelDenyOutranksCustomAllow(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := Config{
-		Sites: []SiteConfig{{Host: "a.example", Upstream: "http://127.0.0.1:1"}},
-		Lists: []ListRule{{List: ListDeny, Target: ListTargetIP, Pattern: "198.51.100.7"}},
-		CustomRules: []CustomRule{{
+		Sites: []SiteConfig{{Host: "a.example", Upstream: "http://127.0.0.1:1", CustomRules: []CustomRule{{
 			Action:     CustomAllow,
 			Conditions: []CustomCondition{{Field: FieldPath, Match: ListMatchPrefix, Pattern: "/"}},
-		}},
+		}}}},
+		Lists: []ListRule{{List: ListDeny, Target: ListTargetIP, Pattern: "198.51.100.7"}},
 	}
 	rt, err := NewRouter(cfg, engine, ModeBlock, "")
 	if err != nil {
@@ -222,6 +220,101 @@ func TestPanelDenyOutranksCustomAllow(t *testing.T) {
 	}
 	if reached {
 		t.Fatal("a panel-denied client must never reach the origin")
+	}
+}
+
+// Custom rules belong to ONE site. This is the assertion that the move off the
+// top level actually took: a rule written for one site must not decide requests
+// to another, or an operator tightening one site would silently break the rest.
+func TestCustomRulesAreScopedToTheirSite(t *testing.T) {
+	var reachedA, reachedB bool
+	engine, err := NewEngine(ModeBlock, 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := Config{Sites: []SiteConfig{
+		{Host: "a.example", Upstream: "http://127.0.0.1:1", CustomRules: []CustomRule{{
+			Name:       "block-admin",
+			Action:     CustomDeny,
+			Conditions: []CustomCondition{{Field: FieldPath, Match: ListMatchPrefix, Pattern: "/admin"}},
+		}}},
+		{Host: "b.example", Upstream: "http://127.0.0.1:1"},
+	}}
+	rt, err := NewRouter(cfg, engine, ModeBlock, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rt.handlers["a.example"].(*Handler).upstream = recordingUpstream(&reachedA)
+	rt.handlers["b.example"].(*Handler).upstream = recordingUpstream(&reachedB)
+
+	req := httptest.NewRequest("GET", "/admin", nil)
+	req.Host = "a.example"
+	rrA := httptest.NewRecorder()
+	rt.ServeHTTP(rrA, req)
+	if rrA.Code != http.StatusForbidden {
+		t.Fatalf("the site that owns the rule must refuse, got %d", rrA.Code)
+	}
+
+	reachedB = false
+	req = httptest.NewRequest("GET", "/admin", nil)
+	req.Host = "b.example"
+	rrB := httptest.NewRecorder()
+	rt.ServeHTTP(rrB, req)
+	if rrB.Code != http.StatusOK || !reachedB {
+		t.Fatalf("another site must be untouched by it, got %d reached=%v", rrB.Code, reachedB)
+	}
+}
+
+// "URL" is the request PATH, without the query string. The upstream product's
+// own example `^/manage(/login)?$` would never match if the query were included,
+// so this is the reading a faithful replica has to implement — and `path` must
+// keep meaning the same thing, or rules stored before the rename would change
+// behaviour under the operator.
+func TestURLFieldIsThePathWithoutTheQuery(t *testing.T) {
+	for _, field := range []CustomField{FieldURL, FieldPath} {
+		var reached bool
+		h := buildCustomGateway(t, []CustomRule{{
+			Name:       "block-manage",
+			Action:     CustomDeny,
+			Conditions: []CustomCondition{{Field: field, Match: ListMatchRegex, Pattern: `^/manage(/login)?$`}},
+		}}, &reached, nil)
+
+		reached = false
+		if code := customRequest(h, "GET", "/manage/login", nil, "").Code; code != http.StatusForbidden {
+			t.Fatalf("field %q must match the path, got %d", field, code)
+		}
+		// The anchored pattern must still hold with a query string attached.
+		reached = false
+		if code := customRequest(h, "GET", "/manage?tab=1", nil, "").Code; code != http.StatusForbidden {
+			t.Fatalf("field %q must ignore the query string, got %d", field, code)
+		}
+		reached = false
+		if code := customRequest(h, "GET", "/manageother", nil, "").Code; code != http.StatusOK || !reached {
+			t.Fatalf("field %q must not match an unrelated path, got %d reached=%v", field, code, reached)
+		}
+	}
+}
+
+// The panel offers five operators; internally each is a (match, negate) pair,
+// so "not equal" and "not contains" need no evaluator of their own. This pins
+// that the negated forms actually invert.
+func TestNegatedOperatorsInvert(t *testing.T) {
+	var reached bool
+	h := buildCustomGateway(t, []CustomRule{{
+		Name:   "only-api",
+		Action: CustomDeny,
+		Conditions: []CustomCondition{
+			{Field: FieldURL, Match: ListMatchContains, Pattern: "/api", Negate: true},
+		},
+	}}, &reached, nil)
+
+	reached = false
+	if code := customRequest(h, "GET", "/public", nil, "").Code; code != http.StatusForbidden {
+		t.Fatalf("a path without the text must be refused under negation, got %d", code)
+	}
+	reached = false
+	if code := customRequest(h, "GET", "/api/orders", nil, "").Code; code != http.StatusOK || !reached {
+		t.Fatalf("a path with the text must pass under negation, got %d reached=%v", code, reached)
 	}
 }
 
@@ -263,9 +356,9 @@ func TestCustomRuleValidation(t *testing.T) {
 	}
 	// An invalid rule must fail the WHOLE config: enforcing the rest of the
 	// operator's policy while silently dropping one rule is worse than refusing.
-	body := `{"sites":[{"host":"a.example","upstream":"http://127.0.0.1:1"}],
+	body := `{"sites":[{"host":"a.example","upstream":"http://127.0.0.1:1",
 	          "customRules":[{"action":"deny","conditions":[{"field":"path","pattern":"/ok"}]},
-	                         {"action":"deny","conditions":[]}]}`
+	                         {"action":"deny","conditions":[]}]}]}`
 	if _, err := ParseConfig([]byte(body)); err == nil {
 		t.Fatal("one invalid custom rule must fail the whole config load")
 	}

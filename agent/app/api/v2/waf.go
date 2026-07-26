@@ -264,9 +264,14 @@ func (b *BaseApi) ToggleWafUploadRules(c *gin.Context) {
 // @Success 200 {array} response.WafCustomRule
 // @Security ApiKeyAuth
 // @Security Timestamp
-// @Router /websites/waf/rules [get]
+// @Router /websites/{id}/waf/rules [get]
 func (b *BaseApi) GetWafCustomRules(c *gin.Context) {
-	res, err := wafCustomRuleService.List()
+	id, err := helper.GetParamID(c)
+	if err != nil {
+		helper.BadRequest(c, err)
+		return
+	}
+	res, err := wafCustomRuleService.List(id)
 	if err != nil {
 		helper.InternalServer(c, err)
 		return
@@ -281,13 +286,18 @@ func (b *BaseApi) GetWafCustomRules(c *gin.Context) {
 // @Success 200 {array} response.WafCustomRule
 // @Security ApiKeyAuth
 // @Security Timestamp
-// @Router /websites/waf/rules [post]
+// @Router /websites/{id}/waf/rules [post]
 func (b *BaseApi) SaveWafCustomRule(c *gin.Context) {
+	id, err := helper.GetParamID(c)
+	if err != nil {
+		helper.BadRequest(c, err)
+		return
+	}
 	var req request.WafCustomRuleSave
 	if err := helper.CheckBindAndValidate(&req, c); err != nil {
 		return
 	}
-	res, err := wafCustomRuleService.Save(req)
+	res, err := wafCustomRuleService.Save(id, req)
 	if err != nil {
 		helper.InternalServer(c, err)
 		return
@@ -302,13 +312,18 @@ func (b *BaseApi) SaveWafCustomRule(c *gin.Context) {
 // @Success 200 {array} response.WafCustomRule
 // @Security ApiKeyAuth
 // @Security Timestamp
-// @Router /websites/waf/rules/del [post]
+// @Router /websites/{id}/waf/rules/del [post]
 func (b *BaseApi) DeleteWafCustomRules(c *gin.Context) {
+	id, err := helper.GetParamID(c)
+	if err != nil {
+		helper.BadRequest(c, err)
+		return
+	}
 	var req request.WafListDelete
 	if err := helper.CheckBindAndValidate(&req, c); err != nil {
 		return
 	}
-	res, err := wafCustomRuleService.Delete(req.IDs)
+	res, err := wafCustomRuleService.Delete(id, req.IDs)
 	if err != nil {
 		helper.InternalServer(c, err)
 		return
@@ -323,13 +338,18 @@ func (b *BaseApi) DeleteWafCustomRules(c *gin.Context) {
 // @Success 200 {array} response.WafCustomRule
 // @Security ApiKeyAuth
 // @Security Timestamp
-// @Router /websites/waf/rules/order [post]
+// @Router /websites/{id}/waf/rules/order [post]
 func (b *BaseApi) ReorderWafCustomRules(c *gin.Context) {
+	id, err := helper.GetParamID(c)
+	if err != nil {
+		helper.BadRequest(c, err)
+		return
+	}
 	var req request.WafCustomRuleReorder
 	if err := helper.CheckBindAndValidate(&req, c); err != nil {
 		return
 	}
-	res, err := wafCustomRuleService.Reorder(req.IDs)
+	res, err := wafCustomRuleService.Reorder(id, req.IDs)
 	if err != nil {
 		helper.InternalServer(c, err)
 		return

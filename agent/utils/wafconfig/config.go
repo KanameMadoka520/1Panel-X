@@ -19,7 +19,9 @@ import (
 // an agent newer than the deployed gateway image fails loudly (container
 // unhealthy -> readiness wait times out -> the control-plane transaction rolls
 // back) instead of silently enforcing a policy with the new fields dropped.
-const Version = 2
+// v3 moved custom rules from the top level onto each site, matching where the
+// upstream product puts them.
+const Version = 3
 
 type Mode string
 
@@ -31,16 +33,17 @@ const (
 // Site is the agent-side input for one explicitly enabled reverse-proxy site.
 // The caller remains responsible for loading domains from the managed registry.
 type Site struct {
-	Website    model.Website
-	Domains    []model.WebsiteDomain
-	Enabled    bool
-	Mode       Mode
-	AllowIPs   []string
-	DenyIPs    []string
-	RateLimits []RateLimit
-	Rules      *RulePolicy
-	Region     *RegionPolicy
-	RealIP     *RealIPConfig
+	Website     model.Website
+	Domains     []model.WebsiteDomain
+	Enabled     bool
+	Mode        Mode
+	AllowIPs    []string
+	DenyIPs     []string
+	RateLimits  []RateLimit
+	Rules       *RulePolicy
+	Region      *RegionPolicy
+	RealIP      *RealIPConfig
+	CustomRules []CustomRule
 }
 
 // GatewayConfig mirrors the data-plane JSON contract without importing the
@@ -59,9 +62,6 @@ type GatewayConfig struct {
 	// sets they can reference. Both apply to every protected site.
 	Lists    []ListRule `json:"lists,omitempty"`
 	IPGroups []IPGroup  `json:"ipGroups,omitempty"`
-	// CustomRules are the operator-authored condition/action rules, emitted in
-	// the operator's own order because the data plane resolves the first match.
-	CustomRules []CustomRule `json:"customRules,omitempty"`
 	// BlockPage is the operator's refusal response; absent keeps the built-in one.
 	BlockPage *BlockPage `json:"blockPage,omitempty"`
 	// Log carries only what the data plane can act on. Retention stays in the
@@ -74,7 +74,6 @@ type BuildOptions struct {
 	AttackRateLimit *RateLimit
 	Lists           []ListRule
 	IPGroups        []IPGroup
-	CustomRules     []CustomRule
 	BlockPage       *BlockPage
 	Log             *LogSettings
 }
@@ -95,6 +94,9 @@ type GatewaySite struct {
 	Region *RegionPolicy `json:"region,omitempty"`
 	// RealIP is omitted when the site uses the front proxy's own header.
 	RealIP *RealIPConfig `json:"realIp,omitempty"`
+	// CustomRules are this site's operator-authored rules, emitted in the
+	// operator's own order because the data plane resolves the first match.
+	CustomRules []CustomRule `json:"customRules,omitempty"`
 }
 
 // Build creates a deterministic routing table from the panel's authoritative
@@ -129,13 +131,8 @@ func BuildWithOptions(sites []Site, opts BuildOptions) (GatewayConfig, error) {
 	if err != nil {
 		return GatewayConfig{}, fmt.Errorf("waf config: %w", err)
 	}
-	customRules, err := NormalizeCustomRules(opts.CustomRules)
-	if err != nil {
-		return GatewayConfig{}, fmt.Errorf("waf config: %w", err)
-	}
 	cfg.IPGroups = groups
 	cfg.Lists = lists
-	cfg.CustomRules = customRules
 	if opts.BlockPage != nil {
 		page, err := NormalizeBlockPage(*opts.BlockPage)
 		if err != nil {
@@ -229,6 +226,11 @@ func BuildWithOptions(sites []Site, opts BuildOptions) (GatewayConfig, error) {
 			}
 		}
 
+		customRules, err := NormalizeCustomRules(input.CustomRules)
+		if err != nil {
+			return GatewayConfig{}, fmt.Errorf("waf config: website %q custom rules: %w", alias, err)
+		}
+
 		for _, domain := range input.Domains {
 			host, err := normalizeHost(domain.Domain)
 			if err != nil {
@@ -239,17 +241,18 @@ func BuildWithOptions(sites []Site, opts BuildOptions) (GatewayConfig, error) {
 			}
 			seen[host] = alias
 			cfg.Sites = append(cfg.Sites, GatewaySite{
-				WebsiteID:  website.ID,
-				Alias:      alias,
-				Host:       host,
-				Upstream:   upstream,
-				Mode:       mode,
-				AllowIPs:   allowIPs,
-				DenyIPs:    denyIPs,
-				RateLimits: rateLimits,
-				Rules:      rules,
-				Region:     region,
-				RealIP:     realIP,
+				WebsiteID:   website.ID,
+				Alias:       alias,
+				Host:        host,
+				Upstream:    upstream,
+				Mode:        mode,
+				AllowIPs:    allowIPs,
+				DenyIPs:     denyIPs,
+				RateLimits:  rateLimits,
+				Rules:       rules,
+				Region:      region,
+				RealIP:      realIP,
+				CustomRules: customRules,
 			})
 		}
 	}

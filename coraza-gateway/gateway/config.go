@@ -35,6 +35,9 @@ type SiteConfig struct {
 	// RealIP is how this site recovers the client address from the front proxy
 	// or CDN. Absent falls back to the process-wide trusted header.
 	RealIP *RealIPConfig `json:"realIp,omitempty"`
+	// CustomRules are this site's operator-authored condition/action rules, in
+	// the operator's own order because the first match decides.
+	CustomRules []CustomRule `json:"customRules,omitempty"`
 }
 
 // RulePolicy is the per-site detection policy.
@@ -143,9 +146,6 @@ type Config struct {
 	Lists []ListRule `json:"lists,omitempty"`
 	// IPGroups are named address sets referenced by ipgroup list entries.
 	IPGroups []IPGroup `json:"ipGroups,omitempty"`
-	// CustomRules are the operator-authored condition/action rules. Like the
-	// lists they are panel-wide and evaluated for every protected site.
-	CustomRules []CustomRule `json:"customRules,omitempty"`
 	// BlockPage is the operator's refusal response. Absent keeps the built-in one.
 	BlockPage *BlockPage `json:"blockPage,omitempty"`
 	// Log controls what the enforcement journal records.
@@ -216,7 +216,11 @@ func (l LogSettings) excludedKinds() map[EventKind]struct{} {
 // readiness wait time out, and the control-plane transaction roll back honestly.
 //
 // Version 0 (absent) is still accepted so a hand-written config keeps working.
-const ConfigVersion = 2
+//
+// v3 moved custom rules from the top level onto each site, matching where the
+// upstream product puts them. A v2 gateway handed a v3 config would drop every
+// per-site rule silently, which is exactly what this guard exists to prevent.
+const ConfigVersion = 3
 
 // LoadConfig reads and validates the routing config from a file.
 func LoadConfig(path string) (Config, error) {
@@ -255,9 +259,6 @@ func ParseConfig(data []byte) (Config, error) {
 	// router compiles it again for real. A bad entry must fail the whole config
 	// rather than leave part of the operator's policy silently unenforced.
 	if _, err := newListMatcher(c.Lists, c.IPGroups); err != nil {
-		return Config{}, fmt.Errorf("waf config: %w", err)
-	}
-	if _, err := newCustomMatcher(c.CustomRules); err != nil {
 		return Config{}, fmt.Errorf("waf config: %w", err)
 	}
 	if err := c.BlockPage.validate(); err != nil {
@@ -323,6 +324,9 @@ func ParseConfig(data []byte) (Config, error) {
 		}
 		if err := c.Sites[i].RealIP.validate(); err != nil {
 			return Config{}, fmt.Errorf("waf config: site %q real-ip policy: %w", host, err)
+		}
+		if _, err := newCustomMatcher(c.Sites[i].CustomRules); err != nil {
+			return Config{}, fmt.Errorf("waf config: site %q %w", host, err)
 		}
 	}
 	return c, nil

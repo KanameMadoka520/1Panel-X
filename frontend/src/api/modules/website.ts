@@ -474,20 +474,20 @@ export const ToggleWafUploadRules = (id: number, enabled: boolean) => {
     return http.post<Website.WafUploadRules>(`/websites/${id}/waf/uploads/toggle`, { enabled });
 };
 
-export const GetWafCustomRules = () => {
-    return http.get<Website.WafCustomRule[]>(`/websites/waf/rules`);
+export const GetWafCustomRules = (id: number) => {
+    return http.get<Website.WafCustomRule[]>(`/websites/${id}/waf/rules`);
 };
 
-export const SaveWafCustomRule = (req: Partial<Website.WafCustomRule>) => {
-    return http.post<Website.WafCustomRule[]>(`/websites/waf/rules`, req);
+export const SaveWafCustomRule = (id: number, req: Partial<Website.WafCustomRule>) => {
+    return http.post<Website.WafCustomRule[]>(`/websites/${id}/waf/rules`, req);
 };
 
-export const DeleteWafCustomRules = (ids: number[]) => {
-    return http.post<Website.WafCustomRule[]>(`/websites/waf/rules/del`, { ids });
+export const DeleteWafCustomRules = (id: number, ids: number[]) => {
+    return http.post<Website.WafCustomRule[]>(`/websites/${id}/waf/rules/del`, { ids });
 };
 
 // The whole id sequence is sent rather than a move instruction, so the stored
 // evaluation order can never drift from what the operator is looking at.
-export const ReorderWafCustomRules = (ids: number[]) => {
-    return http.post<Website.WafCustomRule[]>(`/websites/waf/rules/order`, { ids });
+export const ReorderWafCustomRules = (id: number, ids: number[]) => {
+    return http.post<Website.WafCustomRule[]>(`/websites/${id}/waf/rules/order`, { ids });
 };

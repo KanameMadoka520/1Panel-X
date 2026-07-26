@@ -14,11 +14,16 @@ const (
 	CustomActionAllow = "allow"
 	CustomActionLog   = "log"
 
-	CustomFieldIP        = "ip"
-	CustomFieldHost      = "host"
-	CustomFieldMethod    = "method"
-	CustomFieldURI       = "uri"
+	CustomFieldIP     = "ip"
+	CustomFieldHost   = "host"
+	CustomFieldMethod = "method"
+	// CustomFieldURL is what the panel calls "URL" and is the request PATH,
+	// without the query string — the reading the upstream product's own examples
+	// require. CustomFieldPath is the same thing under its older name, still
+	// accepted so a rule stored before the rename keeps evaluating.
+	CustomFieldURL       = "url"
 	CustomFieldPath      = "path"
+	CustomFieldURI       = "uri"
 	CustomFieldQuery     = "query"
 	CustomFieldUserAgent = "ua"
 	CustomFieldReferer   = "referer"
@@ -142,8 +147,8 @@ func normalizeCustomCondition(c CustomCondition) (CustomCondition, error) {
 			return CustomCondition{}, err
 		}
 		c.Pattern = canonical[0]
-	case CustomFieldHost, CustomFieldMethod, CustomFieldURI, CustomFieldPath, CustomFieldQuery,
-		CustomFieldUserAgent, CustomFieldReferer, CustomFieldHeader, CustomFieldCookie:
+	case CustomFieldHost, CustomFieldMethod, CustomFieldURL, CustomFieldPath, CustomFieldURI,
+		CustomFieldQuery, CustomFieldUserAgent, CustomFieldReferer, CustomFieldHeader, CustomFieldCookie:
 		switch c.Match {
 		case ListMatchExact, ListMatchPrefix, ListMatchSuffix, ListMatchContains:
 		case "":

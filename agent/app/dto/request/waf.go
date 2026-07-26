@@ -106,8 +106,11 @@ type WafListEntrySave struct {
 
 // WafCustomRuleSave creates or updates one operator-authored rule. ID 0 creates.
 type WafCustomRuleSave struct {
-	ID         uint               `json:"id"`
-	Name       string             `json:"name" validate:"omitempty,max=64"`
+	ID uint `json:"id"`
+	// Name is required and cannot be changed after creation: an enforcement
+	// record already written under the old name would otherwise point at a rule
+	// that no longer answers to it.
+	Name       string             `json:"name" validate:"required,max=64"`
 	Action     string             `json:"action" validate:"required,oneof=deny allow log"`
 	Conditions []WafRuleCondition `json:"conditions" validate:"required,min=1,max=8,dive"`
 	Remark     string             `json:"remark" validate:"omitempty,max=256"`
@@ -115,8 +118,13 @@ type WafCustomRuleSave struct {
 }
 
 // WafRuleCondition is one ANDed test inside a custom rule.
+//
+// The field set the panel offers is URL / IP / Header / Host / request type,
+// matching the upstream product. The wider set accepted here is what the data
+// plane's evaluator already understands; keeping it accepted costs nothing and
+// means a stored rule never becomes unreadable.
 type WafRuleCondition struct {
-	Field   string `json:"field" validate:"required,oneof=ip host method uri path query ua referer header cookie"`
+	Field   string `json:"field" validate:"required,oneof=ip host method url path uri query ua referer header cookie"`
 	Name    string `json:"name" validate:"omitempty,max=64"`
 	Match   string `json:"match" validate:"omitempty,oneof=exact prefix suffix contains regex"`
 	Pattern string `json:"pattern" validate:"required,max=512"`
