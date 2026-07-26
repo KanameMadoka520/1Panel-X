@@ -53,6 +53,10 @@ const (
 	// CustomLog records the match and lets evaluation continue. It exists so an
 	// operator can watch a candidate rule before arming it.
 	CustomLog CustomAction = "log"
+	// CustomCaptcha and CustomJS interpose a challenge: the request is held until
+	// the visitor completes it, then admitted for as long as the clearance lasts.
+	CustomCaptcha CustomAction = "captcha"
+	CustomJS      CustomAction = "js"
 )
 
 const (
@@ -136,7 +140,7 @@ func newCustomMatcher(rules []CustomRule) (*customMatcher, error) {
 
 func compileCustomRule(r CustomRule, index int) (compiledCustomRule, error) {
 	switch r.Action {
-	case CustomDeny, CustomAllow, CustomLog:
+	case CustomDeny, CustomAllow, CustomLog, CustomCaptcha, CustomJS:
 	case "":
 		r.Action = CustomDeny
 	default:
@@ -305,6 +309,9 @@ func (rule compiledCustomRule) matches(r *http.Request, ip net.IP) bool {
 // customOutcome is the result of evaluating the rule list.
 type customOutcome struct {
 	Decision aclDecision
+	// Challenge is set when the deciding rule demands one. Decision stays normal
+	// in that case: the request is neither refused nor exempted, it is held.
+	Challenge challengeKind
 	// Rule labels whichever rule produced Decision.
 	Rule string
 	// Observed labels the first `log` rule that matched. It is reported
@@ -328,6 +335,12 @@ func (m *customMatcher) decide(r *http.Request, ip net.IP) customOutcome {
 			return out
 		case CustomAllow:
 			out.Decision, out.Rule = aclAllow, rule.label
+			return out
+		case CustomCaptcha:
+			out.Challenge, out.Rule = challengeCaptcha, rule.label
+			return out
+		case CustomJS:
+			out.Challenge, out.Rule = challengeJS, rule.label
 			return out
 		case CustomLog:
 			if out.Observed == "" {

@@ -46,6 +46,9 @@ type Handler struct {
 	// blockPage is the refusal response. nil falls back to the built-in page, so
 	// a code path that forgets to attach one still refuses.
 	blockPage *blockPage
+	// challenger issues and verifies the interactive custom-rule actions. It is
+	// process-wide so a config reload does not invalidate live clearances.
+	challenger *challenger
 }
 
 func NewHandler(engine *Engine, upstream http.Handler, mode Mode) *Handler {
@@ -82,6 +85,12 @@ func (h *Handler) WithRegion(m *regionMatcher) *Handler {
 // WithBlockPage attaches the operator's refusal page.
 func (h *Handler) WithBlockPage(p *blockPage) *Handler {
 	h.blockPage = p
+	return h
+}
+
+// WithChallenger attaches the interactive-challenge machinery.
+func (h *Handler) WithChallenger(c *challenger) *Handler {
+	h.challenger = c
 	return h
 }
 
@@ -143,6 +152,13 @@ func (h *Handler) applyRealIP(r *http.Request) {
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.applyRealIP(r)
+	// The challenge endpoint is answered before every other check. It has to be:
+	// the answer is a POST to the very site whose rule demanded the challenge,
+	// and running it through that rule again would refuse the answer forever.
+	if h.challenger != nil && strings.HasPrefix(r.URL.Path, challengePathPrefix) {
+		h.challenger.handleVerify(w, r)
+		return
+	}
 	// The explicit operator ACL is evaluated before anything else: a denied IP is
 	// refused with the same generic 403 as an unknown Host, regardless of mode,
 	// and never reaches the body reader or the CRS engine.
@@ -169,6 +185,25 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		if out.Decision != aclNormal {
 			decision, rule = out.Decision, out.Rule
+		}
+		// A challenge holds the request rather than refusing or exempting it. A
+		// visitor who already carries a clearance falls straight through to the
+		// rest of the pipeline — the challenge admits them, it does not exempt
+		// them from the rule set.
+		if out.Challenge != "" && !h.challenger.cleared(r, out.Challenge) {
+			h.recordEvent(r, EventChallenge, out.Rule, "challenged")
+			if h.challenger == nil {
+				// Nothing can issue the challenge, so the only honest answer is a
+				// refusal. Admitting the request would enforce nothing at all.
+				h.blockPage.orDefault().write(w, r)
+				return
+			}
+			if out.Challenge == challengeCaptcha {
+				h.challenger.serveCaptcha(w, r, "")
+			} else {
+				h.challenger.serveJSChallenge(w, r)
+			}
+			return
 		}
 	}
 	if decision == aclNormal && h.acl != nil {

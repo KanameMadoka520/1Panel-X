@@ -13,6 +13,11 @@ const (
 	CustomActionDeny  = "deny"
 	CustomActionAllow = "allow"
 	CustomActionLog   = "log"
+	// CustomActionCaptcha and CustomActionJS interpose an interactive check: the
+	// request is held until the visitor completes it, then admitted for as long
+	// as the clearance lasts.
+	CustomActionCaptcha = "captcha"
+	CustomActionJS      = "js"
 
 	CustomFieldIP     = "ip"
 	CustomFieldHost   = "host"
@@ -90,7 +95,7 @@ func normalizeCustomRule(r CustomRule) (CustomRule, error) {
 	}
 	r.Action = strings.TrimSpace(r.Action)
 	switch r.Action {
-	case CustomActionDeny, CustomActionAllow, CustomActionLog:
+	case CustomActionDeny, CustomActionAllow, CustomActionLog, CustomActionCaptcha, CustomActionJS:
 	case "":
 		r.Action = CustomActionDeny
 	default:

@@ -111,7 +111,7 @@ type WafCustomRuleSave struct {
 	// record already written under the old name would otherwise point at a rule
 	// that no longer answers to it.
 	Name       string             `json:"name" validate:"required,max=64"`
-	Action     string             `json:"action" validate:"required,oneof=deny allow log"`
+	Action     string             `json:"action" validate:"required,oneof=deny allow log captcha js"`
 	Conditions []WafRuleCondition `json:"conditions" validate:"required,min=1,max=8,dive"`
 	Remark     string             `json:"remark" validate:"omitempty,max=256"`
 	Enabled    bool               `json:"enabled"`

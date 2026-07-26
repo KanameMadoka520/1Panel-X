@@ -3595,6 +3595,13 @@ const message = {
             'Goes to the origin without rule-set inspection, and is exempt from bans and frequency limits too. It is a deliberate exception — use it sparingly.',
         wafRulesActionLogHint:
             'Leaves a record and changes nothing else, so a candidate rule can be watched before it is armed.',
+        wafRulesActionCaptcha: 'CAPTCHA',
+        wafRulesActionJs: 'Timed browser check',
+        wafRulesActionCaptchaHint:
+            'Asks the visitor to read a self-drawn code before admitting them, then stops asking for 30 minutes. It stops ordinary scripted traffic; it will not stop a solving service, so do not make it your only defence. Passing it admits the visitor — the rule set still runs.',
+        wafRulesActionJsHint:
+            'Requires the browser to run JavaScript and wait 5 seconds, then stops asking for 30 minutes. The wait is enforced server-side (a token returned early is refused), so lifting it out of the page does not skip it. This is a cost imposed on automation, not proof of a human.',
+        wafKind_challenge: 'Challenge',
         wafRulesField_ip: 'Client IP',
         wafRulesField_host: 'Host',
         wafRulesField_method: 'Method',

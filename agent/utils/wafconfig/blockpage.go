@@ -66,6 +66,7 @@ var EventKinds = []string{
 	"ban-released",
 	"unknown-host",
 	"oversize-body",
+	"challenge",
 }
 
 // LogSettings is the panel-wide record policy.

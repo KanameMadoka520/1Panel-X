@@ -143,6 +143,8 @@
                 <el-form-item :label="$t('website.wafRulesCustomAction')" required>
                     <el-select v-model="form.action" size="small" class="waf-cr-field">
                         <el-option value="allow" :label="$t('website.wafRulesActionAllow')" />
+                        <el-option value="captcha" :label="$t('website.wafRulesActionCaptcha')" />
+                        <el-option value="js" :label="$t('website.wafRulesActionJs')" />
                         <el-option value="deny" :label="$t('website.wafRulesActionDeny')" />
                         <el-option value="log" :label="$t('website.wafRulesActionLog')" />
                     </el-select>
@@ -244,6 +246,10 @@ const actionLabel = (action: string) => {
             return $t('website.wafRulesActionAllow');
         case 'log':
             return $t('website.wafRulesActionLog');
+        case 'captcha':
+            return $t('website.wafRulesActionCaptcha');
+        case 'js':
+            return $t('website.wafRulesActionJs');
         default:
             return $t('website.wafRulesActionDeny');
     }
@@ -255,6 +261,9 @@ const actionTagType = (action: string) => {
             return 'success';
         case 'log':
             return 'info';
+        case 'captcha':
+        case 'js':
+            return 'warning';
         default:
             return 'danger';
     }
@@ -266,6 +275,10 @@ const actionHint = computed(() => {
             return $t('website.wafRulesActionAllowHint');
         case 'log':
             return $t('website.wafRulesActionLogHint');
+        case 'captcha':
+            return $t('website.wafRulesActionCaptchaHint');
+        case 'js':
+            return $t('website.wafRulesActionJsHint');
         default:
             return $t('website.wafRulesActionDenyHint');
     }

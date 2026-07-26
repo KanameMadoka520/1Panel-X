@@ -3332,6 +3332,13 @@ const message = {
         wafRulesActionDenyHint: '直接返回 403，请求不会到达源站。',
         wafRulesActionAllowHint: '跳过规则集检测直接回源，同时也不受封禁和频率限制约束——这是明确的例外，请谨慎使用。',
         wafRulesActionLogHint: '只留下一条记录，不改变请求去向，适合先观察再决定是否启用拦截。',
+        wafRulesActionCaptcha: '人机验证',
+        wafRulesActionJs: '5 秒验证',
+        wafRulesActionCaptchaHint:
+            '要求访客读出一段自绘验证码后才放行，通过后 30 分钟内不再重复询问。能挡住普通脚本，挡不住专门的打码服务——不要拿它当唯一防线。通过验证只是被放进来，规则集照常检查。',
+        wafRulesActionJsHint:
+            '要求浏览器执行 JS 并等待 5 秒后才放行，通过后 30 分钟内不再重复询问。等待由服务端强制（提前交回凭据一律拒绝），所以把凭据从页面里抠出来也省不掉这 5 秒。这是给自动化增加成本，不等于证明对方是人。',
+        wafKind_challenge: '人机/延时验证',
         wafRulesField_ip: '客户端 IP',
         wafRulesField_host: '域名',
         wafRulesField_method: '请求方法',

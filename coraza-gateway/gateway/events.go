@@ -38,6 +38,10 @@ const (
 	// the country that produced it, or just "region" when the address database
 	// could not place the client at all.
 	EventRegion EventKind = "region"
+	// EventChallenge is a request held pending an interactive check. It is
+	// recorded as "challenged" rather than blocked or detected: the request was
+	// neither refused nor let through, it was asked a question.
+	EventChallenge EventKind = "challenge"
 )
 
 const (

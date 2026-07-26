@@ -177,6 +177,7 @@ var knownEventKinds = map[EventKind]struct{}{
 	EventBanReleased: {},
 	EventCustomRule:  {},
 	EventRegion:      {},
+	EventChallenge:   {},
 }
 
 func (l LogSettings) validate() error {

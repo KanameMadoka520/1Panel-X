@@ -63,6 +63,10 @@ func NewRouterWithEnforcer(cfg Config, engine *Engine, mode Mode, realIPHeader s
 // silently enforcing none of it.
 func NewRouterWithGeo(cfg Config, engine *Engine, mode Mode, realIPHeader string, journal *EventJournal, enforcer *Enforcer, geo *GeoDB) (*Router, error) {
 	page := newBlockPage(cfg.BlockPage)
+	// One challenger for the whole routing table, rebuilt with it. Its signing
+	// key lives for the life of the PROCESS (see processChallenger), so a config
+	// reload does not invalidate clearances visitors have already earned.
+	challenge := processChallenger()
 	rt := &Router{handlers: make(map[string]http.Handler, len(cfg.Sites)), journal: journal, blockPage: page}
 	// The journal's exclusions are panel-wide and live on the process-wide
 	// journal, so a reload updates them without discarding what is already
@@ -122,6 +126,7 @@ func NewRouterWithGeo(cfg Config, engine *Engine, mode Mode, realIPHeader string
 			WithCustomRules(custom).
 			WithRegion(region).
 			WithBlockPage(page).
+			WithChallenger(challenge).
 			WithSite(siteRef{WebsiteID: s.WebsiteID, Host: host}).
 			WithJournal(journal).
 			WithEnforcer(enforcer, s.RateLimits)
