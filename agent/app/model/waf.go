@@ -132,4 +132,10 @@ type WafGlobalPolicy struct {
 	// RegionRules is the panel-wide geographic access control as JSON. A site
 	// that stores none of its own inherits this whole.
 	RegionRules string `gorm:"type:text" json:"regionRules"`
+	// BlockPage is the operator's custom refusal response as JSON. Empty keeps
+	// the built-in page.
+	BlockPage string `gorm:"type:text" json:"blockPage"`
+	// LogOptions is the panel-wide record policy as JSON: how long records are
+	// kept, and which kinds are not written at all.
+	LogOptions string `gorm:"type:text" json:"logOptions"`
 }

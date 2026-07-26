@@ -131,7 +131,7 @@ func (r *WafRepo) SaveGlobalPolicy(policy model.WafGlobalPolicy) error {
 	policy.ID = 1
 	return global.WafDB.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "id"}},
-		DoUpdates: clause.AssignmentColumns([]string{"default_mode", "allow_ips", "deny_ips", "rate_limits", "rule_options", "region_rules", "updated_at"}),
+		DoUpdates: clause.AssignmentColumns([]string{"default_mode", "allow_ips", "deny_ips", "rate_limits", "rule_options", "region_rules", "block_page", "log_options", "updated_at"}),
 	}).Create(&policy).Error
 }
 

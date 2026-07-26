@@ -132,4 +132,20 @@ type WafGlobalUpdate struct {
 	RateLimits  []WafRateLimit   `json:"rateLimits" validate:"omitempty,max=8,dive"`
 	Rules       *WafRulePolicy   `json:"rules"`
 	Region      *WafRegionPolicy `json:"region"`
+	BlockPage   *WafBlockPage    `json:"blockPage"`
+	Log         *WafLogSettings  `json:"log"`
+}
+
+// WafBlockPage is the operator's custom refusal response. The status set is
+// closed: a 5xx would blame the origin for a decision the WAF made, and a 3xx
+// would turn a refusal into a redirect the operator would then have to secure.
+type WafBlockPage struct {
+	Status int    `json:"status" validate:"omitempty,oneof=200 403 404"`
+	HTML   string `json:"html" validate:"omitempty,max=65536"`
+}
+
+// WafLogSettings is the panel-wide record policy.
+type WafLogSettings struct {
+	RetentionDays int      `json:"retentionDays" validate:"omitempty,min=1,max=3650"`
+	ExcludedKinds []string `json:"excludedKinds" validate:"omitempty,max=16,dive,max=32"`
 }

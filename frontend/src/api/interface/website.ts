@@ -945,6 +945,24 @@ export namespace Website {
         rules: WafRulePolicy;
         region: WafRegionPolicy;
         geoAvailable: boolean;
+        blockPage: WafBlockPage;
+        log: WafLogSettings;
+        // The closed set of record kinds the panel may offer for exclusion,
+        // returned by the server so the two can never drift into offering a kind
+        // the data plane does not know.
+        recordKinds: string[];
+    }
+
+    // The status set is closed: a 5xx would blame the origin for a decision the
+    // WAF made, and a 3xx would turn a refusal into a redirect.
+    export interface WafBlockPage {
+        status: number;
+        html: string;
+    }
+
+    export interface WafLogSettings {
+        retentionDays: number;
+        excludedKinds: string[];
     }
 
     export interface WafEventReq {

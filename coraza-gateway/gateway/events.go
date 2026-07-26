@@ -86,6 +86,20 @@ type EventJournal struct {
 	seq     uint64
 	now     func() time.Time
 	full    bool
+	// excluded are record kinds the operator has switched off. It lives on the
+	// process-wide journal so a config reload updates it without discarding what
+	// is already written.
+	excluded map[EventKind]struct{}
+}
+
+// SetExcluded replaces the set of record kinds that are not written.
+func (j *EventJournal) SetExcluded(kinds map[EventKind]struct{}) {
+	if j == nil {
+		return
+	}
+	j.mu.Lock()
+	j.excluded = kinds
+	j.mu.Unlock()
 }
 
 // NewEventJournal opens (or creates) the journal at path. An empty path, or a
@@ -126,6 +140,9 @@ func (j *EventJournal) Record(e EnforcementEvent) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	if j.full {
+		return
+	}
+	if _, skip := j.excluded[e.Kind]; skip {
 		return
 	}
 

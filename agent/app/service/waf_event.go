@@ -14,6 +14,7 @@ import (
 	"github.com/1Panel-dev/1Panel/agent/app/repo"
 	"github.com/1Panel-dev/1Panel/agent/global"
 	"github.com/1Panel-dev/1Panel/agent/utils/wafaudit"
+	"github.com/1Panel-dev/1Panel/agent/utils/wafconfig"
 )
 
 // wafMaxBytesPerRun bounds how much of the audit log we ingest per run.
@@ -165,15 +166,42 @@ func normalizeHost(h string) string {
 }
 
 func (s *WafEventService) prune(wafRepo repo.IWafRepo) {
-	days := wafDefaultRetentionDays
-	if setting, err := repo.NewISettingRepo().Get(repo.NewISettingRepo().WithByKey("WafRetentionDays")); err == nil {
-		if n, e := strconv.Atoi(setting.Value); e == nil && n > 0 {
-			days = n
-		}
-	}
-	if err := wafRepo.PruneBefore(time.Now().UTC().AddDate(0, 0, -days)); err != nil {
+	if err := wafRepo.PruneBefore(time.Now().UTC().AddDate(0, 0, -wafRetentionDays(wafRepo))); err != nil {
 		global.LOG.Errorf("waf-event: prune failed: %v", err)
 	}
+}
+
+// wafRetentionDays resolves how long attack records are kept.
+//
+// The WAF's own record policy wins; the older WafRetentionDays setting is kept
+// as a fallback so an installation that configured it before this policy existed
+// does not silently revert to the default.
+func wafRetentionDays(wafRepo repo.IWafRepo) int {
+	fallback := 0
+	if setting, err := repo.NewISettingRepo().Get(repo.NewISettingRepo().WithByKey("WafRetentionDays")); err == nil {
+		if n, e := strconv.Atoi(setting.Value); e == nil && n > 0 {
+			fallback = n
+		}
+	}
+	policy, err := wafRepo.GetGlobalPolicy()
+	if err != nil {
+		if fallback > 0 {
+			return fallback
+		}
+		return wafDefaultRetentionDays
+	}
+	stored, err := parseLogSettings(policy.LogOptions)
+	if err != nil {
+		// An unreadable policy must not silently mean "delete on the default
+		// schedule": keeping records longer than intended is recoverable, deleting
+		// them early is not.
+		global.LOG.Errorf("waf-event: %v; keeping records for the maximum retention instead of guessing", err)
+		return wafconfig.MaxRetentionDays
+	}
+	if fallback == 0 {
+		fallback = wafDefaultRetentionDays
+	}
+	return stored.RetentionDaysOr(fallback)
 }
 
 func (s *WafEventService) LoadEvents(websiteID uint, req request.WafEventSearch) (dto.PageResult, error) {

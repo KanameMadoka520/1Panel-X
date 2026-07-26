@@ -484,6 +484,14 @@ func (s *WafControlService) GetGlobal() (response.WafGlobalConfig, error) {
 	if err != nil {
 		return response.WafGlobalConfig{}, err
 	}
+	blockPage, err := parseBlockPage(policy.BlockPage)
+	if err != nil {
+		return response.WafGlobalConfig{}, err
+	}
+	logSettings, err := parseLogSettings(policy.LogOptions)
+	if err != nil {
+		return response.WafGlobalConfig{}, err
+	}
 	return response.WafGlobalConfig{
 		DefaultMode:  normalizedPolicyMode(policy.DefaultMode),
 		AllowList:    splitIPLines(policy.AllowIPs),
@@ -492,6 +500,9 @@ func (s *WafControlService) GetGlobal() (response.WafGlobalConfig, error) {
 		Rules:        rulePolicyValue(rules),
 		Region:       regionPolicyValue(region),
 		GeoAvailable: wafGeoAvailable(),
+		BlockPage:    blockPageValue(blockPage),
+		Log:          logSettingsValue(logSettings),
+		RecordKinds:  wafconfig.EventKinds,
 	}, nil
 }
 
@@ -546,6 +557,36 @@ func (s *WafControlService) UpdateGlobal(req request.WafGlobalUpdate) (response.
 	if err != nil {
 		return response.WafGlobalConfig{}, err
 	}
+	var blockPage *wafconfig.BlockPage
+	if req.BlockPage != nil {
+		normalized, err := wafconfig.NormalizeBlockPage(wafconfig.BlockPage{
+			Status: req.BlockPage.Status,
+			HTML:   req.BlockPage.HTML,
+		})
+		if err != nil {
+			return response.WafGlobalConfig{}, fmt.Errorf("invalid WAF block page: %w", err)
+		}
+		blockPage = &normalized
+	}
+	blockPageJSON, err := marshalOptional(blockPage, blockPage.IsZero())
+	if err != nil {
+		return response.WafGlobalConfig{}, err
+	}
+	var logSettings *wafconfig.LogSettings
+	if req.Log != nil {
+		normalized, err := wafconfig.NormalizeLogSettings(wafconfig.LogSettings{
+			RetentionDays: req.Log.RetentionDays,
+			ExcludedKinds: req.Log.ExcludedKinds,
+		})
+		if err != nil {
+			return response.WafGlobalConfig{}, fmt.Errorf("invalid WAF record policy: %w", err)
+		}
+		logSettings = &normalized
+	}
+	logJSON, err := marshalOptional(logSettings, logSettings.IsZero())
+	if err != nil {
+		return response.WafGlobalConfig{}, err
+	}
 
 	wafRepo := repo.NewIWafRepo()
 	oldGlobal, oldGlobalErr := wafRepo.GetGlobalPolicy()
@@ -561,6 +602,8 @@ func (s *WafControlService) UpdateGlobal(req request.WafGlobalUpdate) (response.
 		RateLimits:  globalLimitsJSON,
 		RuleOptions: globalRulesJSON,
 		RegionRules: globalRegionJSON,
+		BlockPage:   blockPageJSON,
+		LogOptions:  logJSON,
 	}); err != nil {
 		return response.WafGlobalConfig{}, err
 	}
@@ -698,6 +741,14 @@ func (s *WafControlService) writeGatewayConfig() (string, error) {
 	if err != nil {
 		return "", err
 	}
+	blockPage, err := parseBlockPage(globalPolicy.BlockPage)
+	if err != nil {
+		return "", err
+	}
+	logSettings, err := parseLogSettings(globalPolicy.LogOptions)
+	if err != nil {
+		return "", err
+	}
 	listEntries, err := wafRepo.ListEntries()
 	if err != nil {
 		return "", err
@@ -770,6 +821,8 @@ func (s *WafControlService) writeGatewayConfig() (string, error) {
 		Lists:           enabledListRules(listEntries),
 		IPGroups:        ipGroupsToConfig(ipGroups),
 		CustomRules:     customRules,
+		BlockPage:       blockPage,
+		Log:             logSettings,
 	})
 	if err != nil {
 		return "", err
@@ -1059,6 +1112,61 @@ func normalizeRegionRequest(in *request.WafRegionPolicy) (*wafconfig.RegionPolic
 		return nil, fmt.Errorf("region access control needs the IP address database at %s, which is not installed", GetWafGeoDBPath())
 	}
 	return &normalized, nil
+}
+
+// --- block-page and record-policy storage helpers ---------------------------
+
+func parseBlockPage(raw string) (*wafconfig.BlockPage, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	var p wafconfig.BlockPage
+	if err := json.Unmarshal([]byte(raw), &p); err != nil {
+		return nil, fmt.Errorf("stored WAF block page is unreadable: %w", err)
+	}
+	return &p, nil
+}
+
+func parseLogSettings(raw string) (*wafconfig.LogSettings, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	var l wafconfig.LogSettings
+	if err := json.Unmarshal([]byte(raw), &l); err != nil {
+		return nil, fmt.Errorf("stored WAF record policy is unreadable: %w", err)
+	}
+	return &l, nil
+}
+
+func marshalOptional(v any, zero bool) (string, error) {
+	if zero {
+		return "", nil
+	}
+	data, err := json.Marshal(v)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+func blockPageValue(p *wafconfig.BlockPage) response.WafBlockPage {
+	if p == nil {
+		return response.WafBlockPage{}
+	}
+	return response.WafBlockPage{Status: p.Status, HTML: p.HTML}
+}
+
+func logSettingsValue(l *wafconfig.LogSettings) response.WafLogSettings {
+	if l == nil {
+		return response.WafLogSettings{ExcludedKinds: []string{}}
+	}
+	kinds := l.ExcludedKinds
+	if kinds == nil {
+		kinds = []string{}
+	}
+	return response.WafLogSettings{RetentionDays: l.RetentionDays, ExcludedKinds: kinds}
 }
 
 // --- detection-policy storage helpers --------------------------------------

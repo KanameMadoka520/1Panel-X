@@ -145,4 +145,22 @@ type WafGlobalConfig struct {
 	Rules        WafRulePolicy   `json:"rules"`
 	Region       WafRegionPolicy `json:"region"`
 	GeoAvailable bool            `json:"geoAvailable"`
+	BlockPage    WafBlockPage    `json:"blockPage"`
+	Log          WafLogSettings  `json:"log"`
+	// RecordKinds is the closed set of enforcement record kinds the panel may
+	// offer for exclusion. It is returned rather than hard-coded in the UI so the
+	// two can never drift into offering a kind the data plane does not know.
+	RecordKinds []string `json:"recordKinds"`
+}
+
+// WafBlockPage mirrors the stored refusal response.
+type WafBlockPage struct {
+	Status int    `json:"status"`
+	HTML   string `json:"html"`
+}
+
+// WafLogSettings mirrors the stored record policy.
+type WafLogSettings struct {
+	RetentionDays int      `json:"retentionDays"`
+	ExcludedKinds []string `json:"excludedKinds"`
 }

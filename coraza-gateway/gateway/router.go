@@ -37,6 +37,9 @@ type Router struct {
 	engines int
 	// journal records decisions the router itself makes, i.e. unknown Host.
 	journal *EventJournal
+	// blockPage is the operator's refusal response, shared with every site
+	// handler so an unknown Host and a rule hit look the same to a visitor.
+	blockPage *blockPage
 }
 
 func NewRouter(cfg Config, engine *Engine, mode Mode, realIPHeader string) (*Router, error) {
@@ -59,7 +62,12 @@ func NewRouterWithEnforcer(cfg Config, engine *Engine, mode Mode, realIPHeader s
 // database is a hard error, so the gateway can never report itself ready while
 // silently enforcing none of it.
 func NewRouterWithGeo(cfg Config, engine *Engine, mode Mode, realIPHeader string, journal *EventJournal, enforcer *Enforcer, geo *GeoDB) (*Router, error) {
-	rt := &Router{handlers: make(map[string]http.Handler, len(cfg.Sites)), journal: journal}
+	page := newBlockPage(cfg.BlockPage)
+	rt := &Router{handlers: make(map[string]http.Handler, len(cfg.Sites)), journal: journal, blockPage: page}
+	// The journal's exclusions are panel-wide and live on the process-wide
+	// journal, so a reload updates them without discarding what is already
+	// written.
+	journal.SetExcluded(cfg.Log.excludedKinds())
 	// The attack limit lives on the process-wide enforcer, so a reload updates the
 	// threshold without discarding the counts accumulated so far.
 	enforcer.SetAttackLimit(cfg.AttackRateLimit)
@@ -113,6 +121,7 @@ func NewRouterWithGeo(cfg Config, engine *Engine, mode Mode, realIPHeader string
 			WithLists(lists).
 			WithCustomRules(custom).
 			WithRegion(region).
+			WithBlockPage(page).
 			WithSite(siteRef{WebsiteID: s.WebsiteID, Host: host}).
 			WithJournal(journal).
 			WithEnforcer(enforcer, s.RateLimits)
@@ -140,7 +149,7 @@ func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Rule:     "unknown-host",
 		Action:   "blocked",
 	})
-	writeForbidden(w)
+	rt.blockPage.orDefault().write(w, r)
 }
 
 // normalizeHost lower-cases a valid HTTP Host and removes an optional port.

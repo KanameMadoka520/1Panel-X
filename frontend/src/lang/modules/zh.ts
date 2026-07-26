@@ -3249,6 +3249,31 @@ const message = {
         wafRegionGranularity:
             '粒度为国家/地区。IP 库带的省份只有名称没有稳定编码，按名称匹配会在库措辞变动时悄悄失效，所以这里不提供省份级。',
         wafRegionNoDatabase: '未安装 IP 地址库，地区访问限制暂时无法生效。装好地址库后此项才可配置。',
+        wafBlockPage: '拦截页面',
+        wafBlockPageTip:
+            '被拦截的访客看到的页面。留空使用内置页面。所有拦截共用这一份，未知域名的拦截也一样，否则页面差异会变成探测已配置站点的手段。',
+        wafBlockPageStatus: '状态码',
+        wafBlockPageStatusHint:
+            '只提供 200/403/404。5xx 会把 WAF 的判断说成源站故障，3xx 会把一次拒绝变成还得另外加固的跳转。',
+        wafBlockPageStatus200Hint:
+            '返回 200 时访客看到的是拦截页而不是错误页，但监控和爬虫会当成正常响应，请确认这是你要的。',
+        wafBlockPagePlaceholder: '<!doctype html>…留空使用内置页面',
+        wafBlockPagePlaceholders: '可用占位符：{{ip}} 访客 IP、{{time}} 拦截时间（UTC）。两者都会做 HTML 转义。',
+        wafLogSettings: '日志',
+        wafLogSettingsTip: '控制记录保留多久，以及哪些类型干脆不记。',
+        wafLogRetention: '保留天数',
+        wafLogRetentionTip: '超过这个天数的攻击记录会被清理。清理由面板执行——记录进的是面板的库，删除权不该交给网关。',
+        wafLogExcluded: '不记录的类型',
+        wafLogExcludedTip: '勾上的类型将完全不写入。适合某一类记录刷屏时单独关掉，而不必连其余的一起丢。',
+        wafKind_acl_deny: '黑名单拦截',
+        wafKind_custom_rule: '自定义规则',
+        wafKind_region: '地区限制',
+        wafKind_ratelimit: '频率限制',
+        wafKind_ban: '封禁',
+        wafKind_banned: '封禁期内访问',
+        wafKind_ban_released: '解除封禁',
+        wafKind_unknown_host: '未知域名',
+        wafKind_oversize_body: '请求体超限',
         wafRulesCustom: '自定义规则',
         wafRulesCustomTip:
             '自己写条件和动作：条件全部满足才命中。命中拦截会直接返回 403；放行会跳过规则集检测并直接回源；仅记录只留一条记录，不改变请求去向。',

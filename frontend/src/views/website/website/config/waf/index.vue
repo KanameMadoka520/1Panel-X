@@ -241,6 +241,9 @@
                 <span class="waf-acl-hint">{{ $t('website.wafGlobalRegionTip') }}</span>
                 <RegionAccess v-model="globalRegion" :geo-available="globalGeoAvailable" scope="global" />
             </div>
+            <div class="waf-global-rl">
+                <WafSettings :block-page="globalBlockPage" :log="globalLog" :record-kinds="globalRecordKinds" />
+            </div>
             <template #footer>
                 <el-button @click="globalOpen = false">{{ $t('commons.button.cancel') }}</el-button>
                 <el-button type="primary" :loading="globalSaving" @click="saveGlobal">
@@ -263,6 +266,7 @@ import BanRecords from './BanRecords.vue';
 import DefaultRules from './DefaultRules.vue';
 import CustomRules from './CustomRules.vue';
 import RegionAccess from './RegionAccess.vue';
+import WafSettings from './WafSettings.vue';
 
 const { t: $t } = useI18n();
 
@@ -335,6 +339,11 @@ const globalRegion = ref<Website.WafRegionPolicy>({ mode: 'deny', regions: [] })
 // needs is not installed, so the control is shown as unavailable rather than as
 // a switch that cannot take effect.
 const globalGeoAvailable = ref(true);
+const globalBlockPage = reactive<Website.WafBlockPage>({ status: 403, html: '' });
+const globalLog = reactive<Website.WafLogSettings>({ retentionDays: 30, excludedKinds: [] });
+// Supplied by the server so the UI can never offer a record kind the data plane
+// does not know.
+const globalRecordKinds = ref<string[]>([]);
 const globalAllowText = ref('');
 const globalDenyText = ref('');
 const inheritModeLabel = computed(() => {
@@ -450,6 +459,11 @@ const syncGlobal = (data: Website.WafGlobalConfig) => {
     };
     globalRegion.value = data.region || { mode: 'deny', regions: [] };
     globalGeoAvailable.value = data.geoAvailable;
+    globalBlockPage.status = data.blockPage?.status || 403;
+    globalBlockPage.html = data.blockPage?.html || '';
+    globalLog.retentionDays = data.log?.retentionDays || 30;
+    globalLog.excludedKinds = data.log?.excludedKinds || [];
+    globalRecordKinds.value = data.recordKinds || [];
     globalAllowText.value = (data.allowList || []).join('\n');
     globalDenyText.value = (data.denyList || []).join('\n');
 };
@@ -475,6 +489,8 @@ const saveGlobal = async () => {
             rateLimits: globalForm.rateLimits,
             rules: globalRules.value,
             region: globalRegion.value,
+            blockPage: { ...globalBlockPage },
+            log: { retentionDays: globalLog.retentionDays, excludedKinds: [...globalLog.excludedKinds] },
         });
         syncGlobal(res.data);
         globalOpen.value = false;

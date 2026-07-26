@@ -61,6 +61,11 @@ type GatewayConfig struct {
 	// CustomRules are the operator-authored condition/action rules, emitted in
 	// the operator's own order because the data plane resolves the first match.
 	CustomRules []CustomRule `json:"customRules,omitempty"`
+	// BlockPage is the operator's refusal response; absent keeps the built-in one.
+	BlockPage *BlockPage `json:"blockPage,omitempty"`
+	// Log carries only what the data plane can act on. Retention stays in the
+	// control plane, which owns the database the records end up in.
+	Log *GatewayLogSettings `json:"log,omitempty"`
 }
 
 // BuildOptions carries the gateway-wide settings that are not per-site.
@@ -69,6 +74,8 @@ type BuildOptions struct {
 	Lists           []ListRule
 	IPGroups        []IPGroup
 	CustomRules     []CustomRule
+	BlockPage       *BlockPage
+	Log             *LogSettings
 }
 
 type GatewaySite struct {
@@ -126,6 +133,24 @@ func BuildWithOptions(sites []Site, opts BuildOptions) (GatewayConfig, error) {
 	cfg.IPGroups = groups
 	cfg.Lists = lists
 	cfg.CustomRules = customRules
+	if opts.BlockPage != nil {
+		page, err := NormalizeBlockPage(*opts.BlockPage)
+		if err != nil {
+			return GatewayConfig{}, fmt.Errorf("waf config: %w", err)
+		}
+		if !page.IsZero() {
+			cfg.BlockPage = &page
+		}
+	}
+	if opts.Log != nil {
+		log, err := NormalizeLogSettings(*opts.Log)
+		if err != nil {
+			return GatewayConfig{}, fmt.Errorf("waf config: log settings: %w", err)
+		}
+		if len(log.ExcludedKinds) > 0 {
+			cfg.Log = &GatewayLogSettings{ExcludedKinds: log.ExcludedKinds}
+		}
+	}
 	seen := make(map[string]string)
 	for _, input := range sites {
 		if !input.Enabled {

@@ -45,6 +45,9 @@ type Handler struct {
 	enforcer *Enforcer
 	// rateLimits are this site's configured frequency limits.
 	rateLimits []RateLimitConfig
+	// blockPage is the refusal response. nil falls back to the built-in page, so
+	// a code path that forgets to attach one still refuses.
+	blockPage *blockPage
 }
 
 func NewHandler(engine *Engine, upstream http.Handler, mode Mode) *Handler {
@@ -75,6 +78,12 @@ func (h *Handler) WithRegion(m *regionMatcher) *Handler {
 	if !m.empty() {
 		h.region = m
 	}
+	return h
+}
+
+// WithBlockPage attaches the operator's refusal page.
+func (h *Handler) WithBlockPage(p *blockPage) *Handler {
+	h.blockPage = p
 	return h
 }
 
@@ -180,7 +189,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			kind = EventCustomRule
 		}
 		h.recordEvent(r, kind, rule, "blocked")
-		writeForbidden(w)
+		h.blockPage.orDefault().write(w, r)
 		return
 	}
 	// Content-Length is rejected before Coraza reads the stream. Production nginx
@@ -208,7 +217,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				label += ":" + country
 			}
 			h.recordEvent(r, EventRegion, label, "blocked")
-			writeForbidden(w)
+			h.blockPage.orDefault().write(w, r)
 			return
 		}
 	}
@@ -217,13 +226,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// for as long as it keeps knocking.
 	if entry, ok := h.enforcer.Banned(clientIPString(r.RemoteAddr)); ok {
 		h.recordEvent(r, EventBanned, "ratelimit:"+string(entry.Kind), "blocked")
-		writeForbidden(w)
+		h.blockPage.orDefault().write(w, r)
 		return
 	}
 	if out := h.enforcer.CountRequest(h.site, h.rateLimits, r); out.Triggered {
 		h.recordEvent(r, EventRateLimit, out.Rule, outcomeAction(out))
 		if out.Banned {
-			writeForbidden(w)
+			h.blockPage.orDefault().write(w, r)
 			return
 		}
 	}
@@ -249,10 +258,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// is no bespoke bypass surface.
 	corazahttp.WrapHandler(h.engine.WAF(), marker).ServeHTTP(bw, r)
 
-	// A WAF block leaves an empty-bodied 4xx/5xx with the upstream untouched —
-	// give it a generic block page.
+	// A rule-set block leaves an empty-bodied 4xx/5xx with the upstream untouched
+	// — give it the block page. The status the engine chose is kept: it is the
+	// interruption's own decision, and overriding it here would misreport what
+	// actually happened.
 	if !ran && bw.status >= 400 && !bw.wroteBody {
-		writeBlockPage(bw)
+		h.blockPage.orDefault().writeBody(bw, r)
 	}
 
 	// Response-status limits are counted after the fact. A ban installed here
@@ -279,7 +290,7 @@ func outcomeAction(out rateLimitOutcome) string {
 func (h *Handler) serveTrusted(w http.ResponseWriter, r *http.Request) {
 	defer func() {
 		if rec := recover(); rec != nil {
-			writeForbidden(w)
+			h.blockPage.orDefault().write(w, r)
 		}
 	}()
 	h.upstream.ServeHTTP(w, r)
@@ -310,5 +321,5 @@ func (h *Handler) onPanic(w http.ResponseWriter, r *http.Request, ran bool) {
 		return
 	}
 	w.WriteHeader(http.StatusForbidden)
-	writeBlockPage(w)
+	h.blockPage.orDefault().writeBody(w, r)
 }

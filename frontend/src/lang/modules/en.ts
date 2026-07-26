@@ -3506,6 +3506,34 @@ const message = {
             'Granularity is the country. The address database carries a province name but no stable province code, and matching on a display name would break silently the first time that wording changed — so province level is not offered.',
         wafRegionNoDatabase:
             'The IP address database is not installed, so region access control cannot take effect yet. Install it to configure this.',
+        wafBlockPage: 'Block page',
+        wafBlockPageTip:
+            'What a refused visitor sees. Leave empty for the built-in page. Every refusal shares this one page, including an unknown host — otherwise the difference becomes a way to enumerate configured sites.',
+        wafBlockPageStatus: 'Status',
+        wafBlockPageStatusHint:
+            'Only 200, 403 and 404 are offered. A 5xx would blame the origin for a decision the WAF made, and a 3xx would turn a refusal into a redirect you would then have to secure.',
+        wafBlockPageStatus200Hint:
+            'With 200 the visitor sees the block page rather than an error, but monitors and crawlers will read it as a normal response — make sure that is what you want.',
+        wafBlockPagePlaceholder: '<!doctype html>… leave empty for the built-in page',
+        wafBlockPagePlaceholders:
+            'Placeholders: {{ip}} for the visitor address, {{time}} for the refusal time (UTC). Both are HTML-escaped.',
+        wafLogSettings: 'Records',
+        wafLogSettingsTip: 'How long records are kept, and which kinds are not written at all.',
+        wafLogRetention: 'Retention',
+        wafLogRetentionTip:
+            'Attack records older than this are removed. The panel does the removing — the records land in its database, so deletion does not belong to the gateway.',
+        wafLogExcluded: 'Do not record',
+        wafLogExcludedTip:
+            'A checked kind is not written at all. Useful when one kind floods the log, without losing the rest with it.',
+        wafKind_acl_deny: 'Blacklist refusal',
+        wafKind_custom_rule: 'Custom rule',
+        wafKind_region: 'Region restriction',
+        wafKind_ratelimit: 'Frequency limit',
+        wafKind_ban: 'Ban',
+        wafKind_banned: 'Request while banned',
+        wafKind_ban_released: 'Ban released',
+        wafKind_unknown_host: 'Unknown host',
+        wafKind_oversize_body: 'Oversize body',
         wafRulesCustom: 'Custom rules',
         wafRulesCustomTip:
             'Write your own conditions and action: a rule fires only when every condition holds. Block answers 403 outright; allow skips rule-set inspection and goes straight to the origin; log only leaves a record and changes nothing about where the request goes.',

@@ -143,6 +143,63 @@ type Config struct {
 	// CustomRules are the operator-authored condition/action rules. Like the
 	// lists they are panel-wide and evaluated for every protected site.
 	CustomRules []CustomRule `json:"customRules,omitempty"`
+	// BlockPage is the operator's refusal response. Absent keeps the built-in one.
+	BlockPage *BlockPage `json:"blockPage,omitempty"`
+	// Log controls what the enforcement journal records.
+	Log LogSettings `json:"log,omitempty"`
+}
+
+// LogSettings controls what the enforcement journal records.
+//
+// Only recording is configurable here. Retention is a CONTROL-PLANE concern:
+// the panel owns the database the records end up in, and letting the data plane
+// delete them would put deletion on the side that has no idea what has already
+// been ingested.
+type LogSettings struct {
+	// ExcludedKinds are record kinds not to write at all. An operator drowning in
+	// one kind can turn it off rather than lose the rest.
+	ExcludedKinds []string `json:"excludedKinds,omitempty"`
+}
+
+// knownEventKinds is the closed set an exclusion may name. An unknown kind is
+// refused rather than ignored: silently accepting "ratelimits" (plural) would
+// leave the operator believing they had switched something off.
+var knownEventKinds = map[EventKind]struct{}{
+	EventACLDeny:     {},
+	EventUnknownHost: {},
+	EventOversize:    {},
+	EventRateLimit:   {},
+	EventBan:         {},
+	EventBanned:      {},
+	EventBanReleased: {},
+	EventCustomRule:  {},
+	EventRegion:      {},
+}
+
+func (l LogSettings) validate() error {
+	for _, k := range l.ExcludedKinds {
+		kind := EventKind(strings.TrimSpace(k))
+		if kind == "" {
+			continue
+		}
+		if _, ok := knownEventKinds[kind]; !ok {
+			return fmt.Errorf("unknown record kind %q", k)
+		}
+	}
+	return nil
+}
+
+func (l LogSettings) excludedKinds() map[EventKind]struct{} {
+	if len(l.ExcludedKinds) == 0 {
+		return nil
+	}
+	out := make(map[EventKind]struct{}, len(l.ExcludedKinds))
+	for _, k := range l.ExcludedKinds {
+		if kind := EventKind(strings.TrimSpace(k)); kind != "" {
+			out[kind] = struct{}{}
+		}
+	}
+	return out
 }
 
 // ConfigVersion is the contract version this build understands.
@@ -199,6 +256,12 @@ func ParseConfig(data []byte) (Config, error) {
 	}
 	if _, err := newCustomMatcher(c.CustomRules); err != nil {
 		return Config{}, fmt.Errorf("waf config: %w", err)
+	}
+	if err := c.BlockPage.validate(); err != nil {
+		return Config{}, fmt.Errorf("waf config: %w", err)
+	}
+	if err := c.Log.validate(); err != nil {
+		return Config{}, fmt.Errorf("waf config: log settings: %w", err)
 	}
 	for i := range c.Sites {
 		host := normalizeHost(c.Sites[i].Host)
