@@ -1,4 +1,4 @@
-# 1panel-x-waf-compose-version: 1
+# 1panel-x-waf-compose-version: 2
 # The version marker above lets the agent tell an outdated deployed compose file
 # from a current one. EnsureWafRuntimeFiles rewrites the file (and recreates the
 # container) when the embedded asset is newer, so packaging changes — new mounts,
@@ -17,6 +17,8 @@ services:
       - detection
       - -audit-log
       - /var/log/1panel-waf/audit.log
+      - -event-log
+      - /var/log/1panel-waf/events.log
       - -real-ip-header
       - X-Real-IP
     network_mode: host

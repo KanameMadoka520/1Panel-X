@@ -35,10 +35,16 @@ type Router struct {
 	// engines is the number of distinct compiled policies this routing table
 	// needed; kept so tests can assert that sites actually share instances.
 	engines int
+	// journal records decisions the router itself makes, i.e. unknown Host.
+	journal *EventJournal
 }
 
 func NewRouter(cfg Config, engine *Engine, mode Mode, realIPHeader string) (*Router, error) {
-	rt := &Router{handlers: make(map[string]http.Handler, len(cfg.Sites))}
+	return NewRouterWithJournal(cfg, engine, mode, realIPHeader, nil)
+}
+
+func NewRouterWithJournal(cfg Config, engine *Engine, mode Mode, realIPHeader string, journal *EventJournal) (*Router, error) {
+	rt := &Router{handlers: make(map[string]http.Handler, len(cfg.Sites)), journal: journal}
 	cache := newEngineCache(engine, enginePolicy{Mode: mode})
 	for _, s := range cfg.Sites {
 		host := normalizeHost(s.Host)
@@ -67,7 +73,9 @@ func NewRouter(cfg Config, engine *Engine, mode Mode, realIPHeader string) (*Rou
 		}
 		h := NewHandler(policyEngine, NewReverseProxy(origin), modeForSite).
 			WithRealIPHeader(realIPHeader).
-			WithIPACL(acl)
+			WithIPACL(acl).
+			WithSite(siteRef{WebsiteID: s.WebsiteID, Host: host}).
+			WithJournal(journal)
 		rt.handlers[host] = h
 	}
 	rt.engines = cache.size()
@@ -79,7 +87,19 @@ func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.ServeHTTP(w, r)
 		return
 	}
-	// W12: unknown/forged Host selects no site → deny, never bypass.
+	// W12: unknown/forged Host selects no site → deny, never bypass. The request
+	// belongs to no website, so the record carries no website id — the control
+	// plane keeps these in an explicit "unattributed" bucket rather than folding
+	// them into an arbitrary site.
+	rt.journal.Record(EnforcementEvent{
+		Kind:     EventUnknownHost,
+		Host:     truncateField(r.Host),
+		ClientIP: clientIPString(r.RemoteAddr),
+		Method:   r.Method,
+		URI:      truncateField(r.URL.RequestURI()),
+		Rule:     "unknown-host",
+		Action:   "blocked",
+	})
 	writeForbidden(w)
 }
 

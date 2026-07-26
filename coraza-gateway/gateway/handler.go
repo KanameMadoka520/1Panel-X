@@ -24,10 +24,28 @@ type Handler struct {
 	// acl is the per-site explicit operator IP allow/deny list, evaluated before
 	// the CRS engine. nil means no ACL configured.
 	acl *ipACL
+	// site identifies which protected website this handler serves, so a decision
+	// can be attributed to it in the enforcement journal.
+	site siteRef
+	// journal records non-CRS decisions. nil disables recording.
+	journal *EventJournal
 }
 
 func NewHandler(engine *Engine, upstream http.Handler, mode Mode) *Handler {
 	return &Handler{engine: engine, upstream: upstream, mode: mode}
+}
+
+// WithSite attaches the protected site's identity for event attribution.
+func (h *Handler) WithSite(site siteRef) *Handler {
+	h.site = site
+	return h
+}
+
+// WithJournal attaches the enforcement-event journal and returns the handler for
+// chaining. A nil journal is a no-op.
+func (h *Handler) WithJournal(j *EventJournal) *Handler {
+	h.journal = j
+	return h
 }
 
 // WithRealIPHeader configures the trusted real-client-IP header and returns the
@@ -73,6 +91,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if h.acl != nil {
 		decision = h.acl.decide(clientIP(r.RemoteAddr))
 		if decision == aclDeny {
+			h.recordEvent(r, EventACLDeny, "ip-deny-list", "blocked")
 			writeForbidden(w)
 			return
 		}
@@ -80,6 +99,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Content-Length is rejected before Coraza reads the stream. Production nginx
 	// also enforces the same 13 MiB ceiling and returns its stable public 413.
 	if h.rejectOversizeBody(w, r) {
+		h.recordEvent(r, EventOversize, "body-limit", "blocked")
 		return
 	}
 	// A trusted (allow-listed) client bypasses CRS inspection but is still proxied

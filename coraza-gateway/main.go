@@ -30,6 +30,7 @@ func main() {
 	modeStr := flag.String("mode", "detection", "detection|block")
 	bodyLimit := flag.Int("body-limit", 13<<20, "max inspected request-body bytes")
 	auditLog := flag.String("audit-log", "", "path to append JSON attack-event audit records (empty disables)")
+	eventLog := flag.String("event-log", "", "path to append JSON records for non-CRS enforcement decisions (empty disables)")
 	realIP := flag.String("real-ip-header", "X-Real-IP", "trusted header carrying the true client IP set by the front proxy (empty disables)")
 	flag.Parse()
 
@@ -53,8 +54,13 @@ func main() {
 		// config file. Restarting the container on every policy save would erase
 		// this process's in-memory enforcement state, so the container restart is
 		// kept as the control plane's fallback, not its normal path.
+		// Non-CRS decisions (deny lists, unknown Host, oversize bodies) are not
+		// visible in the Coraza audit log, so they get their own journal next to
+		// it — otherwise those blocks would be enforced but unreportable.
+		journal := gateway.NewEventJournal(*eventLog)
+		defer func() { _ = journal.Close() }()
 		build := func(cfg gateway.Config) (*gateway.Router, error) {
-			return gateway.NewRouter(cfg, engine, mode, *realIP)
+			return gateway.NewRouterWithJournal(cfg, engine, mode, *realIP, journal)
 		}
 		live, rerr := gateway.NewReloadableRouter(*config, mode, build)
 		if rerr != nil {

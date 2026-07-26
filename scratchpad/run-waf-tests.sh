@@ -14,8 +14,11 @@ gofmt -l \
   "$GW/gateway/ipacl.go" "$GW/gateway/ipacl_test.go" "$GW/gateway/handler.go" \
   "$GW/gateway/router.go" "$GW/gateway/config.go" "$GW/gateway/blockpage.go" \
   "$GW/gateway/reload.go" "$GW/gateway/reload_test.go" "$GW/gateway/engine.go" \
-  "$GW/gateway/health.go" "$GW/main.go" || true
+  "$GW/gateway/health.go" "$GW/gateway/events.go" "$GW/gateway/events_test.go" \
+  "$GW/main.go" || true
 
+echo "=== coraza-gateway: go build ==="
+( cd "$GW" && go build ./... )
 echo "=== coraza-gateway: go vet ==="
 ( cd "$GW" && go vet ./... )
 echo "=== coraza-gateway: go test ==="
