@@ -26,6 +26,7 @@ type ListMatch string
 const (
 	ListMatchExact    ListMatch = "exact"
 	ListMatchPrefix   ListMatch = "prefix"
+	ListMatchSuffix   ListMatch = "suffix"
 	ListMatchContains ListMatch = "contains"
 	ListMatchRegex    ListMatch = "regex"
 )
@@ -178,7 +179,7 @@ func compileListRule(r ListRule, groups map[string][]*net.IPNet) (compiledListRu
 				return compiledListRule{}, fmt.Errorf("invalid regular expression: %w", err)
 			}
 			out.re = re
-		case ListMatchExact, ListMatchPrefix, ListMatchContains:
+		case ListMatchExact, ListMatchPrefix, ListMatchSuffix, ListMatchContains:
 			out.pattern = strings.ToLower(pattern)
 		case "":
 			out.rule.Match = ListMatchContains
@@ -218,6 +219,8 @@ func (c compiledListRule) matchText(value string) bool {
 		return lowered == c.pattern
 	case ListMatchPrefix:
 		return strings.HasPrefix(lowered, c.pattern)
+	case ListMatchSuffix:
+		return strings.HasSuffix(lowered, c.pattern)
 	default:
 		return strings.Contains(lowered, c.pattern)
 	}

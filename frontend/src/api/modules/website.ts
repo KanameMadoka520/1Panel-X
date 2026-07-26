@@ -457,3 +457,21 @@ export const SaveWafIPGroup = (req: Partial<Website.WafIPGroup>) => {
 export const DeleteWafIPGroups = (ids: number[]) => {
     return http.post<Website.WafLists>(`/websites/waf/lists/group/del`, { ids });
 };
+
+export const GetWafCustomRules = () => {
+    return http.get<Website.WafCustomRule[]>(`/websites/waf/rules`);
+};
+
+export const SaveWafCustomRule = (req: Partial<Website.WafCustomRule>) => {
+    return http.post<Website.WafCustomRule[]>(`/websites/waf/rules`, req);
+};
+
+export const DeleteWafCustomRules = (ids: number[]) => {
+    return http.post<Website.WafCustomRule[]>(`/websites/waf/rules/del`, { ids });
+};
+
+// The whole id sequence is sent rather than a move instruction, so the stored
+// evaluation order can never drift from what the operator is looking at.
+export const ReorderWafCustomRules = (ids: number[]) => {
+    return http.post<Website.WafCustomRule[]>(`/websites/waf/rules/order`, { ids });
+};

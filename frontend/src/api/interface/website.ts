@@ -859,6 +859,28 @@ export namespace Website {
         bannedUploadExts: string[];
     }
 
+    // A custom rule's conditions are ANDed; the rule list order is the
+    // evaluation order, so it must never be re-sorted for display.
+    export interface WafRuleCondition {
+        field: string;
+        name?: string;
+        match?: string;
+        pattern: string;
+        negate?: boolean;
+    }
+
+    export interface WafCustomRule {
+        id: number;
+        name: string;
+        action: string;
+        conditions: WafRuleCondition[];
+        remark: string;
+        enabled: boolean;
+        // Set when the stored conditions could not be read. Such a rule is shown
+        // as broken rather than as one that matches nothing.
+        invalid?: string;
+    }
+
     export interface WafBan {
         ip: string;
         kind: string;

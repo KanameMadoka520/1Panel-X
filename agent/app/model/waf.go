@@ -79,6 +79,27 @@ type WafListEntry struct {
 	Enabled bool `gorm:"not null;default:true" json:"enabled"`
 }
 
+// WafCustomRule is one operator-authored condition/action rule.
+//
+// Rules are panel-wide and ORDER MATTERS: the data plane resolves the first
+// matching rule, so Priority is the operator's own ordering and is part of the
+// policy rather than a display preference.
+type WafCustomRule struct {
+	BaseModel
+	Name string `gorm:"size:64" json:"name"`
+	// Action is "deny", "allow" or "log".
+	Action string `gorm:"size:8;not null;default:deny" json:"action"`
+	// Conditions is the JSON array of ANDed conditions. It is stored as JSON
+	// rather than as rows because a rule is only ever read, written and validated
+	// whole; splitting it would let a partially-written rule reach the data plane.
+	Conditions string `gorm:"type:text;not null" json:"conditions"`
+	Priority   int    `gorm:"not null;default:0;index" json:"priority"`
+	Remark     string `gorm:"size:256" json:"remark"`
+	// Enabled rows are the only ones sent to the gateway, so switching a rule off
+	// stops it being enforced instead of merely hiding it.
+	Enabled bool `gorm:"not null;default:true" json:"enabled"`
+}
+
 // WafIPGroup is a named address set that list entries can reference, so one
 // shared set can back several rules.
 type WafIPGroup struct {

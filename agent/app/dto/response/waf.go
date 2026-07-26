@@ -73,6 +73,30 @@ type WafListEntry struct {
 	Enabled bool   `json:"enabled"`
 }
 
+// WafCustomRule is one stored operator-authored rule. The slice order is the
+// evaluation order, so the UI must not re-sort it.
+type WafCustomRule struct {
+	ID         uint               `json:"id"`
+	Name       string             `json:"name"`
+	Action     string             `json:"action"`
+	Conditions []WafRuleCondition `json:"conditions"`
+	Remark     string             `json:"remark"`
+	Enabled    bool               `json:"enabled"`
+	// Invalid carries a parse error for a row the data plane cannot be given.
+	// It is surfaced rather than hidden: a rule shown as fine while it is not
+	// being enforced is exactly the failure mode worth avoiding.
+	Invalid string `json:"invalid,omitempty"`
+}
+
+// WafRuleCondition is one ANDed test inside a custom rule.
+type WafRuleCondition struct {
+	Field   string `json:"field"`
+	Name    string `json:"name,omitempty"`
+	Match   string `json:"match,omitempty"`
+	Pattern string `json:"pattern"`
+	Negate  bool   `json:"negate,omitempty"`
+}
+
 // WafIPGroup is a named address set referenced by ipgroup entries.
 type WafIPGroup struct {
 	ID      uint     `json:"id"`

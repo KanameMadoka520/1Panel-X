@@ -61,6 +61,10 @@ func NewRouterWithEnforcer(cfg Config, engine *Engine, mode Mode, realIPHeader s
 	if err != nil {
 		return nil, fmt.Errorf("router: %w", err)
 	}
+	custom, err := newCustomMatcher(cfg.CustomRules)
+	if err != nil {
+		return nil, fmt.Errorf("router: %w", err)
+	}
 	cache := newEngineCache(engine, enginePolicy{Mode: mode})
 	for _, s := range cfg.Sites {
 		host := normalizeHost(s.Host)
@@ -95,6 +99,7 @@ func NewRouterWithEnforcer(cfg Config, engine *Engine, mode Mode, realIPHeader s
 			WithRealIPHeader(realIPHeader).
 			WithIPACL(acl).
 			WithLists(lists).
+			WithCustomRules(custom).
 			WithSite(siteRef{WebsiteID: s.WebsiteID, Host: host}).
 			WithJournal(journal).
 			WithEnforcer(enforcer, s.RateLimits)

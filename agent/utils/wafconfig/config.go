@@ -57,6 +57,9 @@ type GatewayConfig struct {
 	// sets they can reference. Both apply to every protected site.
 	Lists    []ListRule `json:"lists,omitempty"`
 	IPGroups []IPGroup  `json:"ipGroups,omitempty"`
+	// CustomRules are the operator-authored condition/action rules, emitted in
+	// the operator's own order because the data plane resolves the first match.
+	CustomRules []CustomRule `json:"customRules,omitempty"`
 }
 
 // BuildOptions carries the gateway-wide settings that are not per-site.
@@ -64,6 +67,7 @@ type BuildOptions struct {
 	AttackRateLimit *RateLimit
 	Lists           []ListRule
 	IPGroups        []IPGroup
+	CustomRules     []CustomRule
 }
 
 type GatewaySite struct {
@@ -112,8 +116,13 @@ func BuildWithOptions(sites []Site, opts BuildOptions) (GatewayConfig, error) {
 	if err != nil {
 		return GatewayConfig{}, fmt.Errorf("waf config: %w", err)
 	}
+	customRules, err := NormalizeCustomRules(opts.CustomRules)
+	if err != nil {
+		return GatewayConfig{}, fmt.Errorf("waf config: %w", err)
+	}
 	cfg.IPGroups = groups
 	cfg.Lists = lists
+	cfg.CustomRules = customRules
 	seen := make(map[string]string)
 	for _, input := range sites {
 		if !input.Enabled {

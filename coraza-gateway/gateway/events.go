@@ -30,6 +30,10 @@ const (
 	EventBan         EventKind = "ban"
 	EventBanned      EventKind = "banned"
 	EventBanReleased EventKind = "ban-released"
+	// EventCustomRule is a decision made by an operator-authored rule, kept
+	// distinct from the lists so the panel can tell "my rule fired" from "my
+	// blacklist fired".
+	EventCustomRule EventKind = "custom-rule"
 )
 
 const (

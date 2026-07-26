@@ -666,6 +666,14 @@ func (s *WafControlService) writeGatewayConfig() (string, error) {
 	if err != nil {
 		return "", err
 	}
+	customRows, err := wafRepo.ListCustomRules()
+	if err != nil {
+		return "", err
+	}
+	customRules, err := enabledCustomRules(customRows)
+	if err != nil {
+		return "", err
+	}
 	policies, err := wafRepo.ListPolicies()
 	if err != nil {
 		return "", err
@@ -716,6 +724,7 @@ func (s *WafControlService) writeGatewayConfig() (string, error) {
 		AttackRateLimit: attackLimit,
 		Lists:           enabledListRules(listEntries),
 		IPGroups:        ipGroupsToConfig(ipGroups),
+		CustomRules:     customRules,
 	})
 	if err != nil {
 		return "", err

@@ -5,6 +5,7 @@ import (
 
 	"github.com/1Panel-dev/1Panel/agent/app/model"
 	"github.com/1Panel-dev/1Panel/agent/global"
+	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
@@ -36,6 +37,11 @@ type IWafRepo interface {
 	GetIPGroup(id uint) (model.WafIPGroup, error)
 	SaveIPGroup(group *model.WafIPGroup) error
 	DeleteIPGroups(ids []uint) error
+
+	ListCustomRules() ([]model.WafCustomRule, error)
+	SaveCustomRule(rule *model.WafCustomRule) error
+	DeleteCustomRules(ids []uint) error
+	ReorderCustomRules(ids []uint) error
 
 	PruneBefore(t time.Time) error
 }
@@ -171,6 +177,52 @@ func (r *WafRepo) GetIPGroup(id uint) (model.WafIPGroup, error) {
 	var group model.WafIPGroup
 	err := global.WafDB.Where("id = ?", id).First(&group).Error
 	return group, err
+}
+
+// ListCustomRules returns the rules in the operator's evaluation order. The id
+// tiebreak keeps two rules that share a priority in a stable order rather than
+// letting the database choose one per read.
+func (r *WafRepo) ListCustomRules() ([]model.WafCustomRule, error) {
+	var out []model.WafCustomRule
+	err := global.WafDB.Order("priority asc, id asc").Find(&out).Error
+	return out, err
+}
+
+// SaveCustomRule creates or updates a rule. Enabled is written through Select so
+// a switch turned OFF is persisted rather than skipped as a zero value.
+func (r *WafRepo) SaveCustomRule(rule *model.WafCustomRule) error {
+	if rule.ID == 0 {
+		return global.WafDB.Create(rule).Error
+	}
+	return global.WafDB.Model(rule).
+		Select("name", "action", "conditions", "priority", "remark", "enabled", "updated_at").
+		Updates(rule).Error
+}
+
+func (r *WafRepo) DeleteCustomRules(ids []uint) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	return global.WafDB.Where("id in (?)", ids).Delete(&model.WafCustomRule{}).Error
+}
+
+// ReorderCustomRules rewrites the evaluation order from the given id sequence.
+// It runs in one transaction: a half-applied reorder would leave two rules
+// claiming the same position, and with deny/allow rules that changes which one
+// decides a request.
+func (r *WafRepo) ReorderCustomRules(ids []uint) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	return global.WafDB.Transaction(func(tx *gorm.DB) error {
+		for i, id := range ids {
+			if err := tx.Model(&model.WafCustomRule{}).Where("id = ?", id).
+				Update("priority", i).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 func (r *WafRepo) SaveIPGroup(group *model.WafIPGroup) error {

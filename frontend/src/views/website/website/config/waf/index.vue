@@ -106,6 +106,14 @@
 
         <div class="waf-acl">
             <div class="waf-acl-head">
+                <strong>{{ $t('website.wafRulesCustom') }}</strong>
+                <span>{{ $t('website.wafListsScope') }}</span>
+            </div>
+            <CustomRules />
+        </div>
+
+        <div class="waf-acl">
+            <div class="waf-acl-head">
                 <strong>{{ $t('website.wafRateLimit') }}</strong>
                 <span>{{ $t('website.wafRateLimitTip') }}</span>
             </div>
@@ -229,6 +237,7 @@ import RateLimits from './RateLimits.vue';
 import BlackWhiteLists from './BlackWhiteLists.vue';
 import BanRecords from './BanRecords.vue';
 import DefaultRules from './DefaultRules.vue';
+import CustomRules from './CustomRules.vue';
 
 const { t: $t } = useI18n();
 

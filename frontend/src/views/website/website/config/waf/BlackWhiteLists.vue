@@ -92,6 +92,7 @@
                     <el-select v-model="entryForm.match" size="small" class="waf-bw-field">
                         <el-option value="contains" :label="$t('website.wafListMatchContains')" />
                         <el-option value="prefix" :label="$t('website.wafListMatchPrefix')" />
+                        <el-option value="suffix" :label="$t('website.wafListMatchSuffix')" />
                         <el-option value="exact" :label="$t('website.wafListMatchExact')" />
                         <el-option value="regex" :label="$t('website.wafListMatchRegex')" />
                     </el-select>

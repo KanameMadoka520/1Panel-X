@@ -28,6 +28,9 @@ type Handler struct {
 	// User-Agent). It is shared by every site; the per-site acl above is the
 	// narrower, additional control.
 	lists *listMatcher
+	// custom holds the operator-authored condition/action rules. They are
+	// evaluated after the panel-wide lists and before the site's own IP list.
+	custom *customMatcher
 	// site identifies which protected website this handler serves, so a decision
 	// can be attributed to it in the enforcement journal.
 	site siteRef
@@ -49,6 +52,15 @@ func NewHandler(engine *Engine, upstream http.Handler, mode Mode) *Handler {
 func (h *Handler) WithLists(m *listMatcher) *Handler {
 	if !m.empty() {
 		h.lists = m
+	}
+	return h
+}
+
+// WithCustomRules attaches the operator-authored rules. A nil or empty matcher
+// is a no-op.
+func (h *Handler) WithCustomRules(m *customMatcher) *Handler {
+	if !m.empty() {
+		h.custom = m
 	}
 	return h
 }
@@ -117,13 +129,25 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// (bans, rate limits, CRS): an allow entry is an exemption from automatic
 	// machinery, never a licence to override another explicit refusal.
 	//
-	// The panel-wide lists are checked first, then the site's own IP list, so a
-	// site-level allow cannot re-admit a client the panel refused globally.
+	// The panel-wide lists are checked first, then the operator's custom rules,
+	// then the site's own IP list, so a site-level allow cannot re-admit a client
+	// the panel refused globally.
 	clientAddr := clientIP(r.RemoteAddr)
 	decision := aclNormal
 	rule := ""
 	if h.lists != nil {
 		decision, rule = h.lists.decide(r, clientAddr)
+	}
+	if decision == aclNormal && h.custom != nil {
+		out := h.custom.decide(r, clientAddr)
+		// A `log` rule records regardless of what the request goes on to do; that
+		// is the whole point of being able to watch a rule before arming it.
+		if out.Observed != "" {
+			h.recordEvent(r, EventCustomRule, out.Observed, "detected")
+		}
+		if out.Decision != aclNormal {
+			decision, rule = out.Decision, out.Rule
+		}
 	}
 	if decision == aclNormal && h.acl != nil {
 		decision = h.acl.decide(clientAddr)
@@ -138,7 +162,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if rule == "" {
 			rule = "ip-deny-list"
 		}
-		h.recordEvent(r, EventACLDeny, rule, "blocked")
+		kind := EventACLDeny
+		if strings.HasPrefix(rule, "custom:") {
+			kind = EventCustomRule
+		}
+		h.recordEvent(r, kind, rule, "blocked")
 		writeForbidden(w)
 		return
 	}

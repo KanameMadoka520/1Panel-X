@@ -138,6 +138,9 @@ type Config struct {
 	Lists []ListRule `json:"lists,omitempty"`
 	// IPGroups are named address sets referenced by ipgroup list entries.
 	IPGroups []IPGroup `json:"ipGroups,omitempty"`
+	// CustomRules are the operator-authored condition/action rules. Like the
+	// lists they are panel-wide and evaluated for every protected site.
+	CustomRules []CustomRule `json:"customRules,omitempty"`
 }
 
 // ConfigVersion is the contract version this build understands.
@@ -190,6 +193,9 @@ func ParseConfig(data []byte) (Config, error) {
 	// router compiles it again for real. A bad entry must fail the whole config
 	// rather than leave part of the operator's policy silently unenforced.
 	if _, err := newListMatcher(c.Lists, c.IPGroups); err != nil {
+		return Config{}, fmt.Errorf("waf config: %w", err)
+	}
+	if _, err := newCustomMatcher(c.CustomRules); err != nil {
 		return Config{}, fmt.Errorf("waf config: %w", err)
 	}
 	for i := range c.Sites {

@@ -63,10 +63,36 @@ type WafListEntrySave struct {
 	ID      uint   `json:"id"`
 	List    string `json:"list" validate:"required,oneof=deny allow"`
 	Target  string `json:"target" validate:"required,oneof=ip ipgroup url ua"`
-	Match   string `json:"match" validate:"omitempty,oneof=exact prefix contains regex"`
+	Match   string `json:"match" validate:"omitempty,oneof=exact prefix suffix contains regex"`
 	Pattern string `json:"pattern" validate:"required,max=512"`
 	Remark  string `json:"remark" validate:"omitempty,max=256"`
 	Enabled bool   `json:"enabled"`
+}
+
+// WafCustomRuleSave creates or updates one operator-authored rule. ID 0 creates.
+type WafCustomRuleSave struct {
+	ID         uint               `json:"id"`
+	Name       string             `json:"name" validate:"omitempty,max=64"`
+	Action     string             `json:"action" validate:"required,oneof=deny allow log"`
+	Conditions []WafRuleCondition `json:"conditions" validate:"required,min=1,max=8,dive"`
+	Remark     string             `json:"remark" validate:"omitempty,max=256"`
+	Enabled    bool               `json:"enabled"`
+}
+
+// WafRuleCondition is one ANDed test inside a custom rule.
+type WafRuleCondition struct {
+	Field   string `json:"field" validate:"required,oneof=ip host method uri path query ua referer header cookie"`
+	Name    string `json:"name" validate:"omitempty,max=64"`
+	Match   string `json:"match" validate:"omitempty,oneof=exact prefix suffix contains regex"`
+	Pattern string `json:"pattern" validate:"required,max=512"`
+	Negate  bool   `json:"negate"`
+}
+
+// WafCustomRuleReorder rewrites the evaluation order. The whole id sequence is
+// sent rather than a move instruction, so the stored order can never drift from
+// what the operator is looking at.
+type WafCustomRuleReorder struct {
+	IDs []uint `json:"ids" validate:"required,min=1,max=200"`
 }
 
 // WafIPGroupSave creates or updates a named address set.
