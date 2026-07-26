@@ -128,11 +128,26 @@ type WafLists struct {
 
 // WafRulePolicy mirrors a stored detection policy.
 type WafRulePolicy struct {
-	DisableSQLi      bool     `json:"disableSqli"`
-	DisableXSS       bool     `json:"disableXss"`
-	Strict           bool     `json:"strict"`
-	AllowedMethods   []string `json:"allowedMethods"`
-	BannedUploadExts []string `json:"bannedUploadExts"`
+	DisableSQLi    bool     `json:"disableSqli"`
+	DisableXSS     bool     `json:"disableXss"`
+	Strict         bool     `json:"strict"`
+	AllowedMethods []string `json:"allowedMethods"`
+}
+
+// WafUploadRule is one stored upload restriction rule.
+type WafUploadRule struct {
+	ID      uint   `json:"id"`
+	Rule    string `json:"rule"`
+	Remark  string `json:"remark"`
+	Enabled bool   `json:"enabled"`
+}
+
+// WafUploadRules is one website's upload restriction: the master switch plus the
+// rules it governs. Returned together because a rule list means nothing without
+// knowing whether the control is armed.
+type WafUploadRules struct {
+	Enabled bool            `json:"enabled"`
+	Rules   []WafUploadRule `json:"rules"`
 }
 
 // WafRealIP mirrors a stored client-address recovery policy.

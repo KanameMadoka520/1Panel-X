@@ -64,38 +64,14 @@
             </div>
         </div>
 
-        <div class="waf-dr-methods">
-            <div class="waf-dr-copy">
-                <strong>{{ $t('website.wafRuleUploads') }}</strong>
-                <span>{{ $t('website.wafRuleUploadsTip') }}</span>
-            </div>
-            <el-select
-                :model-value="value.bannedUploadExts"
-                :disabled="locked"
-                multiple
-                filterable
-                allow-create
-                default-first-option
-                class="waf-dr-ext-input"
-                :placeholder="$t('website.wafRuleUploadsPlaceholder')"
-                @update:model-value="setUploadExts"
-            />
-            <el-button
-                v-if="!locked && value.bannedUploadExts.length === 0"
-                link
-                type="primary"
-                class="waf-dr-methods-toggle"
-                @click="setUploadExts(COMMON_BANNED_EXTS)"
-            >
-                {{ $t('website.wafRuleUploadsPreset') }}
-            </el-button>
-            <div v-if="extError" class="waf-dr-error">{{ extError }}</div>
-        </div>
+        <!-- Upload restriction used to live here as a tag input. It is now its
+             own per-site list with its own master switch, matching where the
+             upstream product puts it. -->
     </div>
 </template>
 
 <script lang="ts" setup>
-import { computed, ref } from 'vue';
+import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { Website } from '@/api/interface/website';
 
@@ -139,21 +115,11 @@ const METHODS = [
     'SEARCH',
 ];
 
-// The extensions most often used to drop a web shell. Offered as a one-click
-// starting point rather than applied by default, because banning uploads a site
-// legitimately accepts is its own kind of outage.
-const COMMON_BANNED_EXTS = ['php', 'jsp', 'asp', 'aspx', 'exe', 'sh'];
-
-// Mirrors the server-side charset check so a bad entry is refused while the
-// operator is still looking at the form instead of failing the whole save.
-const EXT_PATTERN = /^[A-Za-z0-9]{1,15}$/;
-
 const DEFAULT_POLICY: Website.WafRulePolicy = {
     disableSqli: false,
     disableXss: false,
     strict: false,
     allowedMethods: [],
-    bannedUploadExts: [],
 };
 
 const inherited = computed(() => props.scope === 'site' && props.modelValue === null);
@@ -169,11 +135,8 @@ const value = computed<Website.WafRulePolicy>(() => {
         ...DEFAULT_POLICY,
         ...source,
         allowedMethods: source.allowedMethods ?? [],
-        bannedUploadExts: source.bannedUploadExts ?? [],
     };
 });
-
-const extError = ref('');
 
 const methodFilterOn = computed(() => value.value.allowedMethods.length > 0);
 
@@ -199,23 +162,6 @@ const setMethod = (method: string, on: boolean) => {
         next.delete(method);
     }
     write({ allowedMethods: METHODS.filter((m) => next.has(m)) });
-};
-
-const setUploadExts = (raw: string[]) => {
-    const cleaned: string[] = [];
-    const rejected: string[] = [];
-    for (const entry of raw) {
-        const ext = String(entry).trim().replace(/^\./, '');
-        if (!ext) continue;
-        if (!EXT_PATTERN.test(ext)) {
-            rejected.push(entry);
-            continue;
-        }
-        const lower = ext.toLowerCase();
-        if (!cleaned.includes(lower)) cleaned.push(lower);
-    }
-    extError.value = rejected.length ? $t('website.wafRuleUploadsInvalid', [rejected.join(', ')]) : '';
-    write({ bannedUploadExts: cleaned.sort() });
 };
 
 // Detaching copies the currently effective policy so switching to an override
@@ -268,14 +214,5 @@ const reattach = () => emit('update:modelValue', null);
     flex-wrap: wrap;
     gap: 4px 16px;
     margin-top: 6px;
-}
-.waf-dr-ext-input {
-    margin-top: 8px;
-    width: 100%;
-}
-.waf-dr-error {
-    margin-top: 6px;
-    color: var(--el-color-danger);
-    font-size: 12px;
 }
 </style>

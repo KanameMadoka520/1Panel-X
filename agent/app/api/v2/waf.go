@@ -158,6 +158,108 @@ func (b *BaseApi) ReleaseWafBan(c *gin.Context) {
 }
 
 // @Tags Website
+// @Summary List a website's WAF upload restriction rules
+// @Param id path integer true "website id"
+// @Success 200 {object} response.WafUploadRules
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /websites/{id}/waf/uploads [get]
+func (b *BaseApi) GetWafUploadRules(c *gin.Context) {
+	id, err := helper.GetParamID(c)
+	if err != nil {
+		helper.BadRequest(c, err)
+		return
+	}
+	res, err := wafUploadRuleService.List(id)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, res)
+}
+
+// @Tags Website
+// @Summary Create or update a WAF upload restriction rule
+// @Accept json
+// @Param id path integer true "website id"
+// @Param request body request.WafUploadRuleSave true "request"
+// @Success 200 {object} response.WafUploadRules
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /websites/{id}/waf/uploads [post]
+func (b *BaseApi) SaveWafUploadRule(c *gin.Context) {
+	id, err := helper.GetParamID(c)
+	if err != nil {
+		helper.BadRequest(c, err)
+		return
+	}
+	var req request.WafUploadRuleSave
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	res, err := wafUploadRuleService.Save(id, req)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, res)
+}
+
+// @Tags Website
+// @Summary Delete WAF upload restriction rules
+// @Accept json
+// @Param id path integer true "website id"
+// @Param request body request.WafListDelete true "request"
+// @Success 200 {object} response.WafUploadRules
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /websites/{id}/waf/uploads/del [post]
+func (b *BaseApi) DeleteWafUploadRules(c *gin.Context) {
+	id, err := helper.GetParamID(c)
+	if err != nil {
+		helper.BadRequest(c, err)
+		return
+	}
+	var req request.WafListDelete
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	res, err := wafUploadRuleService.Delete(id, req.IDs)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, res)
+}
+
+// @Tags Website
+// @Summary Switch a website's WAF upload restriction on or off
+// @Accept json
+// @Param id path integer true "website id"
+// @Param request body request.WafUploadToggle true "request"
+// @Success 200 {object} response.WafUploadRules
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /websites/{id}/waf/uploads/toggle [post]
+func (b *BaseApi) ToggleWafUploadRules(c *gin.Context) {
+	id, err := helper.GetParamID(c)
+	if err != nil {
+		helper.BadRequest(c, err)
+		return
+	}
+	var req request.WafUploadToggle
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	res, err := wafUploadRuleService.SetEnabled(id, req.Enabled)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, res)
+}
+
+// @Tags Website
 // @Summary List WAF custom rules
 // @Success 200 {array} response.WafCustomRule
 // @Security ApiKeyAuth

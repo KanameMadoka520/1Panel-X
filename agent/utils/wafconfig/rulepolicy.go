@@ -34,17 +34,17 @@ type RulePolicy struct {
 	// AllowedMethods is the HTTP method allow-list. Empty leaves the rule set's
 	// own default in force rather than allowing everything.
 	AllowedMethods []string `json:"allowedMethods,omitempty"`
-	// BannedUploadExts are extensions refused when they name an uploaded file.
+	// UploadRules are extensions refused when they name an uploaded file.
 	// Empty applies no extension check of our own; the rule set's built-in upload
 	// rules are unaffected either way.
-	BannedUploadExts []string `json:"bannedUploadExts,omitempty"`
+	UploadRules []string `json:"uploadRules,omitempty"`
 }
 
 // IsZero reports the fully-protecting default policy, which is emitted as an
 // absent object so the config stays small and older gateways keep working.
 func (p RulePolicy) IsZero() bool {
 	return !p.DisableSQLi && !p.DisableXSS && !p.Strict &&
-		len(p.AllowedMethods) == 0 && len(p.BannedUploadExts) == 0
+		len(p.AllowedMethods) == 0 && len(p.UploadRules) == 0
 }
 
 // NormalizeRulePolicy validates and canonicalizes a policy. Canonical ordering
@@ -57,44 +57,54 @@ func NormalizeRulePolicy(p RulePolicy) (RulePolicy, error) {
 		return RulePolicy{}, err
 	}
 	p.AllowedMethods = methods
-	exts, err := NormalizeUploadExtensions(p.BannedUploadExts)
+	exts, err := NormalizeUploadRules(p.UploadRules)
 	if err != nil {
 		return RulePolicy{}, err
 	}
-	p.BannedUploadExts = exts
+	p.UploadRules = exts
 	return p, nil
 }
 
-// MaxBannedUploadExtensions bounds the banned upload extension list.
-const MaxBannedUploadExtensions = 64
+// MaxUploadRules bounds the upload restriction list.
+const MaxUploadRules = 64
 
-// uploadExtensionPattern is a security control for the same reason
-// methodPattern is: the gateway interpolates each extension into a SecRule
-// regular expression inside a quoted directive, so a value carrying a quote, a
-// newline or a regex metacharacter could terminate that directive and append
-// another one. Restricting the charset to alphanumerics means no escaping is
-// needed and none can be forgotten. The gateway validates again on load; this
-// rejects it while the operator is still looking at the form.
-var uploadExtensionPattern = regexp.MustCompile(`^[A-Za-z0-9]{1,15}$`)
+// MaxUploadRuleLength bounds one rule.
+const MaxUploadRuleLength = 32
 
-// NormalizeUploadExtensions lower-cases, strips a leading dot, de-duplicates and
-// sorts the banned upload extension list.
-func NormalizeUploadExtensions(exts []string) ([]string, error) {
-	if len(exts) == 0 {
+// uploadRulePattern is a security control for the same reason methodPattern is:
+// the gateway interpolates each rule into a SecRule regular expression inside a
+// quoted directive, so a value carrying a quote, a newline or a regex
+// metacharacter could terminate that directive and append another one. The
+// charset is restricted to what a file extension actually needs, and the one
+// metacharacter it admits (`.`) is escaped where the pattern is built. The
+// gateway validates again on load; this rejects it while the operator is still
+// looking at the form.
+var uploadRulePattern = regexp.MustCompile(`^[A-Za-z0-9._-]{1,32}$`)
+
+// DefaultUploadRules is what the upstream product ships with. The panel seeds
+// these for a new site so its list looks the same, but leaves the restriction
+// switched OFF — turning upload blocking on for a site that already accepts
+// those uploads is an outage, and that has to be the operator's call.
+var DefaultUploadRules = []string{"php", "jsp", "asp", "exe", "sh"}
+
+// NormalizeUploadRules lower-cases, strips a leading dot, de-duplicates and
+// sorts the upload restriction list.
+func NormalizeUploadRules(rules []string) ([]string, error) {
+	if len(rules) == 0 {
 		return nil, nil
 	}
-	if len(exts) > MaxBannedUploadExtensions {
-		return nil, fmt.Errorf("too many banned upload extensions (%d), limit is %d", len(exts), MaxBannedUploadExtensions)
+	if len(rules) > MaxUploadRules {
+		return nil, fmt.Errorf("too many upload rules (%d), limit is %d", len(rules), MaxUploadRules)
 	}
-	seen := make(map[string]struct{}, len(exts))
-	out := make([]string, 0, len(exts))
-	for _, e := range exts {
+	seen := make(map[string]struct{}, len(rules))
+	out := make([]string, 0, len(rules))
+	for _, e := range rules {
 		e = strings.TrimPrefix(strings.TrimSpace(e), ".")
 		if e == "" {
 			continue
 		}
-		if !uploadExtensionPattern.MatchString(e) {
-			return nil, fmt.Errorf("invalid upload extension %q (letters and digits only)", e)
+		if !uploadRulePattern.MatchString(e) {
+			return nil, fmt.Errorf("invalid upload rule %q (letters, digits, dot, dash and underscore only, at most %d characters)", e, MaxUploadRuleLength)
 		}
 		e = strings.ToLower(e)
 		if _, dup := seen[e]; dup {

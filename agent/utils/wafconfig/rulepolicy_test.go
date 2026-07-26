@@ -55,7 +55,7 @@ func TestRulePolicyZeroIsFullProtection(t *testing.T) {
 		"xss off":  {DisableXSS: true},
 		"strict":   {Strict: true},
 		"methods":  {AllowedMethods: []string{"GET"}},
-		"uploads":  {BannedUploadExts: []string{"php"}},
+		"uploads":  {UploadRules: []string{"php"}},
 	} {
 		if p.IsZero() {
 			t.Fatalf("%s must not be treated as the default policy", name)
@@ -139,25 +139,25 @@ func TestBuildRejectsInvalidRulePolicy(t *testing.T) {
 	}
 	// The extension list is interpolated into a SecRule regular expression, so
 	// the same class of injection has to be refused here too.
-	if mk(&RulePolicy{BannedUploadExts: []string{`php" "id:1,phase:1,pass"`}}) == nil {
+	if mk(&RulePolicy{UploadRules: []string{`php" "id:1,phase:1,pass"`}}) == nil {
 		t.Fatal("an upload extension that could inject directives must fail config generation")
 	}
 }
 
-func TestNormalizeUploadExtensions(t *testing.T) {
-	got, err := NormalizeUploadExtensions([]string{" .PHP ", "jsp", "php", "", "."})
+func TestNormalizeUploadRules(t *testing.T) {
+	got, err := NormalizeUploadRules([]string{" .PHP ", "jsp", "php", "", "."})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(got, []string{"jsp", "php"}) {
 		t.Fatalf("extensions must be dot-stripped, lower-cased, de-duplicated and sorted: %#v", got)
 	}
-	for _, bad := range []string{`php"`, "php\nSecRuleEngine Off", "php|jsp", "p.p", "php)("} {
-		if _, err := NormalizeUploadExtensions([]string{bad}); err == nil {
+	for _, bad := range []string{`php"`, "php\nSecRuleEngine Off", "php|jsp", "php)(", "php*", "php$"} {
+		if _, err := NormalizeUploadRules([]string{bad}); err == nil {
 			t.Fatalf("extension %q must be rejected", bad)
 		}
 	}
-	if _, err := NormalizeUploadExtensions(make([]string, MaxBannedUploadExtensions+1)); err == nil {
+	if _, err := NormalizeUploadRules(make([]string, MaxUploadRules+1)); err == nil {
 		t.Fatal("an oversized extension list must be rejected")
 	}
 }

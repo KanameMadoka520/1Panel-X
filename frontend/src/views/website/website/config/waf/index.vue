@@ -109,6 +109,14 @@
 
         <div class="waf-acl">
             <div class="waf-acl-head">
+                <strong>{{ $t('website.wafUpload') }}</strong>
+                <span>{{ $t('website.wafUploadTip') }}</span>
+            </div>
+            <UploadRules :id="props.id" />
+        </div>
+
+        <div class="waf-acl">
+            <div class="waf-acl-head">
                 <strong>CDN</strong>
                 <span>{{ $t('website.wafRealIpScope') }}</span>
             </div>
@@ -281,6 +289,7 @@ import CustomRules from './CustomRules.vue';
 import RegionAccess from './RegionAccess.vue';
 import WafSettings from './WafSettings.vue';
 import CdnRealIP from './CdnRealIP.vue';
+import UploadRules from './UploadRules.vue';
 
 const { t: $t } = useI18n();
 
@@ -311,7 +320,6 @@ const status = reactive<Website.WafSiteStatus>({
         disableXss: false,
         strict: false,
         allowedMethods: [],
-        bannedUploadExts: [],
     },
     region: null,
     effectiveRegion: { mode: 'deny', regions: [], enabled: false },
@@ -337,7 +345,6 @@ const globalRules = ref<Website.WafRulePolicy>({
     disableXss: false,
     strict: false,
     allowedMethods: [],
-    bannedUploadExts: [],
 });
 const aclPlaceholder = '203.0.113.10\n198.51.100.0/24\n2001:db8::/32';
 const loadingStatus = ref(false);
@@ -474,7 +481,6 @@ const syncGlobal = (data: Website.WafGlobalConfig) => {
         disableXss: false,
         strict: false,
         allowedMethods: [],
-        bannedUploadExts: [],
     };
     globalRegion.value = data.region || { mode: 'deny', regions: [], enabled: false };
     globalGeoAvailable.value = data.geoAvailable;

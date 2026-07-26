@@ -62,6 +62,14 @@ type WafSitePolicy struct {
 	// RealIPRules is how this site recovers the client address from a CDN or
 	// front proxy, as JSON. Empty uses the front proxy's own header.
 	RealIPRules string `gorm:"type:text" json:"realIPRules"`
+	// UploadLimit is the master switch for the upload restriction rules. It
+	// defaults OFF: the rules are seeded for a new site so its list matches the
+	// upstream product's, but switching upload blocking on for a site that
+	// already accepts those uploads is an outage and has to be a decision.
+	UploadLimit bool `gorm:"not null;default:false" json:"uploadLimit"`
+	// UploadSeeded records that the default rule set has been written once, so
+	// deleting every rule does not cause them to reappear on the next read.
+	UploadSeeded bool `gorm:"not null;default:false" json:"uploadSeeded"`
 	LastError   string `gorm:"size:2048" json:"lastError"`
 }
 
@@ -102,6 +110,22 @@ type WafCustomRule struct {
 	Priority   int    `gorm:"not null;default:0;index" json:"priority"`
 	Remark     string `gorm:"size:256" json:"remark"`
 	// Enabled rows are the only ones sent to the gateway, so switching a rule off
+	// stops it being enforced instead of merely hiding it.
+	Enabled bool `gorm:"not null;default:true" json:"enabled"`
+}
+
+// WafUploadRule is one upload restriction rule for one website.
+//
+// Matching is FUZZY: the rule hits anywhere in the uploaded file name. That is
+// the upstream product's documented behaviour, and it means a rule catches the
+// classic double-extension smuggle for free while also refusing a name that
+// merely contains the text.
+type WafUploadRule struct {
+	BaseModel
+	WebsiteID uint   `gorm:"index;not null" json:"websiteID"`
+	Rule      string `gorm:"size:32;not null" json:"rule"`
+	Remark    string `gorm:"size:256" json:"remark"`
+	// Enabled rows are the only ones sent to the gateway, so switching a row off
 	// stops it being enforced instead of merely hiding it.
 	Enabled bool `gorm:"not null;default:true" json:"enabled"`
 }

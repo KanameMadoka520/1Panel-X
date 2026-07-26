@@ -781,6 +781,10 @@ func (s *WafControlService) writeGatewayConfig() (string, error) {
 	if err != nil {
 		return "", err
 	}
+	uploadRows, err := wafRepo.ListAllUploadRules()
+	if err != nil {
+		return "", err
+	}
 	policies, err := wafRepo.ListPolicies()
 	if err != nil {
 		return "", err
@@ -832,9 +836,12 @@ func (s *WafControlService) writeGatewayConfig() (string, error) {
 			AllowIPs:   allowIPs,
 			DenyIPs:    denyIPs,
 			RateLimits: mergedLimits,
-			Rules:      wafconfig.MergeRulePolicy(globalRules, siteRules),
-			Region:     wafconfig.MergeRegionPolicy(globalRegion, siteRegion),
-			RealIP:     siteRealIP,
+			Rules: withUploadRules(
+				wafconfig.MergeRulePolicy(globalRules, siteRules),
+				enabledUploadRules(uploadRows, website.ID, policy.UploadLimit),
+			),
+			Region: wafconfig.MergeRegionPolicy(globalRegion, siteRegion),
+			RealIP: siteRealIP,
 		})
 	}
 	cfg, err := wafconfig.BuildWithOptions(inputs, wafconfig.BuildOptions{
@@ -1255,12 +1262,16 @@ func rulePolicyFromRequest(in *request.WafRulePolicy) *wafconfig.RulePolicy {
 	if in == nil {
 		return nil
 	}
+	// UploadRules is deliberately NOT taken from here. Upload restriction is its
+	// own per-site list with its own master switch; it reaches the data plane
+	// through the same RulePolicy struct only because that is what the engine
+	// compiles, and letting this form also write it would give one setting two
+	// sources of truth.
 	return &wafconfig.RulePolicy{
-		DisableSQLi:      in.DisableSQLi,
-		DisableXSS:       in.DisableXSS,
-		Strict:           in.Strict,
-		AllowedMethods:   in.AllowedMethods,
-		BannedUploadExts: in.BannedUploadExts,
+		DisableSQLi:    in.DisableSQLi,
+		DisableXSS:     in.DisableXSS,
+		Strict:         in.Strict,
+		AllowedMethods: in.AllowedMethods,
 	}
 }
 
@@ -1272,16 +1283,11 @@ func rulePolicyToResponse(p *wafconfig.RulePolicy) *response.WafRulePolicy {
 	if methods == nil {
 		methods = []string{}
 	}
-	exts := p.BannedUploadExts
-	if exts == nil {
-		exts = []string{}
-	}
 	return &response.WafRulePolicy{
-		DisableSQLi:      p.DisableSQLi,
-		DisableXSS:       p.DisableXSS,
-		Strict:           p.Strict,
-		AllowedMethods:   methods,
-		BannedUploadExts: exts,
+		DisableSQLi:    p.DisableSQLi,
+		DisableXSS:     p.DisableXSS,
+		Strict:         p.Strict,
+		AllowedMethods: methods,
 	}
 }
 
@@ -1289,7 +1295,22 @@ func rulePolicyValue(p *wafconfig.RulePolicy) response.WafRulePolicy {
 	if converted := rulePolicyToResponse(p); converted != nil {
 		return *converted
 	}
-	return response.WafRulePolicy{AllowedMethods: []string{}, BannedUploadExts: []string{}}
+	return response.WafRulePolicy{AllowedMethods: []string{}}
+}
+
+// withUploadRules attaches the site's upload restriction to the policy the data
+// plane is given. It is applied at config-generation time rather than stored on
+// the policy, so the rule list has exactly one home.
+func withUploadRules(policy *wafconfig.RulePolicy, rules []string) *wafconfig.RulePolicy {
+	if len(rules) == 0 {
+		return policy
+	}
+	merged := wafconfig.RulePolicy{}
+	if policy != nil {
+		merged = *policy
+	}
+	merged.UploadRules = rules
+	return &merged
 }
 
 func rateLimitsToResponse(in []wafconfig.RateLimit) []response.WafRateLimit {

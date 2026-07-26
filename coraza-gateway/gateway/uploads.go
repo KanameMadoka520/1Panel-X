@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// The upload-extension ban is implemented as OUR OWN rule, not as a knob on the
+// The upload restriction is implemented as OUR OWN rule, not as a knob on the
 // bundled rule set, because the rule set has no such knob:
 //
 //   - `tx.restricted_extensions` (901164 → 920440) matches the extension of the
@@ -19,47 +19,50 @@ import (
 //
 // The rule below therefore stands on its own: it inspects FILES (the client-
 // supplied names of multipart parts) and denies directly rather than feeding the
-// anomaly score, so one banned extension is one refusal.
+// anomaly score, so one banned rule is one refusal.
 const (
-	maxBannedExtensions = 64
-	maxExtensionLength  = 15
+	maxUploadRules      = 64
+	maxUploadRuleLength = 32
 )
 
-// extensionPattern is a security control, not tidiness. The list is interpolated
-// into a SecRule regular expression inside a quoted directive; a value carrying a
+// uploadRulePattern bounds one rule.
+//
+// This is a security control, not tidiness. Each rule is interpolated into a
+// SecRule regular expression inside a quoted directive, so a value carrying a
 // quote, a newline or a regex metacharacter could terminate the directive and
-// append another one, and `SecRuleEngine Off` would disable the WAF for every
-// site sharing that compiled engine. Restricting the charset to alphanumerics
-// means no escaping is needed and none can be forgotten.
-var extensionPattern = regexp.MustCompile(`^[A-Za-z0-9]{1,15}$`)
+// append another one — and `SecRuleEngine Off` would disable the WAF for every
+// site sharing that compiled engine. The charset is restricted to the characters
+// a file extension actually needs, and the one metacharacter it allows (`.`) is
+// escaped when the pattern is built.
+var uploadRulePattern = regexp.MustCompile(`^[A-Za-z0-9._-]{1,32}$`)
 
-// normalizeExtensions validates, lower-cases, de-duplicates and sorts the banned
-// upload extension list. A leading dot is accepted and stripped, because that is
-// how operators habitually write extensions.
-func normalizeExtensions(exts []string) ([]string, error) {
-	if len(exts) == 0 {
+// normalizeUploadRules validates, lower-cases, de-duplicates and sorts the rule
+// list. A leading dot is accepted and stripped, because that is how operators
+// habitually write extensions.
+func normalizeUploadRules(rules []string) ([]string, error) {
+	if len(rules) == 0 {
 		return nil, nil
 	}
-	if len(exts) > maxBannedExtensions {
-		return nil, fmt.Errorf("too many banned upload extensions (%d), limit is %d", len(exts), maxBannedExtensions)
+	if len(rules) > maxUploadRules {
+		return nil, fmt.Errorf("too many upload rules (%d), limit is %d", len(rules), maxUploadRules)
 	}
-	seen := make(map[string]struct{}, len(exts))
-	out := make([]string, 0, len(exts))
-	for _, e := range exts {
-		e = strings.TrimSpace(e)
-		e = strings.TrimPrefix(e, ".")
-		if e == "" {
+	seen := make(map[string]struct{}, len(rules))
+	out := make([]string, 0, len(rules))
+	for _, r := range rules {
+		r = strings.TrimSpace(r)
+		r = strings.TrimPrefix(r, ".")
+		if r == "" {
 			continue
 		}
-		if !extensionPattern.MatchString(e) {
-			return nil, fmt.Errorf("invalid upload extension %q (letters and digits only, at most %d characters)", e, maxExtensionLength)
+		if !uploadRulePattern.MatchString(r) {
+			return nil, fmt.Errorf("invalid upload rule %q (letters, digits, dot, dash and underscore only, at most %d characters)", r, maxUploadRuleLength)
 		}
-		e = strings.ToLower(e)
-		if _, dup := seen[e]; dup {
+		r = strings.ToLower(r)
+		if _, dup := seen[r]; dup {
 			continue
 		}
-		seen[e] = struct{}{}
-		out = append(out, e)
+		seen[r] = struct{}{}
+		out = append(out, r)
 	}
 	if len(out) == 0 {
 		return nil, nil
@@ -73,23 +76,35 @@ func normalizeExtensions(exts []string) ([]string, error) {
 const uploadRuleID = 8000003
 
 // uploadDenyDirective builds the SecRule for a canonical (already validated,
-// space-separated) extension list. An empty list produces no rule at all, so a
-// site that bans nothing pays nothing.
+// space-separated) rule list. An empty list produces no rule at all, so a site
+// that restricts nothing pays nothing.
 func uploadDenyDirective(canonical string) string {
 	if canonical == "" {
 		return ""
 	}
-	alternation := strings.ReplaceAll(canonical, " ", "|")
-	// The match is deliberately `\.(ext)(\.|$)` rather than `\.(ext)$`: a file
-	// named `shell.php.jpg` is the classic double-extension bypass, and a server
-	// that hands such a name to a handler by any component is exactly what this
-	// control exists to protect. It does mean `notes.sh.txt` is refused when `sh`
-	// is banned; for a security control that trade is the right way round.
+	parts := strings.Split(canonical, " ")
+	for i, p := range parts {
+		// `.` is the only metacharacter the charset admits; escaping it keeps a
+		// rule like `.php` from also matching `xphp`.
+		parts[i] = strings.ReplaceAll(p, ".", `\.`)
+	}
+	// The match is a FUZZY one — no anchors — matching the upstream product,
+	// whose create dialog states "the rule is matched loosely". A rule therefore
+	// hits anywhere in the uploaded file name, which catches the classic
+	// double-extension smuggle (`shell.php.jpg`) for free but also refuses a name
+	// that merely contains the text (`sh` refuses `shanghai.jpg`). That is a real
+	// trade and the panel says so where the operator writes the rule.
 	//
 	// The transformations matter as much as the pattern: `removeNulls` defeats
 	// `shell.php%00.jpg`, and `urlDecodeUni` defeats a percent-encoded dot. They
 	// are applied in order after `t:none` clears any inherited default.
 	return fmt.Sprintf(
-		"SecRule FILES \"@rx \\.(%s)(\\.|$)\" \"id:%d,phase:2,deny,status:403,log,t:none,t:urlDecodeUni,t:removeNulls,t:lowercase,msg:'1Panel-X: upload of a banned file extension'\"\n",
-		alternation, uploadRuleID)
+		"SecRule FILES \"@rx (%s)\" \"id:%d,phase:2,deny,status:403,log,t:none,t:urlDecodeUni,t:removeNulls,t:lowercase,msg:'1Panel-X: upload refused by an upload restriction rule'\"\n",
+		strings.Join(parts, "|"), uploadRuleID)
 }
+
+// DefaultUploadRules is what the upstream product ships with. The control plane
+// seeds these for a new site so its list looks the same, but leaves the whole
+// restriction switched OFF: turning upload blocking on for a site that already
+// accepts those uploads is an outage, and that has to be the operator's call.
+var DefaultUploadRules = []string{"php", "jsp", "asp", "exe", "sh"}

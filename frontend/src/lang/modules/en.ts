@@ -3445,12 +3445,15 @@ const message = {
         wafRuleMethodsTip:
             'Only the ticked request methods are accepted; every other method is refused. Leave it off to keep the rule set’s own default method list.',
         wafRuleMethodsEnable: 'Enable method allow-list',
-        wafRuleUploads: 'Upload extension limit',
-        wafRuleUploadsTip:
-            'Refuse uploads whose file name carries one of these extensions. Double extensions such as shell.php.jpg are refused too; leave empty to skip this check.',
-        wafRuleUploadsPlaceholder: 'Type an extension and press Enter, e.g. php',
-        wafRuleUploadsPreset: 'Fill in the common dangerous extensions',
-        wafRuleUploadsInvalid: 'These extensions are invalid; letters and digits only: {0}',
+        wafUpload: 'Upload restriction',
+        wafUploadTip: 'Applies to this site only. With the switch off the rules below are kept but not enforced.',
+        wafUploadTitle: 'Refused upload extensions',
+        wafUploadRule: 'Rule',
+        wafUploadFuzzy:
+            'The rule is matched loosely: an upload is refused if its file name contains this text anywhere. That catches double extensions such as shell.php.jpg for free — and it also means a rule of "sh" refuses shanghai.jpg. Choose accordingly.',
+        wafUploadOn: 'Active',
+        wafUploadOnButEmpty: 'Active, but no rule is in force — nothing will be refused.',
+        wafUploadOff: 'Off. The rules are kept and can be switched back on at any time.',
         wafBans: 'Temporary bans',
         wafBansScope: 'Bans currently in force, produced automatically by the frequency limits.',
         wafBansTip:

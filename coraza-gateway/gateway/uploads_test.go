@@ -37,7 +37,7 @@ var uncoveredExts = []string{"iso", "apk", "img"}
 // is stored and displayed but not enforced is precisely the failure this guards.
 func TestBannedUploadExtensionIsRefused(t *testing.T) {
 	var reached bool
-	h := buildPolicyGateway(t, RulePolicy{BannedUploadExts: uncoveredExts}, &reached)
+	h := buildPolicyGateway(t, RulePolicy{UploadRules: uncoveredExts}, &reached)
 
 	for _, name := range []string{"release.iso", "Release.ISO", "app.apk", "disk.img"} {
 		reached = false
@@ -69,17 +69,26 @@ func TestUncoveredExtensionsAreNotAlreadyBlocked(t *testing.T) {
 	}
 }
 
-// A double extension is the classic way to smuggle a banned extension past a
-// check that only looks at the final component.
-func TestBannedUploadExtensionResistsEvasion(t *testing.T) {
+// Matching is FUZZY, matching the upstream product: a rule hits anywhere in the
+// uploaded file name. That catches the classic double-extension smuggle for
+// free — and it also refuses a name that merely contains the text. Both halves
+// are asserted here, because the second is a real cost the panel has to disclose
+// rather than a bug to be discovered later.
+func TestUploadRuleMatchesFuzzily(t *testing.T) {
 	var reached bool
-	h := buildPolicyGateway(t, RulePolicy{BannedUploadExts: []string{"iso"}}, &reached)
+	h := buildPolicyGateway(t, RulePolicy{UploadRules: []string{"iso"}}, &reached)
 
-	for _, name := range []string{"release.iso.jpg", "release.IsO.png", "release.iso."} {
+	for _, name := range []string{"release.iso", "release.iso.jpg", "release.IsO.png", "release.iso."} {
 		reached = false
 		if code := serveUpload(h, name).Code; code != http.StatusForbidden {
-			t.Fatalf("evasive upload %q must be refused, got %d", name, code)
+			t.Fatalf("upload %q must be refused, got %d", name, code)
 		}
+	}
+	// The disclosed cost of fuzzy matching: a name that merely contains the text
+	// is refused too.
+	reached = false
+	if code := serveUpload(h, "isonotes.txt").Code; code != http.StatusForbidden {
+		t.Fatalf("fuzzy matching must also refuse a name that contains the rule, got %d", code)
 	}
 	// A filename carrying a NUL is refused earlier, by the multipart parser
 	// itself, before any rule sees it. That is still a fail-closed refusal, so
@@ -89,11 +98,26 @@ func TestBannedUploadExtensionResistsEvasion(t *testing.T) {
 	if rr := serveUpload(h, "release.iso\x00.jpg"); rr.Code == http.StatusOK || reached {
 		t.Fatalf("a NUL-carrying upload name must not be admitted, got %d reached=%v", rr.Code, reached)
 	}
-	// The extension must be a whole component: a name that merely contains the
-	// letters must not be refused, or the control becomes unusable.
+	// An unrelated name still passes, or the control would be unusable.
 	reached = false
-	if code := serveUpload(h, "isonotes.txt").Code; code != http.StatusOK || !reached {
-		t.Fatalf("a name that only contains the letters must pass, got %d reached=%v", code, reached)
+	if code := serveUpload(h, "holiday.jpg").Code; code != http.StatusOK || !reached {
+		t.Fatalf("an unrelated upload must pass, got %d reached=%v", code, reached)
+	}
+}
+
+// A dot in a rule must be matched literally, not as the regex "any character".
+// Without escaping, a rule of `.php` would also refuse `xphp`.
+func TestUploadRuleDotIsLiteral(t *testing.T) {
+	var reached bool
+	h := buildPolicyGateway(t, RulePolicy{UploadRules: []string{"x.iso"}}, &reached)
+
+	reached = false
+	if code := serveUpload(h, "arch.x.iso.bin").Code; code != http.StatusForbidden {
+		t.Fatalf("the literal rule must be refused, got %d", code)
+	}
+	reached = false
+	if code := serveUpload(h, "archxiso.bin").Code; code != http.StatusOK || !reached {
+		t.Fatalf("the dot must not match an arbitrary character, got %d reached=%v", code, reached)
 	}
 }
 
@@ -116,33 +140,34 @@ func TestExtensionNormalizationRejectsDirectiveInjection(t *testing.T) {
 		`php" "id:1,phase:1,pass" SecRuleEngine Off "`,
 		"php\nSecRuleEngine Off",
 		"php|jsp",
-		"p.p",
 		"php)(",
-		strings.Repeat("a", maxExtensionLength+1),
+		"php*",
+		"php$",
+		strings.Repeat("a", maxUploadRuleLength+1),
 	}
 	for _, e := range bad {
-		if _, err := normalizeExtensions([]string{e}); err == nil {
+		if _, err := normalizeUploadRules([]string{e}); err == nil {
 			t.Fatalf("extension %q must be rejected", e)
 		}
 	}
-	got, err := normalizeExtensions([]string{" .PHP ", "jsp", "php", ""})
+	got, err := normalizeUploadRules([]string{" .PHP ", "jsp", "php", ""})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if strings.Join(got, " ") != "jsp php" {
 		t.Fatalf("extensions must be lower-cased, dot-stripped, de-duplicated and sorted, got %v", got)
 	}
-	if _, err := normalizeExtensions(make([]string, maxBannedExtensions+1)); err == nil {
+	if _, err := normalizeUploadRules(make([]string, maxUploadRules+1)); err == nil {
 		t.Fatal("an oversized extension list must be rejected")
 	}
 }
 
 func TestParseConfigRejectsBadUploadExtensions(t *testing.T) {
-	body := `{"sites":[{"host":"a.example","upstream":"http://127.0.0.1:1","rules":{"bannedUploadExts":["php\" \"id:1"]}}]}`
+	body := `{"sites":[{"host":"a.example","upstream":"http://127.0.0.1:1","rules":{"uploadRules":["php\" \"id:1"]}}]}`
 	if _, err := ParseConfig([]byte(body)); err == nil {
 		t.Fatal("an extension that could inject directives must fail the config load")
 	}
-	ok := `{"sites":[{"host":"a.example","upstream":"http://127.0.0.1:1","rules":{"bannedUploadExts":["PHP","jsp"]}}]}`
+	ok := `{"sites":[{"host":"a.example","upstream":"http://127.0.0.1:1","rules":{"uploadRules":["PHP","jsp"]}}]}`
 	cfg, err := ParseConfig([]byte(ok))
 	if err != nil {
 		t.Fatalf("a valid extension list was rejected: %v", err)
@@ -151,8 +176,8 @@ func TestParseConfigRejectsBadUploadExtensions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.BannedUploadExts != "jsp php" {
-		t.Fatalf("extension list did not round-trip: %q", p.BannedUploadExts)
+	if p.UploadRules != "jsp php" {
+		t.Fatalf("extension list did not round-trip: %q", p.UploadRules)
 	}
 }
 
@@ -163,7 +188,7 @@ func TestBannedUploadIsObservedNotBlockedInDetectionMode(t *testing.T) {
 	var reached bool
 	site := SiteConfig{
 		Host: "a.example", Upstream: "http://127.0.0.1:1", Mode: ModeDetection,
-		Rules: &RulePolicy{BannedUploadExts: []string{"iso"}},
+		Rules: &RulePolicy{UploadRules: []string{"iso"}},
 	}
 	p, err := site.enginePolicy(ModeDetection)
 	if err != nil {

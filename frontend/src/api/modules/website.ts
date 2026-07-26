@@ -458,6 +458,22 @@ export const DeleteWafIPGroups = (ids: number[]) => {
     return http.post<Website.WafLists>(`/websites/waf/lists/group/del`, { ids });
 };
 
+export const GetWafUploadRules = (id: number) => {
+    return http.get<Website.WafUploadRules>(`/websites/${id}/waf/uploads`);
+};
+
+export const SaveWafUploadRule = (id: number, req: Partial<Website.WafUploadRule>) => {
+    return http.post<Website.WafUploadRules>(`/websites/${id}/waf/uploads`, req);
+};
+
+export const DeleteWafUploadRules = (id: number, ids: number[]) => {
+    return http.post<Website.WafUploadRules>(`/websites/${id}/waf/uploads/del`, { ids });
+};
+
+export const ToggleWafUploadRules = (id: number, enabled: boolean) => {
+    return http.post<Website.WafUploadRules>(`/websites/${id}/waf/uploads/toggle`, { enabled });
+};
+
 export const GetWafCustomRules = () => {
     return http.get<Website.WafCustomRule[]>(`/websites/waf/rules`);
 };

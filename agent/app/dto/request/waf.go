@@ -76,10 +76,20 @@ type WafRulePolicy struct {
 	// own default in force. Tokens are validated server-side because they end up
 	// inside an engine directive.
 	AllowedMethods []string `json:"allowedMethods" validate:"omitempty,max=64,dive,max=20"`
-	// BannedUploadExts are extensions refused when they name an uploaded file.
-	// Validated server-side for the same reason as the methods above: they end up
-	// inside an engine directive.
-	BannedUploadExts []string `json:"bannedUploadExts" validate:"omitempty,max=64,dive,max=16"`
+}
+
+// WafUploadRuleSave creates or updates one upload restriction rule. ID 0
+// creates. Matching is fuzzy: the rule hits anywhere in the uploaded file name.
+type WafUploadRuleSave struct {
+	ID      uint   `json:"id"`
+	Rule    string `json:"rule" validate:"required,max=32"`
+	Remark  string `json:"remark" validate:"omitempty,max=256"`
+	Enabled bool   `json:"enabled"`
+}
+
+// WafUploadToggle flips the master switch for a website's upload restriction.
+type WafUploadToggle struct {
+	Enabled bool `json:"enabled"`
 }
 
 // WafListEntrySave creates or updates one panel-wide black/white list row.

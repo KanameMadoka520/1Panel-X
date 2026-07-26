@@ -50,10 +50,10 @@ type RulePolicy struct {
 	// AllowedMethods is the HTTP method allow-list. Empty leaves the ruleset's
 	// own default in force rather than silently allowing everything.
 	AllowedMethods []string `json:"allowedMethods,omitempty"`
-	// BannedUploadExts are file extensions refused when they appear as the name
+	// UploadRules are file extensions refused when they appear as the name
 	// of an uploaded multipart part. Empty means the extension check is not
 	// applied at all; the ruleset's own upload rules still run.
-	BannedUploadExts []string `json:"bannedUploadExts,omitempty"`
+	UploadRules []string `json:"uploadRules,omitempty"`
 }
 
 // maxAllowedMethods bounds the method allow-list.
@@ -117,11 +117,11 @@ func (s SiteConfig) enginePolicy(defaultMode Mode) (enginePolicy, error) {
 		return enginePolicy{}, err
 	}
 	p.AllowedMethods = strings.Join(methods, " ")
-	exts, err := normalizeExtensions(s.Rules.BannedUploadExts)
+	exts, err := normalizeUploadRules(s.Rules.UploadRules)
 	if err != nil {
 		return enginePolicy{}, err
 	}
-	p.BannedUploadExts = strings.Join(exts, " ")
+	p.UploadRules = strings.Join(exts, " ")
 	return p, nil
 }
 

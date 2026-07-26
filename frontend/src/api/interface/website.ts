@@ -876,9 +876,22 @@ export namespace Website {
         strict: boolean;
         // Empty leaves the rule set's own method default in force.
         allowedMethods: string[];
-        // Extensions refused when they name an uploaded file. Empty applies no
-        // extension check of our own.
-        bannedUploadExts: string[];
+    }
+
+    // One upload restriction rule. Matching is FUZZY: the rule hits anywhere in
+    // the uploaded file name.
+    export interface WafUploadRule {
+        id: number;
+        rule: string;
+        remark: string;
+        enabled: boolean;
+    }
+
+    // The master switch plus the rules it governs, returned together because a
+    // rule list means nothing without knowing whether the control is armed.
+    export interface WafUploadRules {
+        enabled: boolean;
+        rules: WafUploadRule[];
     }
 
     // Geographic access control. Regions are ISO 3166-1 alpha-2 country codes;

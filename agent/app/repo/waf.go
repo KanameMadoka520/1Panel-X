@@ -38,6 +38,11 @@ type IWafRepo interface {
 	SaveIPGroup(group *model.WafIPGroup) error
 	DeleteIPGroups(ids []uint) error
 
+	ListUploadRules(websiteID uint) ([]model.WafUploadRule, error)
+	ListAllUploadRules() ([]model.WafUploadRule, error)
+	SaveUploadRule(rule *model.WafUploadRule) error
+	DeleteUploadRules(websiteID uint, ids []uint) error
+
 	ListCustomRules() ([]model.WafCustomRule, error)
 	SaveCustomRule(rule *model.WafCustomRule) error
 	DeleteCustomRules(ids []uint) error
@@ -111,7 +116,7 @@ func (r *WafRepo) GetPolicy(websiteID uint) (model.WafSitePolicy, error) {
 func (r *WafRepo) SavePolicy(policy model.WafSitePolicy) error {
 	return global.WafDB.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "website_id"}},
-		DoUpdates: clause.AssignmentColumns([]string{"enabled", "mode", "allow_ips", "deny_ips", "rate_limits", "rule_options", "region_rules", "real_ip_rules", "last_error", "updated_at"}),
+		DoUpdates: clause.AssignmentColumns([]string{"enabled", "mode", "allow_ips", "deny_ips", "rate_limits", "rule_options", "region_rules", "real_ip_rules", "upload_limit", "upload_seeded", "last_error", "updated_at"}),
 	}).Create(&policy).Error
 }
 
@@ -177,6 +182,41 @@ func (r *WafRepo) GetIPGroup(id uint) (model.WafIPGroup, error) {
 	var group model.WafIPGroup
 	err := global.WafDB.Where("id = ?", id).First(&group).Error
 	return group, err
+}
+
+// ListUploadRules returns one website's upload restriction rules.
+func (r *WafRepo) ListUploadRules(websiteID uint) ([]model.WafUploadRule, error) {
+	var out []model.WafUploadRule
+	err := global.WafDB.Where("website_id = ?", websiteID).Order("rule asc, id asc").Find(&out).Error
+	return out, err
+}
+
+// ListAllUploadRules returns every site's rules, for config generation.
+func (r *WafRepo) ListAllUploadRules() ([]model.WafUploadRule, error) {
+	var out []model.WafUploadRule
+	err := global.WafDB.Order("website_id asc, rule asc, id asc").Find(&out).Error
+	return out, err
+}
+
+// SaveUploadRule creates or updates a rule. Enabled is written through Select so
+// a switch turned OFF is persisted rather than skipped as a zero value.
+func (r *WafRepo) SaveUploadRule(rule *model.WafUploadRule) error {
+	if rule.ID == 0 {
+		return global.WafDB.Create(rule).Error
+	}
+	return global.WafDB.Model(rule).
+		Select("rule", "remark", "enabled", "updated_at").
+		Updates(rule).Error
+}
+
+// DeleteUploadRules removes rules, scoped to the website that owns them so a
+// forged id cannot reach another site's rows.
+func (r *WafRepo) DeleteUploadRules(websiteID uint, ids []uint) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	return global.WafDB.Where("website_id = ? and id in (?)", websiteID, ids).
+		Delete(&model.WafUploadRule{}).Error
 }
 
 // ListCustomRules returns the rules in the operator's evaluation order. The id
