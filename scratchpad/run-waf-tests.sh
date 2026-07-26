@@ -54,4 +54,4 @@ echo "=== agent: go vet (api/router/hook) ==="
 echo "=== agent/app/service: go vet (WAF control) ==="
 ( cd "$AGENT" && go vet ./app/service/ )
 echo "=== agent/app/service: go test (WAF focused) ==="
-( cd "$AGENT" && go test ./app/service/ -v -run 'Waf|IPLines|PolicyMode|WebsiteOrigin|RootProxy|ApplyNginx|ApplyGatewayConfig|ComposeAsset' 2>&1 | grep -E '^(=== RUN|--- |ok|FAIL|PASS)' )
+( cd "$AGENT" && go test ./app/service/ -count=1 -v -run 'Waf|IPLines|PolicyMode|WebsiteOrigin|RootProxy|ApplyNginx|ApplyGatewayConfig|ComposeAsset|RateLimit|AttackLimit' 2>&1 | grep -E '^(--- |ok|FAIL|PASS)' )

@@ -802,6 +802,17 @@ export namespace Website {
         count: number;
     }
 
+    export type WafRateLimitKind = 'access' | 'url' | 'notfound' | 'attack';
+
+    export interface WafRateLimit {
+        kind: WafRateLimitKind;
+        periodSec: number;
+        threshold: number;
+        // 0 means the limit is recorded but does not ban.
+        banSec: number;
+        perUrl: boolean;
+    }
+
     export interface WafSiteStatus {
         websiteID: number;
         supported: boolean;
@@ -810,6 +821,10 @@ export namespace Website {
         effectiveMode: 'detection' | 'block';
         allowList: string[];
         denyList: string[];
+        // rateLimits are this site's own overrides; effectiveRateLimits are what
+        // the gateway actually enforces once the global defaults are merged in.
+        rateLimits: WafRateLimit[];
+        effectiveRateLimits: WafRateLimit[];
         installed: boolean;
         ready: boolean;
         routed: boolean;
@@ -822,12 +837,14 @@ export namespace Website {
         mode: 'detection' | 'block' | 'inherit';
         allowList: string[];
         denyList: string[];
+        rateLimits: WafRateLimit[];
     }
 
     export interface WafGlobalConfig {
         defaultMode: 'detection' | 'block';
         allowList: string[];
         denyList: string[];
+        rateLimits: WafRateLimit[];
     }
 
     export interface WafEventReq {

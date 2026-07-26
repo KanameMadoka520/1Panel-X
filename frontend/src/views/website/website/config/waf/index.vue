@@ -70,6 +70,19 @@
             </div>
         </div>
 
+        <div class="waf-acl">
+            <div class="waf-acl-head">
+                <strong>{{ $t('website.wafRateLimit') }}</strong>
+                <span>{{ $t('website.wafRateLimitTip') }}</span>
+            </div>
+            <RateLimits v-model="rateLimits" scope="site" :disabled="!status.supported" />
+            <div class="waf-acl-actions">
+                <el-button type="primary" size="small" :loading="saving" :disabled="!status.supported" @click="saveAcl">
+                    {{ $t('commons.button.save') }}
+                </el-button>
+            </div>
+        </div>
+
         <div class="waf-bar">
             <el-radio-group v-model="range" @change="search" size="small">
                 <el-radio-button label="24h">{{ $t('website.monitorRange24h') }}</el-radio-button>
@@ -152,6 +165,11 @@
                     />
                 </div>
             </div>
+            <div class="waf-global-rl">
+                <label>{{ $t('website.wafRateLimit') }}</label>
+                <span class="waf-acl-hint">{{ $t('website.wafGlobalRateLimitTip') }}</span>
+                <RateLimits v-model="globalForm.rateLimits" scope="global" />
+            </div>
             <template #footer>
                 <el-button @click="globalOpen = false">{{ $t('commons.button.cancel') }}</el-button>
                 <el-button type="primary" :loading="globalSaving" @click="saveGlobal">
@@ -168,6 +186,7 @@ import { useI18n } from 'vue-i18n';
 import { GetWafGlobal, GetWafStatus, LoadWafEvents, UpdateWafGlobal, UpdateWafSite } from '@/api/modules/website';
 import { Website } from '@/api/interface/website';
 import { MsgSuccess } from '@/utils/message';
+import RateLimits from './RateLimits.vue';
 
 const { t: $t } = useI18n();
 
@@ -190,6 +209,8 @@ const status = reactive<Website.WafSiteStatus>({
     effectiveMode: 'detection',
     allowList: [],
     denyList: [],
+    rateLimits: [],
+    effectiveRateLimits: [],
     installed: false,
     ready: false,
     routed: false,
@@ -200,13 +221,19 @@ const enabled = ref(false);
 const mode = ref<Website.WafSiteUpdate['mode']>('inherit');
 const allowText = ref('');
 const denyText = ref('');
+const rateLimits = ref<Website.WafRateLimit[]>([]);
 const aclPlaceholder = '203.0.113.10\n198.51.100.0/24\n2001:db8::/32';
 const loadingStatus = ref(false);
 const saving = ref(false);
 const globalOpen = ref(false);
 const globalSaving = ref(false);
 const globalLoading = ref(false);
-const globalForm = reactive<Website.WafGlobalConfig>({ defaultMode: 'detection', allowList: [], denyList: [] });
+const globalForm = reactive<Website.WafGlobalConfig>({
+    defaultMode: 'detection',
+    allowList: [],
+    denyList: [],
+    rateLimits: [],
+});
 const globalAllowText = ref('');
 const globalDenyText = ref('');
 const inheritModeLabel = computed(() => {
@@ -269,6 +296,7 @@ const syncFromStatus = (data: Website.WafSiteStatus) => {
     mode.value = data.mode;
     allowText.value = (data.allowList || []).join('\n');
     denyText.value = (data.denyList || []).join('\n');
+    rateLimits.value = data.rateLimits || [];
 };
 
 const loadStatus = async () => {
@@ -291,6 +319,7 @@ const updateConfig = async () => {
             mode: mode.value,
             allowList: linesToList(allowText.value),
             denyList: linesToList(denyText.value),
+            rateLimits: rateLimits.value,
         });
         syncFromStatus(res.data);
     } catch {
@@ -306,6 +335,7 @@ const syncGlobal = (data: Website.WafGlobalConfig) => {
     globalForm.defaultMode = data.defaultMode === 'block' ? 'block' : 'detection';
     globalForm.allowList = data.allowList || [];
     globalForm.denyList = data.denyList || [];
+    globalForm.rateLimits = data.rateLimits || [];
     globalAllowText.value = (data.allowList || []).join('\n');
     globalDenyText.value = (data.denyList || []).join('\n');
 };
@@ -328,6 +358,7 @@ const saveGlobal = async () => {
             defaultMode: globalForm.defaultMode,
             allowList: linesToList(globalAllowText.value),
             denyList: linesToList(globalDenyText.value),
+            rateLimits: globalForm.rateLimits,
         });
         syncGlobal(res.data);
         globalOpen.value = false;
@@ -429,6 +460,12 @@ onMounted(() => {
     margin-bottom: 12px;
 }
 .waf-global-mode label {
+    font-weight: 500;
+}
+.waf-global-rl {
+    margin-top: 14px;
+}
+.waf-global-rl label {
     font-weight: 500;
 }
 </style>

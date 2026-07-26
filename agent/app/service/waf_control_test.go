@@ -16,6 +16,7 @@ import (
 
 	"github.com/1Panel-dev/1Panel/agent/app/model"
 	wafasset "github.com/1Panel-dev/1Panel/agent/cmd/server/waf"
+	"github.com/1Panel-dev/1Panel/agent/utils/wafconfig"
 )
 
 func TestSwitchRootProxyAndRoutingDetection(t *testing.T) {
@@ -97,6 +98,74 @@ func TestEffectivePolicyModeResolution(t *testing.T) {
 		if got := effectivePolicyMode(c.site, c.global); got != c.want {
 			t.Fatalf("effectivePolicyMode(%q, %q) = %q, want %q", c.site, c.global, got, c.want)
 		}
+	}
+}
+
+func TestMergeRateLimitsOverridesByKind(t *testing.T) {
+	global := []wafconfig.RateLimit{
+		{Kind: wafconfig.RateLimitAccess, PeriodSec: 10, Threshold: 200, BanSec: 600},
+		{Kind: wafconfig.RateLimitNotFound, PeriodSec: 60, Threshold: 30, BanSec: 600},
+	}
+	site := []wafconfig.RateLimit{
+		{Kind: wafconfig.RateLimitAccess, PeriodSec: 5, Threshold: 50, BanSec: 60},
+	}
+	got := mergeRateLimits(global, site)
+	if len(got) != 2 {
+		t.Fatalf("a site override must replace, not add: %#v", got)
+	}
+	byKind := map[string]wafconfig.RateLimit{}
+	for _, l := range got {
+		byKind[l.Kind] = l
+	}
+	if byKind[wafconfig.RateLimitAccess].Threshold != 50 {
+		t.Fatalf("the site's access limit must win, got %+v", byKind[wafconfig.RateLimitAccess])
+	}
+	// A kind the site never mentions keeps the panel-wide value.
+	if byKind[wafconfig.RateLimitNotFound].Threshold != 30 {
+		t.Fatalf("an unmentioned global kind must survive, got %+v", byKind[wafconfig.RateLimitNotFound])
+	}
+}
+
+func TestSplitAttackLimitSeparatesGatewayWideEntry(t *testing.T) {
+	limits := []wafconfig.RateLimit{
+		{Kind: wafconfig.RateLimitAccess, PeriodSec: 10, Threshold: 200},
+		{Kind: wafconfig.RateLimitAttack, PeriodSec: 60, Threshold: 5, BanSec: 600},
+	}
+	perSite, attack := splitAttackLimit(limits)
+	if len(perSite) != 1 || perSite[0].Kind != wafconfig.RateLimitAccess {
+		t.Fatalf("the attack limit must not be emitted per site: %#v", perSite)
+	}
+	if attack == nil || attack.Threshold != 5 {
+		t.Fatalf("the attack limit must be extracted, got %+v", attack)
+	}
+	if _, none := splitAttackLimit(perSite); none != nil {
+		t.Fatal("no attack limit should be found once it is removed")
+	}
+}
+
+func TestRateLimitStorageRoundTrip(t *testing.T) {
+	limits := []wafconfig.RateLimit{{Kind: wafconfig.RateLimitAccess, PeriodSec: 10, Threshold: 200, BanSec: 600}}
+	raw, err := marshalRateLimits(limits)
+	if err != nil {
+		t.Fatal(err)
+	}
+	back, err := parseRateLimits(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(back) != 1 || back[0] != limits[0] {
+		t.Fatalf("round trip changed the policy: %#v", back)
+	}
+	if empty, err := marshalRateLimits(nil); err != nil || empty != "" {
+		t.Fatalf("an empty policy must store as empty text, got %q %v", empty, err)
+	}
+	if got, err := parseRateLimits("   "); err != nil || got != nil {
+		t.Fatalf("blank storage must read back as no limits, got %#v %v", got, err)
+	}
+	// A corrupted row must be reported, never silently read as "no limits" —
+	// that would show unprotected traffic as protected.
+	if _, err := parseRateLimits("{not json"); err == nil {
+		t.Fatal("an unreadable row must surface an error")
 	}
 }
 

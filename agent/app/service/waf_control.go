@@ -181,6 +181,7 @@ func (s *WafControlService) GetStatus(websiteID uint) (response.WafSiteStatus, e
 	}
 	// A site without a stored policy follows the panel-wide default.
 	status.Mode = wafModeInherit
+	var siteLimits []wafconfig.RateLimit
 	policy, err := wafRepo.GetPolicy(websiteID)
 	if err == nil {
 		status.Enabled = policy.Enabled
@@ -188,10 +189,24 @@ func (s *WafControlService) GetStatus(websiteID uint) (response.WafSiteStatus, e
 		status.AllowList = splitIPLines(policy.AllowIPs)
 		status.DenyList = splitIPLines(policy.DenyIPs)
 		status.LastError = policy.LastError
+		if siteLimits, err = parseRateLimits(policy.RateLimits); err != nil {
+			// Report the unreadable row instead of quietly showing no limits.
+			status.LastError = strings.TrimSpace(status.LastError + " " + err.Error())
+		}
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return status, err
 	}
 	status.EffectiveMode = effectivePolicyMode(status.Mode, globalPolicy.DefaultMode)
+
+	globalLimits, err := parseRateLimits(globalPolicy.RateLimits)
+	if err != nil {
+		status.LastError = strings.TrimSpace(status.LastError + " " + err.Error())
+	}
+	status.RateLimits = rateLimitsToResponse(siteLimits)
+	// The effective set is what the gateway actually enforces, so the UI can
+	// report the running policy rather than the site's overrides alone.
+	effective, _ := splitAttackLimit(mergeRateLimits(globalLimits, siteLimits))
+	status.EffectiveRateLimits = rateLimitsToResponse(effective)
 	status.Installed = files.NewFileOp().Stat(GetWafConfigPath())
 	generation := ""
 	if status.Installed {
@@ -245,6 +260,19 @@ func (s *WafControlService) update(websiteID uint, req request.WafSiteUpdate) (r
 	if err != nil {
 		return response.WafSiteStatus{}, fmt.Errorf("invalid WAF deny list: %w", err)
 	}
+	siteLimits, err := wafconfig.NormalizeRateLimits(rateLimitsFromRequest(req.RateLimits))
+	if err != nil {
+		return response.WafSiteStatus{}, fmt.Errorf("invalid WAF rate limits: %w", err)
+	}
+	// The attack limit is enforced gateway-wide; accepting it here would store a
+	// per-site threshold the data plane can never apply.
+	if _, attack := splitAttackLimit(siteLimits); attack != nil {
+		return response.WafSiteStatus{}, errors.New("the attack frequency limit is applied gateway-wide and can only be set in the global WAF settings")
+	}
+	siteLimitsJSON, err := marshalRateLimits(siteLimits)
+	if err != nil {
+		return response.WafSiteStatus{}, err
+	}
 
 	wafRepo := repo.NewIWafRepo()
 	oldPolicy, oldPolicyErr := wafRepo.GetPolicy(websiteID)
@@ -253,11 +281,12 @@ func (s *WafControlService) update(websiteID uint, req request.WafSiteUpdate) (r
 	oldProxy, proxyExisted := readOptional(proxyPath)
 
 	candidate := model.WafSitePolicy{
-		WebsiteID: websiteID,
-		Enabled:   req.Enabled,
-		Mode:      mode,
-		AllowIPs:  strings.Join(allowList, "\n"),
-		DenyIPs:   strings.Join(denyList, "\n"),
+		WebsiteID:  websiteID,
+		Enabled:    req.Enabled,
+		Mode:       mode,
+		AllowIPs:   strings.Join(allowList, "\n"),
+		DenyIPs:    strings.Join(denyList, "\n"),
+		RateLimits: siteLimitsJSON,
 	}
 	if err := wafRepo.SavePolicy(candidate); err != nil {
 		return response.WafSiteStatus{}, err
@@ -361,10 +390,15 @@ func (s *WafControlService) GetGlobal() (response.WafGlobalConfig, error) {
 	if err != nil {
 		return response.WafGlobalConfig{}, err
 	}
+	limits, err := parseRateLimits(policy.RateLimits)
+	if err != nil {
+		return response.WafGlobalConfig{}, err
+	}
 	return response.WafGlobalConfig{
 		DefaultMode: normalizedPolicyMode(policy.DefaultMode),
 		AllowList:   splitIPLines(policy.AllowIPs),
 		DenyList:    splitIPLines(policy.DenyIPs),
+		RateLimits:  rateLimitsToResponse(limits),
 	}, nil
 }
 
@@ -391,6 +425,14 @@ func (s *WafControlService) UpdateGlobal(req request.WafGlobalUpdate) (response.
 	if err != nil {
 		return response.WafGlobalConfig{}, fmt.Errorf("invalid WAF global deny list: %w", err)
 	}
+	globalLimits, err := wafconfig.NormalizeRateLimits(rateLimitsFromRequest(req.RateLimits))
+	if err != nil {
+		return response.WafGlobalConfig{}, fmt.Errorf("invalid WAF global rate limits: %w", err)
+	}
+	globalLimitsJSON, err := marshalRateLimits(globalLimits)
+	if err != nil {
+		return response.WafGlobalConfig{}, err
+	}
 
 	wafRepo := repo.NewIWafRepo()
 	oldGlobal, oldGlobalErr := wafRepo.GetGlobalPolicy()
@@ -403,6 +445,7 @@ func (s *WafControlService) UpdateGlobal(req request.WafGlobalUpdate) (response.
 		DefaultMode: string(mode),
 		AllowIPs:    strings.Join(allowList, "\n"),
 		DenyIPs:     strings.Join(denyList, "\n"),
+		RateLimits:  globalLimitsJSON,
 	}); err != nil {
 		return response.WafGlobalConfig{}, err
 	}
@@ -525,6 +568,13 @@ func (s *WafControlService) writeGatewayConfig() (string, error) {
 	}
 	globalAllow := splitIPLines(globalPolicy.AllowIPs)
 	globalDeny := splitIPLines(globalPolicy.DenyIPs)
+	globalLimits, err := parseRateLimits(globalPolicy.RateLimits)
+	if err != nil {
+		return "", err
+	}
+	// The attack limit is gateway-wide; it is emitted once at the top level, not
+	// copied into every site (the gateway refuses a per-site copy outright).
+	globalSiteLimits, attackLimit := splitAttackLimit(globalLimits)
 	policies, err := wafRepo.ListPolicies()
 	if err != nil {
 		return "", err
@@ -551,16 +601,22 @@ func (s *WafControlService) writeGatewayConfig() (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("website %q merged deny list: %w", website.Alias, err)
 		}
+		siteLimits, err := parseRateLimits(policy.RateLimits)
+		if err != nil {
+			return "", fmt.Errorf("website %q: %w", website.Alias, err)
+		}
+		mergedLimits, _ := splitAttackLimit(mergeRateLimits(globalSiteLimits, siteLimits))
 		inputs = append(inputs, wafconfig.Site{
-			Website:  website,
-			Domains:  website.Domains,
-			Enabled:  true,
-			Mode:     wafconfig.Mode(effectivePolicyMode(policy.Mode, globalPolicy.DefaultMode)),
-			AllowIPs: allowIPs,
-			DenyIPs:  denyIPs,
+			Website:    website,
+			Domains:    website.Domains,
+			Enabled:    true,
+			Mode:       wafconfig.Mode(effectivePolicyMode(policy.Mode, globalPolicy.DefaultMode)),
+			AllowIPs:   allowIPs,
+			DenyIPs:    denyIPs,
+			RateLimits: mergedLimits,
 		})
 	}
-	cfg, err := wafconfig.Build(inputs)
+	cfg, err := wafconfig.BuildWithOptions(inputs, wafconfig.BuildOptions{AttackRateLimit: attackLimit})
 	if err != nil {
 		return "", err
 	}
@@ -676,6 +732,110 @@ func normalizedWebsiteOrigin(website model.Website) string {
 		origin = "http://" + origin
 	}
 	return origin
+}
+
+// --- rate-limit storage helpers -------------------------------------------
+//
+// Limits are stored as a JSON array per policy row. They are validated by
+// wafconfig before being written, so a parse failure here means the row was
+// corrupted or hand-edited; it is surfaced rather than silently dropped, because
+// silently dropping a limit would leave the UI showing protection that is not
+// being enforced.
+
+func parseRateLimits(raw string) ([]wafconfig.RateLimit, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	var out []wafconfig.RateLimit
+	if err := json.Unmarshal([]byte(raw), &out); err != nil {
+		return nil, fmt.Errorf("stored WAF rate limits are unreadable: %w", err)
+	}
+	return out, nil
+}
+
+func marshalRateLimits(limits []wafconfig.RateLimit) (string, error) {
+	if len(limits) == 0 {
+		return "", nil
+	}
+	data, err := json.Marshal(limits)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+// mergeRateLimits overlays a site's limits on the panel-wide defaults: a site
+// entry REPLACES the global entry of the same kind, and global kinds the site
+// does not mention still apply. Replacing rather than combining matters — two
+// limits of one kind would share a counter and enforce whichever threshold was
+// checked first.
+func mergeRateLimits(global, site []wafconfig.RateLimit) []wafconfig.RateLimit {
+	byKind := make(map[string]wafconfig.RateLimit, len(global)+len(site))
+	order := make([]string, 0, len(global)+len(site))
+	remember := func(l wafconfig.RateLimit) {
+		if _, seen := byKind[l.Kind]; !seen {
+			order = append(order, l.Kind)
+		}
+		byKind[l.Kind] = l
+	}
+	for _, l := range global {
+		remember(l)
+	}
+	for _, l := range site {
+		remember(l)
+	}
+	out := make([]wafconfig.RateLimit, 0, len(order))
+	for _, kind := range order {
+		out = append(out, byKind[kind])
+	}
+	return out
+}
+
+// splitAttackLimit separates the gateway-wide attack limit from the per-site
+// ones. The gateway refuses a per-site attack limit outright, so this keeps an
+// operator's global attack setting from being emitted into every site.
+func splitAttackLimit(limits []wafconfig.RateLimit) (perSite []wafconfig.RateLimit, attack *wafconfig.RateLimit) {
+	for _, l := range limits {
+		if l.Kind == wafconfig.RateLimitAttack {
+			entry := l
+			attack = &entry
+			continue
+		}
+		perSite = append(perSite, l)
+	}
+	return perSite, attack
+}
+
+func rateLimitsFromRequest(in []request.WafRateLimit) []wafconfig.RateLimit {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]wafconfig.RateLimit, 0, len(in))
+	for _, l := range in {
+		out = append(out, wafconfig.RateLimit{
+			Kind:      strings.TrimSpace(l.Kind),
+			PeriodSec: l.PeriodSec,
+			Threshold: l.Threshold,
+			BanSec:    l.BanSec,
+			PerURL:    l.PerURL,
+		})
+	}
+	return out
+}
+
+func rateLimitsToResponse(in []wafconfig.RateLimit) []response.WafRateLimit {
+	out := make([]response.WafRateLimit, 0, len(in))
+	for _, l := range in {
+		out = append(out, response.WafRateLimit{
+			Kind:      l.Kind,
+			PeriodSec: l.PeriodSec,
+			Threshold: l.Threshold,
+			BanSec:    l.BanSec,
+			PerURL:    l.PerURL,
+		})
+	}
+	return out
 }
 
 // splitIPLines expands the newline-separated IP/CIDR text stored on a policy back

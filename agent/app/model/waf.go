@@ -47,9 +47,13 @@ type WafSitePolicy struct {
 	// AllowIPs and DenyIPs are newline-separated canonical IP/CIDR entries. Allow
 	// entries are trusted clients that bypass CRS inspection but are still
 	// proxied; deny entries are refused with a 403 regardless of Mode (deny wins).
-	AllowIPs  string `gorm:"type:text" json:"allowIPs"`
-	DenyIPs   string `gorm:"type:text" json:"denyIPs"`
-	LastError string `gorm:"size:2048" json:"lastError"`
+	AllowIPs string `gorm:"type:text" json:"allowIPs"`
+	DenyIPs  string `gorm:"type:text" json:"denyIPs"`
+	// RateLimits is a JSON array of this site's frequency limits. A site entry
+	// replaces the panel-wide entry of the same kind; kinds it does not mention
+	// keep the panel-wide value.
+	RateLimits string `gorm:"type:text" json:"rateLimits"`
+	LastError  string `gorm:"size:2048" json:"lastError"`
 }
 
 // WafGlobalPolicy is the panel-wide default WAF policy, kept as a single row.
@@ -61,4 +65,9 @@ type WafGlobalPolicy struct {
 	DefaultMode string `gorm:"size:16;not null;default:detection" json:"defaultMode"`
 	AllowIPs    string `gorm:"type:text" json:"allowIPs"`
 	DenyIPs     string `gorm:"type:text" json:"denyIPs"`
+	// RateLimits is a JSON array of the panel-wide frequency limits. The attack
+	// limit can ONLY live here: rule matches are observed through the shared
+	// engine's callback, which reports no Host, so a per-site attack threshold
+	// would be a number the data plane cannot honour.
+	RateLimits string `gorm:"type:text" json:"rateLimits"`
 }
