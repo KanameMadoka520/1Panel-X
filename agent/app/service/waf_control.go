@@ -267,6 +267,13 @@ func (s *WafControlService) GetStatus(websiteID uint) (response.WafSiteStatus, e
 	status.Region = regionPolicyToResponse(siteRegion)
 	status.EffectiveRegion = regionPolicyValue(wafconfig.MergeRegionPolicy(globalRegion, siteRegion))
 	status.GeoAvailable = wafGeoAvailable()
+
+	siteRealIP, err := parseRealIP(policy.RealIPRules)
+	if err != nil {
+		status.LastError = strings.TrimSpace(status.LastError + " " + err.Error())
+	}
+	status.RealIP = realIPValue(siteRealIP)
+	status.CDNHeaders = wafconfig.CDNRealIPHeaders
 	status.Installed = files.NewFileOp().Stat(GetWafConfigPath())
 	generation := ""
 	if status.Installed {
@@ -353,6 +360,14 @@ func (s *WafControlService) update(websiteID uint, req request.WafSiteUpdate) (r
 	if err != nil {
 		return response.WafSiteStatus{}, err
 	}
+	siteRealIP, err := normalizeRealIPRequest(req.RealIP)
+	if err != nil {
+		return response.WafSiteStatus{}, err
+	}
+	siteRealIPJSON, err := marshalOptional(siteRealIP, siteRealIP.IsZero())
+	if err != nil {
+		return response.WafSiteStatus{}, err
+	}
 
 	wafRepo := repo.NewIWafRepo()
 	oldPolicy, oldPolicyErr := wafRepo.GetPolicy(websiteID)
@@ -369,6 +384,7 @@ func (s *WafControlService) update(websiteID uint, req request.WafSiteUpdate) (r
 		RateLimits:  siteLimitsJSON,
 		RuleOptions: siteRulesJSON,
 		RegionRules: siteRegionJSON,
+		RealIPRules: siteRealIPJSON,
 	}
 	if err := wafRepo.SavePolicy(candidate); err != nil {
 		return response.WafSiteStatus{}, err
@@ -803,6 +819,10 @@ func (s *WafControlService) writeGatewayConfig() (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("website %q: %w", website.Alias, err)
 		}
+		siteRealIP, err := parseRealIP(policy.RealIPRules)
+		if err != nil {
+			return "", fmt.Errorf("website %q: %w", website.Alias, err)
+		}
 		mergedLimits, _ := splitAttackLimit(mergeRateLimits(globalSiteLimits, siteLimits))
 		inputs = append(inputs, wafconfig.Site{
 			Website:    website,
@@ -814,6 +834,7 @@ func (s *WafControlService) writeGatewayConfig() (string, error) {
 			RateLimits: mergedLimits,
 			Rules:      wafconfig.MergeRulePolicy(globalRules, siteRules),
 			Region:     wafconfig.MergeRegionPolicy(globalRegion, siteRegion),
+			RealIP:     siteRealIP,
 		})
 	}
 	cfg, err := wafconfig.BuildWithOptions(inputs, wafconfig.BuildOptions{
@@ -1110,6 +1131,38 @@ func normalizeRegionRequest(in *request.WafRegionPolicy) (*wafconfig.RegionPolic
 	}
 	if !normalized.IsZero() && !wafGeoAvailable() {
 		return nil, fmt.Errorf("region access control needs the IP address database at %s, which is not installed", GetWafGeoDBPath())
+	}
+	return &normalized, nil
+}
+
+// --- client-address recovery storage helpers --------------------------------
+
+func parseRealIP(raw string) (*wafconfig.RealIPConfig, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	var c wafconfig.RealIPConfig
+	if err := json.Unmarshal([]byte(raw), &c); err != nil {
+		return nil, fmt.Errorf("stored WAF real IP policy is unreadable: %w", err)
+	}
+	return &c, nil
+}
+
+func realIPValue(c *wafconfig.RealIPConfig) response.WafRealIP {
+	if c == nil {
+		return response.WafRealIP{}
+	}
+	return response.WafRealIP{Mode: c.Mode, Header: c.Header}
+}
+
+func normalizeRealIPRequest(in *request.WafRealIP) (*wafconfig.RealIPConfig, error) {
+	if in == nil {
+		return nil, nil
+	}
+	normalized, err := wafconfig.NormalizeRealIP(wafconfig.RealIPConfig{Mode: in.Mode, Header: in.Header})
+	if err != nil {
+		return nil, fmt.Errorf("invalid WAF real IP policy: %w", err)
 	}
 	return &normalized, nil
 }

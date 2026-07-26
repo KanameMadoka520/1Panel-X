@@ -59,6 +59,9 @@ type WafSitePolicy struct {
 	// RegionRules is this site's geographic access control as JSON. Empty means
 	// the site has stored none of its own and inherits the panel-wide default.
 	RegionRules string `gorm:"type:text" json:"regionRules"`
+	// RealIPRules is how this site recovers the client address from a CDN or
+	// front proxy, as JSON. Empty uses the front proxy's own header.
+	RealIPRules string `gorm:"type:text" json:"realIPRules"`
 	LastError   string `gorm:"size:2048" json:"lastError"`
 }
 

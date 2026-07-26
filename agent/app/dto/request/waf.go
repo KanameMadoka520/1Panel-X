@@ -41,6 +41,17 @@ type WafSiteUpdate struct {
 	Rules *WafRulePolicy `json:"rules"`
 	// Region follows the same whole-or-nothing rule as Rules.
 	Region *WafRegionPolicy `json:"region"`
+	// RealIP is how this site recovers the client address from a CDN.
+	RealIP *WafRealIP `json:"realIp"`
+}
+
+// WafRealIP is a client-address recovery policy. The X-Forwarded-For modes are
+// expressed as "how many proxy hops upstream", never as "the first value": that
+// header is appended to by each proxy, so its leftmost entry is whatever the
+// original caller wrote and can be chosen freely by an attacker.
+type WafRealIP struct {
+	Mode   string `json:"mode" validate:"omitempty,oneof=header header-list xff-1 xff-2 xff-3"`
+	Header string `json:"header" validate:"omitempty,max=64"`
 }
 
 // WafRegionPolicy is geographic access control. Regions are ISO 3166-1 alpha-2

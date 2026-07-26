@@ -3249,6 +3249,23 @@ const message = {
         wafRegionGranularity:
             '粒度为国家/地区。IP 库带的省份只有名称没有稳定编码，按名称匹配会在库措辞变动时悄悄失效，所以这里不提供省份级。',
         wafRegionNoDatabase: '未安装 IP 地址库，地区访问限制暂时无法生效。装好地址库后此项才可配置。',
+        wafRealIp: '真实IP获取方式',
+        wafRealIpScope: '仅作用于本网站',
+        wafRealIpTip:
+            '网关在反向代理后面，直接看到的是代理地址。IP 黑白名单、封禁、频率限制、地区限制全都以这里取到的地址为准。',
+        wafRealIpModeDefault: '使用前置代理设置的头（默认）',
+        wafRealIpModeHeader: '从 HTTP Header 中获取',
+        wafRealIpModeList: '从 Header 列表中获取',
+        wafRealIpModeXff1: '获取 X-Forwarded-For 的上一级代理地址',
+        wafRealIpModeXff2: '获取 X-Forwarded-For 的上上一级代理地址',
+        wafRealIpModeXff3: '获取 X-Forwarded-For 的上上上一级代理地址',
+        wafRealIpModeDefaultHint: '读取前置 nginx 写入的头。没有 CDN 时这是正确选择。',
+        wafRealIpModeHeaderHint: '读取指定的单个请求头。',
+        wafRealIpModeListHint: '按下列顺序依次尝试常见 CDN 携带真实 IP 的请求头，取第一个能取到的值。',
+        wafRealIpModeXffHint:
+            '按代理跳数从右往左数取值。X-Forwarded-For 是每经过一层代理往后追加，最左边那个是最初调用方自己写的、可以随便伪造，所以只按跳数取，绝不取第一个值。链条比设定跳数短时保留连接对端地址，不做回退。',
+        wafRealIpTrustWarning:
+            '这类模式读的是请求头，值由前面那一层写入。只有在确认该 CDN/代理是唯一入口、且它会覆盖这个头时才安全——否则访客可以自行指定地址，绕过 IP 名单、封禁、频率限制和地区限制。',
         wafBlockPage: '拦截页面',
         wafBlockPageTip:
             '被拦截的访客看到的页面。留空使用内置页面。所有拦截共用这一份，未知域名的拦截也一样，否则页面差异会变成探测已配置站点的手段。',

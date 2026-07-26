@@ -40,6 +40,7 @@ type Site struct {
 	RateLimits []RateLimit
 	Rules      *RulePolicy
 	Region     *RegionPolicy
+	RealIP     *RealIPConfig
 }
 
 // GatewayConfig mirrors the data-plane JSON contract without importing the
@@ -92,6 +93,8 @@ type GatewaySite struct {
 	Rules *RulePolicy `json:"rules,omitempty"`
 	// Region is omitted when no region control is configured.
 	Region *RegionPolicy `json:"region,omitempty"`
+	// RealIP is omitted when the site uses the front proxy's own header.
+	RealIP *RealIPConfig `json:"realIp,omitempty"`
 }
 
 // Build creates a deterministic routing table from the panel's authoritative
@@ -215,6 +218,17 @@ func BuildWithOptions(sites []Site, opts BuildOptions) (GatewayConfig, error) {
 			}
 		}
 
+		var realIP *RealIPConfig
+		if input.RealIP != nil {
+			normalized, err := NormalizeRealIP(*input.RealIP)
+			if err != nil {
+				return GatewayConfig{}, fmt.Errorf("waf config: website %q real IP: %w", alias, err)
+			}
+			if !normalized.IsZero() {
+				realIP = &normalized
+			}
+		}
+
 		for _, domain := range input.Domains {
 			host, err := normalizeHost(domain.Domain)
 			if err != nil {
@@ -235,6 +249,7 @@ func BuildWithOptions(sites []Site, opts BuildOptions) (GatewayConfig, error) {
 				RateLimits: rateLimits,
 				Rules:      rules,
 				Region:     region,
+				RealIP:     realIP,
 			})
 		}
 	}

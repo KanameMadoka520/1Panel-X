@@ -3506,6 +3506,24 @@ const message = {
             'Granularity is the country. The address database carries a province name but no stable province code, and matching on a display name would break silently the first time that wording changed — so province level is not offered.',
         wafRegionNoDatabase:
             'The IP address database is not installed, so region access control cannot take effect yet. Install it to configure this.',
+        wafRealIp: 'Client address source',
+        wafRealIpScope: 'Applies to this site only',
+        wafRealIpTip:
+            'The gateway sits behind a reverse proxy and would otherwise see only the proxy address. IP lists, bans, frequency limits and region control all key off the address recovered here.',
+        wafRealIpModeDefault: 'Use the header the front proxy sets (default)',
+        wafRealIpModeHeader: 'Read one HTTP header',
+        wafRealIpModeList: 'Try the known CDN headers',
+        wafRealIpModeXff1: 'X-Forwarded-For, one proxy hop upstream',
+        wafRealIpModeXff2: 'X-Forwarded-For, two proxy hops upstream',
+        wafRealIpModeXff3: 'X-Forwarded-For, three proxy hops upstream',
+        wafRealIpModeDefaultHint:
+            'Reads the header the front nginx writes. With no CDN in front, this is the right choice.',
+        wafRealIpModeHeaderHint: 'Reads the one header you name.',
+        wafRealIpModeListHint: 'Tries the headers below in order and takes the first that yields an address.',
+        wafRealIpModeXffHint:
+            'Counted from the RIGHT by proxy hop. X-Forwarded-For is appended to by each proxy, so its leftmost entry is whatever the original caller wrote and can be forged freely — only hop counts are used, never "the first value". If the chain is shorter than the configured depth the connection peer address is kept, with no fallback.',
+        wafRealIpTrustWarning:
+            'These modes read a header written by whatever sits in front. They are only safe when that CDN or proxy is the sole ingress AND overwrites the header — otherwise a visitor can name their own address and walk past the IP lists, bans, frequency limits and region control.',
         wafBlockPage: 'Block page',
         wafBlockPageTip:
             'What a refused visitor sees. Leave empty for the built-in page. Every refusal shares this one page, including an unknown host — otherwise the difference becomes a way to enumerate configured sites.',

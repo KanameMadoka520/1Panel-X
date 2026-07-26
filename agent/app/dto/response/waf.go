@@ -32,12 +32,17 @@ type WafSiteStatus struct {
 	// GeoAvailable reports whether the IP address database region control needs
 	// is actually installed. It is surfaced so the UI can say the control is
 	// unavailable instead of offering a switch that cannot take effect.
-	GeoAvailable bool   `json:"geoAvailable"`
-	Installed    bool   `json:"installed"`
-	Ready        bool   `json:"ready"`
-	Routed       bool   `json:"routed"`
-	Protected    bool   `json:"protected"`
-	LastError    string `json:"lastError"`
+	GeoAvailable bool `json:"geoAvailable"`
+	// RealIP is how this site recovers the client address from a CDN;
+	// CDNHeaders is the list the header-list mode actually reads, returned so the
+	// panel shows exactly that rather than prose that could drift from the code.
+	RealIP     WafRealIP `json:"realIp"`
+	CDNHeaders []string  `json:"cdnHeaders"`
+	Installed  bool      `json:"installed"`
+	Ready      bool      `json:"ready"`
+	Routed     bool      `json:"routed"`
+	Protected  bool      `json:"protected"`
+	LastError  string    `json:"lastError"`
 }
 
 // WafRateLimit mirrors one stored frequency limit.
@@ -128,6 +133,12 @@ type WafRulePolicy struct {
 	Strict           bool     `json:"strict"`
 	AllowedMethods   []string `json:"allowedMethods"`
 	BannedUploadExts []string `json:"bannedUploadExts"`
+}
+
+// WafRealIP mirrors a stored client-address recovery policy.
+type WafRealIP struct {
+	Mode   string `json:"mode"`
+	Header string `json:"header"`
 }
 
 // WafRegionPolicy mirrors a stored geographic access policy.

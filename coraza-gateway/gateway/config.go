@@ -32,6 +32,9 @@ type SiteConfig struct {
 	Rules *RulePolicy `json:"rules,omitempty"`
 	// Region is this site's geographic access control. Absent means none.
 	Region *RegionPolicy `json:"region,omitempty"`
+	// RealIP is how this site recovers the client address from the front proxy
+	// or CDN. Absent falls back to the process-wide trusted header.
+	RealIP *RealIPConfig `json:"realIp,omitempty"`
 }
 
 // RulePolicy is the per-site detection policy.
@@ -317,6 +320,9 @@ func ParseConfig(data []byte) (Config, error) {
 		// step can never disagree about what was configured.
 		if err := c.Sites[i].Region.validate(); err != nil {
 			return Config{}, fmt.Errorf("waf config: site %q region policy: %w", host, err)
+		}
+		if err := c.Sites[i].RealIP.validate(); err != nil {
+			return Config{}, fmt.Errorf("waf config: site %q real-ip policy: %w", host, err)
 		}
 	}
 	return c, nil

@@ -15,12 +15,10 @@ type Handler struct {
 	engine   *Engine
 	upstream http.Handler
 	mode     Mode
-	// realIPHeader, when set, names a trusted header (e.g. "X-Real-IP") from
-	// which to recover the true client IP before evaluation, since the gateway
-	// sits behind nginx on loopback and would otherwise see only the proxy
-	// address. Only safe because the sole supported topology is behind that
-	// trusted proxy (W8/W12); empty disables it.
-	realIPHeader string
+	// realIP recovers the true client address before evaluation, since the
+	// gateway sits behind nginx on loopback and would otherwise see only the
+	// proxy address. nil leaves the transport peer address in place.
+	realIP *realIPResolver
 	// acl is the per-site explicit operator IP allow/deny list, evaluated before
 	// the CRS engine. nil means no ACL configured.
 	acl *ipACL
@@ -110,7 +108,13 @@ func (h *Handler) WithEnforcer(e *Enforcer, limits []RateLimitConfig) *Handler {
 // WithRealIPHeader configures the trusted real-client-IP header and returns the
 // handler for chaining.
 func (h *Handler) WithRealIPHeader(header string) *Handler {
-	h.realIPHeader = header
+	h.realIP = newRealIPResolver(nil, header)
+	return h
+}
+
+// WithRealIP attaches an explicit client-address recovery policy.
+func (h *Handler) WithRealIP(r *realIPResolver) *Handler {
+	h.realIP = r
 	return h
 }
 
@@ -123,19 +127,15 @@ func (h *Handler) WithIPACL(acl *ipACL) *Handler {
 	return h
 }
 
-// applyRealIP rewrites RemoteAddr from the trusted header so Coraza evaluates and
-// logs the true client IP, not the nginx loopback address. The leftmost value of
-// a comma list is taken (the original client for X-Forwarded-For).
+// applyRealIP rewrites RemoteAddr from the configured source so the engine
+// evaluates and logs the true client address, not the nginx loopback address.
+//
+// A source that yields nothing leaves RemoteAddr alone. That is deliberate: the
+// transport peer address is the one value no client can choose, so it is the
+// only safe thing to fall back to.
 func (h *Handler) applyRealIP(r *http.Request) {
-	if h.realIPHeader == "" {
-		return
-	}
-	v := r.Header.Get(h.realIPHeader)
-	if v == "" {
-		return
-	}
-	ip := strings.TrimSpace(strings.Split(v, ",")[0])
-	if net.ParseIP(ip) == nil {
+	ip := h.realIP.resolve(r)
+	if ip == "" {
 		return
 	}
 	r.RemoteAddr = net.JoinHostPort(ip, "0")

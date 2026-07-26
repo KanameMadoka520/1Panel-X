@@ -109,6 +109,19 @@
 
         <div class="waf-acl">
             <div class="waf-acl-head">
+                <strong>CDN</strong>
+                <span>{{ $t('website.wafRealIpScope') }}</span>
+            </div>
+            <CdnRealIP v-model="siteRealIP" :cdn-headers="status.cdnHeaders" :disabled="!status.supported" />
+            <div class="waf-acl-actions">
+                <el-button type="primary" size="small" :loading="saving" :disabled="!status.supported" @click="saveAcl">
+                    {{ $t('commons.button.save') }}
+                </el-button>
+            </div>
+        </div>
+
+        <div class="waf-acl">
+            <div class="waf-acl-head">
                 <strong>{{ $t('website.wafBans') }}</strong>
                 <span>{{ $t('website.wafBansScope') }}</span>
             </div>
@@ -267,6 +280,7 @@ import DefaultRules from './DefaultRules.vue';
 import CustomRules from './CustomRules.vue';
 import RegionAccess from './RegionAccess.vue';
 import WafSettings from './WafSettings.vue';
+import CdnRealIP from './CdnRealIP.vue';
 
 const { t: $t } = useI18n();
 
@@ -302,6 +316,8 @@ const status = reactive<Website.WafSiteStatus>({
     region: null,
     effectiveRegion: { mode: 'deny', regions: [] },
     geoAvailable: false,
+    realIp: { mode: '', header: '' },
+    cdnHeaders: [],
     installed: false,
     ready: false,
     routed: false,
@@ -315,6 +331,7 @@ const denyText = ref('');
 const rateLimits = ref<Website.WafRateLimit[]>([]);
 const siteRules = ref<Website.WafRulePolicy | null>(null);
 const siteRegion = ref<Website.WafRegionPolicy | null>(null);
+const siteRealIP = ref<Website.WafRealIP | null>(null);
 const globalRules = ref<Website.WafRulePolicy>({
     disableSqli: false,
     disableXss: false,
@@ -409,6 +426,7 @@ const syncFromStatus = (data: Website.WafSiteStatus) => {
     rateLimits.value = data.rateLimits || [];
     siteRules.value = data.rules ?? null;
     siteRegion.value = data.region ?? null;
+    siteRealIP.value = data.realIp ?? null;
 };
 
 const loadStatus = async () => {
@@ -434,6 +452,7 @@ const updateConfig = async () => {
             rateLimits: rateLimits.value,
             rules: siteRules.value,
             region: siteRegion.value,
+            realIp: siteRealIP.value,
         });
         syncFromStatus(res.data);
     } catch {

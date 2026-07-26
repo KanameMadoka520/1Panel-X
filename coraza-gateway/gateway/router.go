@@ -116,7 +116,7 @@ func NewRouterWithGeo(cfg Config, engine *Engine, mode Mode, realIPHeader string
 			return nil, fmt.Errorf("router: %w", err)
 		}
 		h := NewHandler(policyEngine, NewReverseProxy(origin), modeForSite).
-			WithRealIPHeader(realIPHeader).
+			WithRealIP(newRealIPResolver(s.RealIP, realIPHeader)).
 			WithIPACL(acl).
 			WithLists(lists).
 			WithCustomRules(custom).

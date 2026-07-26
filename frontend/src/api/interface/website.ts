@@ -836,6 +836,11 @@ export namespace Website {
         // needs is not installed, so the UI can say the control is unavailable
         // rather than offer a switch that cannot take effect.
         geoAvailable: boolean;
+        // realIp is how this site recovers the client address from a CDN;
+        // cdnHeaders is the list the header-list mode actually reads, returned
+        // by the server so the UI shows exactly that.
+        realIp: WafRealIP;
+        cdnHeaders: string[];
         installed: boolean;
         ready: boolean;
         routed: boolean;
@@ -853,6 +858,15 @@ export namespace Website {
         // wholesale; null keeps the site following the panel default.
         rules: WafRulePolicy | null;
         region: WafRegionPolicy | null;
+        realIp: WafRealIP | null;
+    }
+
+    // The X-Forwarded-For modes are expressed as "how many proxy hops upstream",
+    // never as "the first value": that header is appended to by each proxy, so
+    // its leftmost entry is whatever the original caller wrote.
+    export interface WafRealIP {
+        mode: string;
+        header: string;
     }
 
     export interface WafRulePolicy {
