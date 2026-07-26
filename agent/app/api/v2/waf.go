@@ -64,3 +64,25 @@ func (b *BaseApi) UpdateWafSite(c *gin.Context) {
 	}
 	helper.SuccessWithData(c, res)
 }
+
+func (b *BaseApi) GetWafGlobal(c *gin.Context) {
+	res, err := wafControlService.GetGlobal()
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, res)
+}
+
+func (b *BaseApi) UpdateWafGlobal(c *gin.Context) {
+	var req request.WafGlobalUpdate
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	res, err := wafControlService.UpdateGlobal(req)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, res)
+}

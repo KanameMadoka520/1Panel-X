@@ -27,14 +27,20 @@ gofmt -l \
   "$AGENT/app/dto/request/waf.go" \
   "$AGENT/app/dto/response/waf.go" \
   "$AGENT/app/service/waf_control.go" \
-  "$AGENT/app/service/waf_control_test.go" || true
+  "$AGENT/app/service/waf_control_test.go" \
+  "$AGENT/app/api/v2/waf.go" \
+  "$AGENT/router/ro_website.go" \
+  "$AGENT/init/hook/hook.go" || true
 
 echo "=== agent/utils/wafconfig: go vet ==="
 ( cd "$AGENT" && go vet ./utils/wafconfig/... )
 echo "=== agent/utils/wafconfig: go test ==="
 ( cd "$AGENT" && go test ./utils/wafconfig/... )
 
+echo "=== agent: go vet (api/router/hook) ==="
+( cd "$AGENT" && go vet ./app/api/v2/ ./router/ ./init/hook/ )
+
 echo "=== agent/app/service: go vet (WAF control) ==="
 ( cd "$AGENT" && go vet ./app/service/ )
 echo "=== agent/app/service: go test (WAF focused) ==="
-( cd "$AGENT" && go test ./app/service/ -run 'Waf|SplitIPLines|NormalizedPolicyMode|NormalizedWebsiteOrigin|SwitchRootProxy|ApplyNginx' )
+( cd "$AGENT" && go test ./app/service/ -run 'Waf|SplitIPLines|NormalizedPolicyMode|EffectivePolicyMode|NormalizedWebsiteOrigin|SwitchRootProxy|ApplyNginx' )

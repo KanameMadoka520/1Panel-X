@@ -421,3 +421,11 @@ export const UpdateWafSite = (id: number, req: Website.WafSiteUpdate) => {
 export const LoadWafEvents = (id: number, req: Website.WafEventReq) => {
     return http.post<ResPage<Website.WafEvent>>(`/websites/${id}/waf/events`, req);
 };
+
+export const GetWafGlobal = () => {
+    return http.get<Website.WafGlobalConfig>(`/websites/waf/global`);
+};
+
+export const UpdateWafGlobal = (req: Website.WafGlobalConfig) => {
+    return http.post<Website.WafGlobalConfig>(`/websites/waf/global`, req);
+};

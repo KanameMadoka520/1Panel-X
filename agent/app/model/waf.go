@@ -37,13 +37,28 @@ type WafAuditCursor struct {
 // inferred from Enabled alone.
 type WafSitePolicy struct {
 	BaseModel
-	WebsiteID uint   `gorm:"uniqueIndex" json:"websiteID"`
-	Enabled   bool   `json:"enabled"`
-	Mode      string `gorm:"size:16;not null;default:detection" json:"mode"`
+	WebsiteID uint `gorm:"uniqueIndex" json:"websiteID"`
+	Enabled   bool `json:"enabled"`
+	// Mode is "detection", "block", or "inherit" (follow WafGlobalPolicy).
+	// "inherit" is stored as an explicit sentinel rather than an empty string:
+	// gorm omits zero-valued fields carrying a default tag on insert, so "" would
+	// silently become the column default and lose the operator's intent.
+	Mode string `gorm:"size:16;not null;default:detection" json:"mode"`
 	// AllowIPs and DenyIPs are newline-separated canonical IP/CIDR entries. Allow
 	// entries are trusted clients that bypass CRS inspection but are still
 	// proxied; deny entries are refused with a 403 regardless of Mode (deny wins).
 	AllowIPs  string `gorm:"type:text" json:"allowIPs"`
 	DenyIPs   string `gorm:"type:text" json:"denyIPs"`
 	LastError string `gorm:"size:2048" json:"lastError"`
+}
+
+// WafGlobalPolicy is the panel-wide default WAF policy, kept as a single row.
+// DefaultMode applies to sites whose policy mode is "inherit"; AllowIPs/DenyIPs
+// are merged into every enabled site's lists at config generation (deny still
+// wins over allow at the gateway).
+type WafGlobalPolicy struct {
+	BaseModel
+	DefaultMode string `gorm:"size:16;not null;default:detection" json:"defaultMode"`
+	AllowIPs    string `gorm:"type:text" json:"allowIPs"`
+	DenyIPs     string `gorm:"type:text" json:"denyIPs"`
 }

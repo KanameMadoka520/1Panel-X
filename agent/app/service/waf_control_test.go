@@ -74,6 +74,24 @@ func TestNormalizedPolicyModeDefaultsToDetection(t *testing.T) {
 	}
 }
 
+func TestEffectivePolicyModeResolution(t *testing.T) {
+	cases := []struct {
+		site, global, want string
+	}{
+		{"block", "detection", "block"},         // explicit site mode wins
+		{"detection", "block", "detection"},     // explicit site mode wins both ways
+		{wafModeInherit, "block", "block"},      // inherit follows the global default
+		{wafModeInherit, "", "detection"},       // blank global degrades to detection
+		{"", "block", "block"},                  // legacy blank site mode behaves as inherit
+		{" inherit ", "detection", "detection"}, // whitespace-tolerant
+	}
+	for _, c := range cases {
+		if got := effectivePolicyMode(c.site, c.global); got != c.want {
+			t.Fatalf("effectivePolicyMode(%q, %q) = %q, want %q", c.site, c.global, got, c.want)
+		}
+	}
+}
+
 type fakeWafRuntime struct {
 	checkErr       error
 	reloadErr      error

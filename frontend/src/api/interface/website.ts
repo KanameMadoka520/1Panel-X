@@ -806,7 +806,8 @@ export namespace Website {
         websiteID: number;
         supported: boolean;
         enabled: boolean;
-        mode: 'detection' | 'block';
+        mode: 'detection' | 'block' | 'inherit';
+        effectiveMode: 'detection' | 'block';
         allowList: string[];
         denyList: string[];
         installed: boolean;
@@ -818,7 +819,13 @@ export namespace Website {
 
     export interface WafSiteUpdate {
         enabled: boolean;
-        mode: 'detection' | 'block';
+        mode: 'detection' | 'block' | 'inherit';
+        allowList: string[];
+        denyList: string[];
+    }
+
+    export interface WafGlobalConfig {
+        defaultMode: 'detection' | 'block';
         allowList: string[];
         denyList: string[];
     }

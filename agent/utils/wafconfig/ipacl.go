@@ -42,6 +42,17 @@ func NormalizeIPList(entries []string) ([]string, error) {
 	return out, nil
 }
 
+// MergeIPLists returns the canonical union of the panel-wide list and one
+// site's list. Both sides were validated independently when saved, but the
+// union is re-normalized (and re-capped) so the merged result honors the same
+// MaxIPListEntries bound as a single list.
+func MergeIPLists(global, site []string) ([]string, error) {
+	merged := make([]string, 0, len(global)+len(site))
+	merged = append(merged, global...)
+	merged = append(merged, site...)
+	return NormalizeIPList(merged)
+}
+
 func canonicalizeIPEntry(entry string) (string, error) {
 	if strings.Contains(entry, "/") {
 		_, n, err := net.ParseCIDR(entry)

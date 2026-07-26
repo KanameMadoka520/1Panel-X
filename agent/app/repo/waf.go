@@ -24,6 +24,9 @@ type IWafRepo interface {
 	SavePolicy(policy model.WafSitePolicy) error
 	DeletePolicy(websiteID uint) error
 
+	GetGlobalPolicy() (model.WafGlobalPolicy, error)
+	SaveGlobalPolicy(policy model.WafGlobalPolicy) error
+
 	PruneBefore(t time.Time) error
 }
 
@@ -98,6 +101,22 @@ func (r *WafRepo) SavePolicy(policy model.WafSitePolicy) error {
 
 func (r *WafRepo) DeletePolicy(websiteID uint) error {
 	return global.WafDB.Where("website_id = ?", websiteID).Delete(&model.WafSitePolicy{}).Error
+}
+
+func (r *WafRepo) GetGlobalPolicy() (model.WafGlobalPolicy, error) {
+	var policy model.WafGlobalPolicy
+	err := global.WafDB.First(&policy).Error
+	return policy, err
+}
+
+// SaveGlobalPolicy upserts the single panel-wide row (fixed primary key 1) so
+// concurrent saves can never fork the global policy into multiple rows.
+func (r *WafRepo) SaveGlobalPolicy(policy model.WafGlobalPolicy) error {
+	policy.ID = 1
+	return global.WafDB.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "id"}},
+		DoUpdates: clause.AssignmentColumns([]string{"default_mode", "allow_ips", "deny_ips", "updated_at"}),
+	}).Create(&policy).Error
 }
 
 func (r *WafRepo) PruneBefore(t time.Time) error {

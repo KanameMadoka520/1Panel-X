@@ -1,6 +1,7 @@
 package wafconfig
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 
@@ -32,6 +33,47 @@ func TestNormalizeIPListEmptyIsEmpty(t *testing.T) {
 	got, err := NormalizeIPList([]string{"", "   "})
 	if err != nil || len(got) != 0 {
 		t.Fatalf("blank-only list should normalize to empty: got=%#v err=%v", got, err)
+	}
+}
+
+func TestMergeIPListsUnionsAndCanonicalizes(t *testing.T) {
+	got, err := MergeIPLists([]string{"10.0.0.5/8", "1.2.3.4"}, []string{"1.2.3.4", "2001:DB8::1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"1.2.3.4", "10.0.0.0/8", "2001:db8::1"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %#v want %#v", got, want)
+	}
+	empty, err := MergeIPLists(nil, nil)
+	if err != nil || len(empty) != 0 {
+		t.Fatalf("empty merge should stay empty: got=%#v err=%v", empty, err)
+	}
+}
+
+func TestMergeIPListsRejectsInvalidEitherSide(t *testing.T) {
+	if _, err := MergeIPLists([]string{"bogus"}, nil); err == nil {
+		t.Fatal("invalid global entry must be rejected")
+	}
+	if _, err := MergeIPLists(nil, []string{"1.2.3.4/40"}); err == nil {
+		t.Fatal("invalid site entry must be rejected")
+	}
+}
+
+func TestMergeIPListsEnforcesCombinedCap(t *testing.T) {
+	mk := func(base int, n int) []string {
+		out := make([]string, 0, n)
+		for i := 0; i < n; i++ {
+			out = append(out, fmt.Sprintf("10.%d.%d.%d", base, i/250, i%250))
+		}
+		return out
+	}
+	global, site := mk(1, 300), mk(2, 300)
+	if _, err := MergeIPLists(global, site); err == nil {
+		t.Fatalf("union of %d entries must exceed the %d cap", len(global)+len(site), MaxIPListEntries)
+	}
+	if _, err := MergeIPLists(global, nil); err != nil {
+		t.Fatalf("each side alone is within the cap: %v", err)
 	}
 }
 

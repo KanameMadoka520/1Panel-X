@@ -19,12 +19,16 @@
                 class="waf-mode"
                 @change="updateConfig"
             >
+                <el-option value="inherit" :label="inheritModeLabel" />
                 <el-option value="detection" :label="$t('website.wafDetectionMode')" />
                 <el-option value="block" :label="$t('website.wafBlockMode')" />
             </el-select>
             <el-tag v-if="status.protected" type="success">{{ $t('website.wafProtected') }}</el-tag>
             <el-tag v-else-if="enabled" type="warning">{{ $t('website.wafPending') }}</el-tag>
             <el-tag v-else type="info">{{ $t('website.wafDisabled') }}</el-tag>
+            <el-button size="small" :disabled="globalLoading" @click="globalOpen = true">
+                {{ $t('website.wafGlobalSettings') }}
+            </el-button>
         </div>
         <el-alert v-if="status.lastError" :title="status.lastError" type="error" :closable="false" class="waf-error" />
 
@@ -114,14 +118,56 @@
                 </template>
             </el-table-column>
         </ComplexTable>
+
+        <el-dialog v-model="globalOpen" :title="$t('website.wafGlobalSettings')" width="680px">
+            <el-alert :title="$t('website.wafGlobalTip')" type="info" :closable="false" class="waf-tip" />
+            <div class="waf-global-mode">
+                <label>{{ $t('website.wafGlobalDefaultMode') }}</label>
+                <el-select v-model="globalForm.defaultMode" size="small" class="waf-mode">
+                    <el-option value="detection" :label="$t('website.wafDetectionMode')" />
+                    <el-option value="block" :label="$t('website.wafBlockMode')" />
+                </el-select>
+            </div>
+            <div class="waf-acl-lists">
+                <div class="waf-acl-col">
+                    <label>{{ $t('website.wafDenyList') }}</label>
+                    <span class="waf-acl-hint">{{ $t('website.wafDenyListTip') }}</span>
+                    <el-input
+                        v-model="globalDenyText"
+                        type="textarea"
+                        :rows="6"
+                        :placeholder="aclPlaceholder"
+                        resize="vertical"
+                    />
+                </div>
+                <div class="waf-acl-col">
+                    <label>{{ $t('website.wafAllowList') }}</label>
+                    <span class="waf-acl-hint">{{ $t('website.wafAllowListTip') }}</span>
+                    <el-input
+                        v-model="globalAllowText"
+                        type="textarea"
+                        :rows="6"
+                        :placeholder="aclPlaceholder"
+                        resize="vertical"
+                    />
+                </div>
+            </div>
+            <template #footer>
+                <el-button @click="globalOpen = false">{{ $t('commons.button.cancel') }}</el-button>
+                <el-button type="primary" :loading="globalSaving" @click="saveGlobal">
+                    {{ $t('commons.button.save') }}
+                </el-button>
+            </template>
+        </el-dialog>
     </div>
 </template>
 
 <script lang="ts" setup>
 import { onMounted, reactive, ref, computed } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { GetWafStatus, LoadWafEvents, UpdateWafSite } from '@/api/modules/website';
+import { GetWafGlobal, GetWafStatus, LoadWafEvents, UpdateWafGlobal, UpdateWafSite } from '@/api/modules/website';
 import { Website } from '@/api/interface/website';
+import { MsgSuccess } from '@/utils/message';
 
 const { t: $t } = useI18n();
 
@@ -140,7 +186,8 @@ const status = reactive<Website.WafSiteStatus>({
     websiteID: props.id,
     supported: false,
     enabled: false,
-    mode: 'detection',
+    mode: 'inherit',
+    effectiveMode: 'detection',
     allowList: [],
     denyList: [],
     installed: false,
@@ -150,12 +197,22 @@ const status = reactive<Website.WafSiteStatus>({
     lastError: '',
 });
 const enabled = ref(false);
-const mode = ref<Website.WafSiteUpdate['mode']>('detection');
+const mode = ref<Website.WafSiteUpdate['mode']>('inherit');
 const allowText = ref('');
 const denyText = ref('');
 const aclPlaceholder = '203.0.113.10\n198.51.100.0/24\n2001:db8::/32';
 const loadingStatus = ref(false);
 const saving = ref(false);
+const globalOpen = ref(false);
+const globalSaving = ref(false);
+const globalLoading = ref(false);
+const globalForm = reactive<Website.WafGlobalConfig>({ defaultMode: 'detection', allowList: [], denyList: [] });
+const globalAllowText = ref('');
+const globalDenyText = ref('');
+const inheritModeLabel = computed(() => {
+    const label = globalForm.defaultMode === 'block' ? $t('website.wafBlockMode') : $t('website.wafDetectionMode');
+    return $t('website.wafModeInheritWith', [label]);
+});
 const protectionDescription = computed(() => {
     if (!status.supported) return $t('website.wafProtectionDescriptionUnsupported');
     if (status.protected) return $t('website.wafProtectionDescriptionProtected');
@@ -245,9 +302,47 @@ const updateConfig = async () => {
 
 const saveAcl = () => updateConfig();
 
+const syncGlobal = (data: Website.WafGlobalConfig) => {
+    globalForm.defaultMode = data.defaultMode === 'block' ? 'block' : 'detection';
+    globalForm.allowList = data.allowList || [];
+    globalForm.denyList = data.denyList || [];
+    globalAllowText.value = (data.allowList || []).join('\n');
+    globalDenyText.value = (data.denyList || []).join('\n');
+};
+
+const loadGlobal = async () => {
+    globalLoading.value = true;
+    try {
+        const res = await GetWafGlobal();
+        syncGlobal(res.data);
+    } finally {
+        globalLoading.value = false;
+    }
+};
+
+const saveGlobal = async () => {
+    if (globalSaving.value) return;
+    globalSaving.value = true;
+    try {
+        const res = await UpdateWafGlobal({
+            defaultMode: globalForm.defaultMode,
+            allowList: linesToList(globalAllowText.value),
+            denyList: linesToList(globalDenyText.value),
+        });
+        syncGlobal(res.data);
+        globalOpen.value = false;
+        MsgSuccess($t('commons.msg.operationSuccess'));
+        // The effective mode of inherit sites may have changed.
+        await loadStatus();
+    } finally {
+        globalSaving.value = false;
+    }
+};
+
 onMounted(() => {
     loadStatus();
     search();
+    loadGlobal();
 });
 </script>
 
@@ -326,5 +421,14 @@ onMounted(() => {
 }
 .waf-acl-actions {
     margin-top: 10px;
+}
+.waf-global-mode {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    margin-bottom: 12px;
+}
+.waf-global-mode label {
+    font-weight: 500;
 }
 </style>

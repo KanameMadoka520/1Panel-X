@@ -96,6 +96,8 @@ func (a *WebsiteRouter) InitRouter(Router *gin.RouterGroup) {
 		websiteRouter.POST("/:id/waf/events", baseApi.LoadWafEvents)
 		websiteRouter.GET("/:id/waf/status", baseApi.GetWafStatus)
 		websiteRouter.POST("/:id/waf/config", baseApi.UpdateWafSite)
+		websiteRouter.GET("/waf/global", baseApi.GetWafGlobal)
+		websiteRouter.POST("/waf/global", baseApi.UpdateWafGlobal)
 
 		websiteRouter.GET("/resource/:id", baseApi.GetWebsiteResource)
 		websiteRouter.GET("/databases", baseApi.GetWebsiteDatabase)

@@ -3174,6 +3174,11 @@ const message = {
         wafProtectionDescriptionUnsupported: '当前仅支持反向代理网站。',
         wafProtectionDescriptionProtected: '网关已就绪，OpenResty 正在通过 WAF 转发。',
         wafProtectionDescriptionEnable: '启用模式后，将由真实 Coraza 网关接管该站点。',
+        wafModeInheritWith: '跟随全局（{0}）',
+        wafGlobalSettings: '全局默认',
+        wafGlobalDefaultMode: '默认模式',
+        wafGlobalTip:
+            '全局默认作用于所有启用 WAF 的网站：默认模式仅对“跟随全局”的站点生效；全局名单会并入每个站点的名单（拒绝仍优先于放行）。',
         wafAccessControl: '访问名单',
         wafAccessControlTip: '每行一个 IP 或 CIDR 网段；保存后由网关按名单放行或拦截。',
         wafDenyList: '拒绝名单',

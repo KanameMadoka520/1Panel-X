@@ -28,6 +28,10 @@ import (
 const (
 	wafGatewayProxyPass = "http://127.0.0.1:9000"
 	wafMaxBodySize      = "13m"
+	// wafModeInherit is the control-plane-only sentinel for "follow the
+	// panel-wide default"; the data plane only ever sees the resolved
+	// detection/block value.
+	wafModeInherit = "inherit"
 )
 
 var wafControlMu sync.Mutex
@@ -68,6 +72,8 @@ type IWafControlService interface {
 	GetStatus(websiteID uint) (response.WafSiteStatus, error)
 	Update(websiteID uint, req request.WafSiteUpdate) (response.WafSiteStatus, error)
 	Remove(websiteID uint) error
+	GetGlobal() (response.WafGlobalConfig, error)
+	UpdateGlobal(req request.WafGlobalUpdate) (response.WafGlobalConfig, error)
 }
 
 type WafControlService struct {
@@ -117,12 +123,24 @@ func (s *WafControlService) GetStatus(websiteID uint) (response.WafSiteStatus, e
 	if err != nil {
 		return response.WafSiteStatus{}, err
 	}
-	status := response.WafSiteStatus{WebsiteID: websiteID, Supported: website.Type == constant.Proxy, Mode: string(wafconfig.ModeDetection)}
+	status := response.WafSiteStatus{
+		WebsiteID:     websiteID,
+		Supported:     website.Type == constant.Proxy,
+		Mode:          string(wafconfig.ModeDetection),
+		EffectiveMode: string(wafconfig.ModeDetection),
+	}
 	if global.WafDB == nil {
 		status.LastError = "WAF database is not available"
 		return status, nil
 	}
-	policy, err := repo.NewIWafRepo().GetPolicy(websiteID)
+	wafRepo := repo.NewIWafRepo()
+	globalPolicy, err := loadGlobalPolicy(wafRepo)
+	if err != nil {
+		return status, err
+	}
+	// A site without a stored policy follows the panel-wide default.
+	status.Mode = wafModeInherit
+	policy, err := wafRepo.GetPolicy(websiteID)
 	if err == nil {
 		status.Enabled = policy.Enabled
 		status.Mode = normalizedPolicyMode(policy.Mode)
@@ -132,6 +150,7 @@ func (s *WafControlService) GetStatus(websiteID uint) (response.WafSiteStatus, e
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return status, err
 	}
+	status.EffectiveMode = effectivePolicyMode(status.Mode, globalPolicy.DefaultMode)
 	status.Installed = files.NewFileOp().Stat(GetWafConfigPath())
 	generation := ""
 	if status.Installed {
@@ -170,8 +189,10 @@ func (s *WafControlService) update(websiteID uint, req request.WafSiteUpdate) (r
 	if website.Type != constant.Proxy {
 		return response.WafSiteStatus{}, fmt.Errorf("WAF currently supports reverse-proxy websites only")
 	}
-	mode := wafconfig.Mode(req.Mode)
-	if mode != wafconfig.ModeDetection && mode != wafconfig.ModeBlock {
+	mode := strings.TrimSpace(req.Mode)
+	switch mode {
+	case string(wafconfig.ModeDetection), string(wafconfig.ModeBlock), wafModeInherit:
+	default:
 		return response.WafSiteStatus{}, fmt.Errorf("invalid WAF mode %q", req.Mode)
 	}
 	allowList, err := wafconfig.NormalizeIPList(req.AllowList)
@@ -192,7 +213,7 @@ func (s *WafControlService) update(websiteID uint, req request.WafSiteUpdate) (r
 	candidate := model.WafSitePolicy{
 		WebsiteID: websiteID,
 		Enabled:   req.Enabled,
-		Mode:      string(mode),
+		Mode:      mode,
 		AllowIPs:  strings.Join(allowList, "\n"),
 		DenyIPs:   strings.Join(denyList, "\n"),
 	}
@@ -297,6 +318,97 @@ func (s *WafControlService) Remove(websiteID uint) error {
 	return nil
 }
 
+func (s *WafControlService) GetGlobal() (response.WafGlobalConfig, error) {
+	if global.WafDB == nil {
+		return response.WafGlobalConfig{}, errors.New("WAF database is not available")
+	}
+	policy, err := loadGlobalPolicy(repo.NewIWafRepo())
+	if err != nil {
+		return response.WafGlobalConfig{}, err
+	}
+	return response.WafGlobalConfig{
+		DefaultMode: normalizedPolicyMode(policy.DefaultMode),
+		AllowList:   splitIPLines(policy.AllowIPs),
+		DenyList:    splitIPLines(policy.DenyIPs),
+	}, nil
+}
+
+func (s *WafControlService) UpdateGlobal(req request.WafGlobalUpdate) (response.WafGlobalConfig, error) {
+	wafControlMu.Lock()
+	defer wafControlMu.Unlock()
+
+	if global.WafDB == nil {
+		return response.WafGlobalConfig{}, errors.New("WAF database is not available")
+	}
+	if err := EnsureWafRuntimeFiles(); err != nil {
+		return response.WafGlobalConfig{}, err
+	}
+	mode := wafconfig.Mode(req.DefaultMode)
+	if mode != wafconfig.ModeDetection && mode != wafconfig.ModeBlock {
+		return response.WafGlobalConfig{}, fmt.Errorf("invalid WAF default mode %q", req.DefaultMode)
+	}
+	allowList, err := wafconfig.NormalizeIPList(req.AllowList)
+	if err != nil {
+		return response.WafGlobalConfig{}, fmt.Errorf("invalid WAF global allow list: %w", err)
+	}
+	denyList, err := wafconfig.NormalizeIPList(req.DenyList)
+	if err != nil {
+		return response.WafGlobalConfig{}, fmt.Errorf("invalid WAF global deny list: %w", err)
+	}
+
+	wafRepo := repo.NewIWafRepo()
+	oldGlobal, oldGlobalErr := wafRepo.GetGlobalPolicy()
+	if oldGlobalErr != nil && !errors.Is(oldGlobalErr, gorm.ErrRecordNotFound) {
+		return response.WafGlobalConfig{}, oldGlobalErr
+	}
+	oldConfig, configExisted := readOptional(GetWafConfigPath())
+
+	if err := wafRepo.SaveGlobalPolicy(model.WafGlobalPolicy{
+		DefaultMode: string(mode),
+		AllowIPs:    strings.Join(allowList, "\n"),
+		DenyIPs:     strings.Join(denyList, "\n"),
+	}); err != nil {
+		return response.WafGlobalConfig{}, err
+	}
+	fail := func(operationErr error) (response.WafGlobalConfig, error) {
+		var rollbackErrs []error
+		if err := restoreOptional(GetWafConfigPath(), oldConfig, configExisted); err != nil {
+			rollbackErrs = append(rollbackErrs, fmt.Errorf("restore gateway config: %w", err))
+		}
+		restored := oldGlobal
+		if oldGlobalErr != nil {
+			// No stored row before this update: writing the built-in defaults is
+			// semantically identical to removing the row again.
+			restored = model.WafGlobalPolicy{DefaultMode: string(wafconfig.ModeDetection)}
+		}
+		if err := wafRepo.SaveGlobalPolicy(restored); err != nil {
+			rollbackErrs = append(rollbackErrs, fmt.Errorf("restore global WAF policy: %w", err))
+		}
+		if err := s.runtime.Restart(GetWafComposePath()); err != nil {
+			rollbackErrs = append(rollbackErrs, fmt.Errorf("restart previous WAF gateway: %w", err))
+		}
+		if len(rollbackErrs) > 0 {
+			operationErr = errors.Join(operationErr, fmt.Errorf("WAF rollback incomplete: %w", errors.Join(rollbackErrs...)))
+		}
+		return response.WafGlobalConfig{}, operationErr
+	}
+
+	generation, err := s.writeGatewayConfig()
+	if err != nil {
+		return fail(err)
+	}
+	if err := s.runtime.Up(GetWafComposePath()); err != nil {
+		return fail(fmt.Errorf("apply WAF gateway config: %w", err))
+	}
+	if err := s.runtime.Restart(GetWafComposePath()); err != nil {
+		return fail(fmt.Errorf("reload WAF gateway config: %w", err))
+	}
+	if !s.waitGatewayReady(s.readyTimeout, generation) {
+		return fail(errors.New("WAF gateway did not load the requested configuration"))
+	}
+	return s.GetGlobal()
+}
+
 func (s *WafControlService) saveLastError(websiteID uint, operationErr error) error {
 	if operationErr == nil {
 		return nil
@@ -339,7 +451,14 @@ func (s *WafControlService) applyNginx(filePath string, oldContent []byte, oldEx
 }
 
 func (s *WafControlService) writeGatewayConfig() (string, error) {
-	policies, err := repo.NewIWafRepo().ListPolicies()
+	wafRepo := repo.NewIWafRepo()
+	globalPolicy, err := loadGlobalPolicy(wafRepo)
+	if err != nil {
+		return "", err
+	}
+	globalAllow := splitIPLines(globalPolicy.AllowIPs)
+	globalDeny := splitIPLines(globalPolicy.DenyIPs)
+	policies, err := wafRepo.ListPolicies()
 	if err != nil {
 		return "", err
 	}
@@ -357,13 +476,21 @@ func (s *WafControlService) writeGatewayConfig() (string, error) {
 		if !ok || !policy.Enabled {
 			continue
 		}
+		allowIPs, err := wafconfig.MergeIPLists(globalAllow, splitIPLines(policy.AllowIPs))
+		if err != nil {
+			return "", fmt.Errorf("website %q merged allow list: %w", website.Alias, err)
+		}
+		denyIPs, err := wafconfig.MergeIPLists(globalDeny, splitIPLines(policy.DenyIPs))
+		if err != nil {
+			return "", fmt.Errorf("website %q merged deny list: %w", website.Alias, err)
+		}
 		inputs = append(inputs, wafconfig.Site{
 			Website:  website,
 			Domains:  website.Domains,
 			Enabled:  true,
-			Mode:     wafconfig.Mode(normalizedPolicyMode(policy.Mode)),
-			AllowIPs: splitIPLines(policy.AllowIPs),
-			DenyIPs:  splitIPLines(policy.DenyIPs),
+			Mode:     wafconfig.Mode(effectivePolicyMode(policy.Mode, globalPolicy.DefaultMode)),
+			AllowIPs: allowIPs,
+			DenyIPs:  denyIPs,
 		})
 	}
 	cfg, err := wafconfig.Build(inputs)
@@ -492,6 +619,30 @@ func normalizedPolicyMode(mode string) string {
 		return string(wafconfig.ModeDetection)
 	}
 	return mode
+}
+
+// effectivePolicyMode resolves the mode the gateway actually applies: an
+// explicit site mode wins, "inherit" (or a legacy blank) falls back to the
+// panel-wide default, and a blank default degrades to detection.
+func effectivePolicyMode(siteMode, globalDefault string) string {
+	siteMode = strings.TrimSpace(siteMode)
+	if siteMode == "" || siteMode == wafModeInherit {
+		return normalizedPolicyMode(globalDefault)
+	}
+	return siteMode
+}
+
+// loadGlobalPolicy returns the stored panel-wide policy, or the built-in
+// defaults (detection mode, empty lists) when none has been saved yet.
+func loadGlobalPolicy(wafRepo repo.IWafRepo) (model.WafGlobalPolicy, error) {
+	policy, err := wafRepo.GetGlobalPolicy()
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return model.WafGlobalPolicy{DefaultMode: string(wafconfig.ModeDetection)}, nil
+	}
+	if err != nil {
+		return model.WafGlobalPolicy{}, err
+	}
+	return policy, nil
 }
 
 func readOptional(filePath string) ([]byte, bool) {
