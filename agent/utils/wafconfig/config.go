@@ -46,6 +46,17 @@ type GatewayConfig struct {
 	Version    int           `json:"version"`
 	Generation string        `json:"generation,omitempty"`
 	Sites      []GatewaySite `json:"sites"`
+	// AttackRateLimit is gateway-wide, not per-site: a rule match is only
+	// observable in detection mode through the engine's match callback, which
+	// reports the client and the rule but not the Host, and one compiled engine
+	// serves every site sharing a policy. A per-site attack threshold would be a
+	// number the data plane cannot honour, so it is not offered.
+	AttackRateLimit *RateLimit `json:"attackRateLimit,omitempty"`
+}
+
+// BuildOptions carries the gateway-wide settings that are not per-site.
+type BuildOptions struct {
+	AttackRateLimit *RateLimit
 }
 
 type GatewaySite struct {
@@ -63,7 +74,26 @@ type GatewaySite struct {
 // website registry. v1 supports reverse-proxy sites only and rejects any host
 // collision after port-insensitive normalization (W12).
 func Build(sites []Site) (GatewayConfig, error) {
+	return BuildWithOptions(sites, BuildOptions{})
+}
+
+// BuildWithOptions is Build plus the gateway-wide settings.
+func BuildWithOptions(sites []Site, opts BuildOptions) (GatewayConfig, error) {
 	cfg := GatewayConfig{Version: Version, Sites: make([]GatewaySite, 0)}
+	if opts.AttackRateLimit != nil {
+		attack := *opts.AttackRateLimit
+		if attack.Kind == "" {
+			attack.Kind = RateLimitAttack
+		}
+		if attack.Kind != RateLimitAttack {
+			return GatewayConfig{}, fmt.Errorf("waf config: gateway attack limit must be of kind %q, got %q", RateLimitAttack, attack.Kind)
+		}
+		normalized, err := NormalizeRateLimits([]RateLimit{attack})
+		if err != nil {
+			return GatewayConfig{}, fmt.Errorf("waf config: attack rate limit: %w", err)
+		}
+		cfg.AttackRateLimit = &normalized[0]
+	}
 	seen := make(map[string]string)
 	for _, input := range sites {
 		if !input.Enabled {

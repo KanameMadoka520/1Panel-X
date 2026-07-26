@@ -82,6 +82,41 @@ func TestBuildAttachesRateLimitsAndAffectsGeneration(t *testing.T) {
 	}
 }
 
+func TestBuildAttachesGatewayWideAttackLimit(t *testing.T) {
+	site := []Site{{
+		Website: model.Website{BaseModel: model.BaseModel{ID: 1}, Type: constant.Proxy, Alias: "alpha", Proxy: "127.0.0.1:8080"},
+		Domains: []model.WebsiteDomain{{Domain: "a.example"}},
+		Enabled: true,
+	}}
+	cfg, err := BuildWithOptions(site, BuildOptions{AttackRateLimit: &RateLimit{PeriodSec: 60, Threshold: 5, BanSec: 600}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.AttackRateLimit == nil {
+		t.Fatal("the attack limit must reach the emitted config")
+	}
+	// The kind defaults, and a per-URL flag is meaningless for a limit counted
+	// from engine callbacks that carry no request target.
+	if cfg.AttackRateLimit.Kind != RateLimitAttack || cfg.AttackRateLimit.PerURL {
+		t.Fatalf("unexpected attack limit: %+v", cfg.AttackRateLimit)
+	}
+
+	plain, err := Build(site)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plain.Generation == cfg.Generation {
+		t.Fatal("a gateway-wide setting must change the generation digest")
+	}
+
+	if _, err := BuildWithOptions(site, BuildOptions{AttackRateLimit: &RateLimit{Kind: RateLimitAccess, PeriodSec: 60, Threshold: 5}}); err == nil {
+		t.Fatal("the gateway attack slot must reject a limit of another kind")
+	}
+	if _, err := BuildWithOptions(site, BuildOptions{AttackRateLimit: &RateLimit{PeriodSec: 0, Threshold: 5}}); err == nil {
+		t.Fatal("an invalid attack limit must fail config generation")
+	}
+}
+
 func TestBuildRejectsInvalidRateLimit(t *testing.T) {
 	_, err := Build([]Site{{
 		Website:    model.Website{BaseModel: model.BaseModel{ID: 1}, Type: constant.Proxy, Alias: "alpha", Proxy: "127.0.0.1:8080"},

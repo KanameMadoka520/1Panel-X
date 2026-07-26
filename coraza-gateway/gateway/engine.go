@@ -11,6 +11,7 @@ import (
 
 	coreruleset "github.com/corazawaf/coraza-coreruleset/v4"
 	"github.com/corazawaf/coraza/v3"
+	"github.com/corazawaf/coraza/v3/types"
 )
 
 type Mode string
@@ -28,6 +29,10 @@ type Engine struct {
 	mode         Mode
 	bodyLimit    int
 	auditLogPath string
+	// observer is called for every rule match Coraza logs, in BOTH detection and
+	// block mode. It is the only way to see a match in detection mode: nothing is
+	// interrupted there, so the response status carries no signal at all.
+	observer func(types.MatchedRule)
 }
 
 func NewEngine(mode Mode, bodyLimit int) (*Engine, error) {
@@ -35,7 +40,11 @@ func NewEngine(mode Mode, bodyLimit int) (*Engine, error) {
 }
 
 func NewEngineWithAudit(mode Mode, bodyLimit int, auditLogPath string) (*Engine, error) {
-	e := &Engine{mode: mode, bodyLimit: bodyLimit, auditLogPath: auditLogPath}
+	return NewEngineWithObserver(mode, bodyLimit, auditLogPath, nil)
+}
+
+func NewEngineWithObserver(mode Mode, bodyLimit int, auditLogPath string, observer func(types.MatchedRule)) (*Engine, error) {
+	e := &Engine{mode: mode, bodyLimit: bodyLimit, auditLogPath: auditLogPath, observer: observer}
 	if err := e.reloadRaw(directivesFor(mode, bodyLimit, auditLogPath)); err != nil {
 		return nil, fmt.Errorf("waf init failed: %w", err)
 	}
@@ -66,19 +75,20 @@ func (p enginePolicy) String() string {
 	return fmt.Sprintf("%s/body=%d", p.Mode, p.BodyLimit)
 }
 
-// ForMode returns an independently compiled engine with the same body and audit
-// settings. It is used when site policies mix detection and block mode.
+// ForMode returns an independently compiled engine with the same body, audit and
+// observer settings. It is used when site policies mix detection and block mode.
 func (e *Engine) ForMode(mode Mode) (*Engine, error) {
-	return NewEngineWithAudit(mode, e.bodyLimit, e.auditLogPath)
+	return NewEngineWithObserver(mode, e.bodyLimit, e.auditLogPath, e.observer)
 }
 
-// ForPolicy compiles a sibling engine for one resolved per-site policy.
+// ForPolicy compiles a sibling engine for one resolved per-site policy. The
+// observer is inherited, so a site on a non-default policy is still observed.
 func (e *Engine) ForPolicy(p enginePolicy) (*Engine, error) {
 	bodyLimit := p.BodyLimit
 	if bodyLimit <= 0 {
 		bodyLimit = e.bodyLimit
 	}
-	return NewEngineWithAudit(p.Mode, bodyLimit, e.auditLogPath)
+	return NewEngineWithObserver(p.Mode, bodyLimit, e.auditLogPath, e.observer)
 }
 
 // maxCompiledEngines bounds how many distinct per-site policies one gateway may
@@ -133,7 +143,11 @@ func (e *Engine) Reload(mode Mode, bodyLimit int) error {
 }
 
 func (e *Engine) reloadRaw(directives string) error {
-	waf, err := coraza.NewWAF(coraza.NewWAFConfig().WithRootFS(coreruleset.FS).WithDirectives(directives))
+	cfg := coraza.NewWAFConfig().WithRootFS(coreruleset.FS).WithDirectives(directives)
+	if e.observer != nil {
+		cfg = cfg.WithErrorCallback(e.observer)
+	}
+	waf, err := coraza.NewWAF(cfg)
 	if err != nil {
 		return err
 	}

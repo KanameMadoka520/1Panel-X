@@ -42,7 +42,21 @@ func main() {
 	}
 
 	mode := gateway.Mode(*modeStr)
-	engine, err := gateway.NewEngineWithAudit(mode, *bodyLimit, *auditLog)
+
+	// Non-CRS decisions (deny lists, unknown Host, oversize bodies, rate limits)
+	// are invisible in the Coraza audit log, so they get their own journal next to
+	// it — otherwise those blocks would be enforced but unreportable.
+	journal := gateway.NewEventJournal(*eventLog)
+	defer func() { _ = journal.Close() }()
+	// The enforcer outlives every routing table: bans and rate-limit counters must
+	// survive a config reload, otherwise saving an unrelated setting would
+	// silently un-ban everyone.
+	enforcer := gateway.NewEnforcer(journal)
+
+	// The engine reports rule matches to the enforcer, which is the only way the
+	// attack-frequency limit can work in detection mode: nothing is interrupted
+	// there, so the response status carries no signal at all.
+	engine, err := gateway.NewEngineWithObserver(mode, *bodyLimit, *auditLog, enforcer.AttackObserver())
 	if err != nil {
 		log.Fatalf("coraza-gateway: %v", err)
 	}
@@ -54,15 +68,6 @@ func main() {
 		// config file. Restarting the container on every policy save would erase
 		// this process's in-memory enforcement state, so the container restart is
 		// kept as the control plane's fallback, not its normal path.
-		// Non-CRS decisions (deny lists, unknown Host, oversize bodies) are not
-		// visible in the Coraza audit log, so they get their own journal next to
-		// it — otherwise those blocks would be enforced but unreportable.
-		journal := gateway.NewEventJournal(*eventLog)
-		defer func() { _ = journal.Close() }()
-		// The enforcer outlives every routing table: bans and rate-limit counters
-		// must survive a config reload, otherwise saving an unrelated setting
-		// would silently un-ban everyone.
-		enforcer := gateway.NewEnforcer(journal)
 		build := func(cfg gateway.Config) (*gateway.Router, error) {
 			return gateway.NewRouterWithEnforcer(cfg, engine, mode, *realIP, journal, enforcer)
 		}

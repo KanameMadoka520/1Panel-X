@@ -52,6 +52,9 @@ func NewRouterWithJournal(cfg Config, engine *Engine, mode Mode, realIPHeader st
 // the table on a config reload does not reset live bans or counters.
 func NewRouterWithEnforcer(cfg Config, engine *Engine, mode Mode, realIPHeader string, journal *EventJournal, enforcer *Enforcer) (*Router, error) {
 	rt := &Router{handlers: make(map[string]http.Handler, len(cfg.Sites)), journal: journal}
+	// The attack limit lives on the process-wide enforcer, so a reload updates the
+	// threshold without discarding the counts accumulated so far.
+	enforcer.SetAttackLimit(cfg.AttackRateLimit)
 	cache := newEngineCache(engine, enginePolicy{Mode: mode})
 	for _, s := range cfg.Sites {
 		host := normalizeHost(s.Host)

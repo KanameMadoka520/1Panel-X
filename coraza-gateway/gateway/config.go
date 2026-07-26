@@ -32,6 +32,13 @@ type Config struct {
 	Version    int          `json:"version,omitempty"`
 	Generation string       `json:"generation,omitempty"`
 	Sites      []SiteConfig `json:"sites"`
+	// AttackRateLimit is gateway-wide, not per-site. A rule match is only
+	// observable in detection mode through the engine's match callback, which
+	// reports the client and the rule but not the Host, and one compiled engine
+	// serves every site sharing a policy — so a per-site threshold here could not
+	// actually be honoured. It is therefore modelled, and presented, as one
+	// gateway-level limit.
+	AttackRateLimit *RateLimitConfig `json:"attackRateLimit,omitempty"`
 }
 
 // ConfigVersion is the contract version this build understands.
@@ -69,6 +76,17 @@ func ParseConfig(data []byte) (Config, error) {
 	if c.Version < 0 || c.Version > ConfigVersion {
 		return Config{}, fmt.Errorf("waf config: unsupported version %d (this gateway understands up to %d; upgrade the WAF gateway image)", c.Version, ConfigVersion)
 	}
+	if c.AttackRateLimit != nil {
+		if c.AttackRateLimit.Kind == "" {
+			c.AttackRateLimit.Kind = RateLimitAttack
+		}
+		if c.AttackRateLimit.Kind != RateLimitAttack {
+			return Config{}, fmt.Errorf("waf config: attackRateLimit must be of kind %q, got %q", RateLimitAttack, c.AttackRateLimit.Kind)
+		}
+		if err := c.AttackRateLimit.validate(); err != nil {
+			return Config{}, fmt.Errorf("waf config: %w", err)
+		}
+	}
 	for i := range c.Sites {
 		host := normalizeHost(c.Sites[i].Host)
 		if host == "" {
@@ -101,6 +119,11 @@ func ParseConfig(data []byte) (Config, error) {
 		for _, rl := range c.Sites[i].RateLimits {
 			if err := rl.validate(); err != nil {
 				return Config{}, fmt.Errorf("waf config: site %q %w", host, err)
+			}
+			// The attack limit is gateway-wide; accepting a per-site copy here
+			// would advertise a threshold the data plane cannot honour.
+			if rl.Kind == RateLimitAttack {
+				return Config{}, fmt.Errorf("waf config: site %q cannot set an attack rate limit; it is configured gateway-wide via attackRateLimit", host)
 			}
 			// Two limits of the same kind would share a counter key and silently
 			// enforce whichever threshold happened to be checked first.

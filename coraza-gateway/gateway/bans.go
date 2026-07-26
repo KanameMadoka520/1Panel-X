@@ -126,6 +126,10 @@ type Enforcer struct {
 	limiter *rateLimiter
 	journal *EventJournal
 	now     func() time.Time
+	// attack is the gateway-wide attack-frequency limit, fed by the engine's rule
+	// match callback rather than by the request path.
+	attack  attackLimit
+	deduper *attackDeduper
 }
 
 func NewEnforcer(journal *EventJournal) *Enforcer {
@@ -134,6 +138,7 @@ func NewEnforcer(journal *EventJournal) *Enforcer {
 		limiter: newRateLimiter(maxTrackedRateKeys),
 		journal: journal,
 		now:     time.Now,
+		deduper: newAttackDeduper(maxAttackDedupeEntries),
 	}
 }
 

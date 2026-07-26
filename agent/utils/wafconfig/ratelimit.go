@@ -67,6 +67,12 @@ func NormalizeRateLimits(limits []RateLimit) ([]RateLimit, error) {
 		if l.Kind == RateLimitURL {
 			l.PerURL = true
 		}
+		// The attack limit is counted from the engine's match callback, which has
+		// no request target to key on, so a per-URL attack limit would be a flag
+		// the data plane silently ignores.
+		if l.Kind == RateLimitAttack {
+			l.PerURL = false
+		}
 		if _, dup := seen[l.Kind]; dup {
 			return nil, fmt.Errorf("duplicate rate limit kind %q", l.Kind)
 		}
