@@ -38,6 +38,7 @@ type Site struct {
 	AllowIPs   []string
 	DenyIPs    []string
 	RateLimits []RateLimit
+	Rules      *RulePolicy
 }
 
 // GatewayConfig mirrors the data-plane JSON contract without importing the
@@ -74,6 +75,9 @@ type GatewaySite struct {
 	AllowIPs   []string    `json:"allowIps,omitempty"`
 	DenyIPs    []string    `json:"denyIps,omitempty"`
 	RateLimits []RateLimit `json:"rateLimits,omitempty"`
+	// Rules is omitted when it is the fully-protecting default, so an older
+	// gateway that does not know the field still enforces full protection.
+	Rules *RulePolicy `json:"rules,omitempty"`
 }
 
 // Build creates a deterministic routing table from the panel's authoritative
@@ -149,6 +153,19 @@ func BuildWithOptions(sites []Site, opts BuildOptions) (GatewayConfig, error) {
 		if err != nil {
 			return GatewayConfig{}, fmt.Errorf("waf config: website %q rate limits: %w", alias, err)
 		}
+		var rules *RulePolicy
+		if input.Rules != nil {
+			normalized, err := NormalizeRulePolicy(*input.Rules)
+			if err != nil {
+				return GatewayConfig{}, fmt.Errorf("waf config: website %q rules: %w", alias, err)
+			}
+			// The default policy is emitted as absent rather than as an explicit
+			// all-defaults object, so the config stays minimal and its digest does
+			// not churn when an operator toggles something back to default.
+			if !normalized.IsZero() {
+				rules = &normalized
+			}
+		}
 
 		for _, domain := range input.Domains {
 			host, err := normalizeHost(domain.Domain)
@@ -168,6 +185,7 @@ func BuildWithOptions(sites []Site, opts BuildOptions) (GatewayConfig, error) {
 				AllowIPs:   allowIPs,
 				DenyIPs:    denyIPs,
 				RateLimits: rateLimits,
+				Rules:      rules,
 			})
 		}
 	}

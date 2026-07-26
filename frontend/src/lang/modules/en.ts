@@ -3423,6 +3423,28 @@ const message = {
         wafGlobalDefaultMode: 'Default mode',
         wafGlobalTip:
             "Global defaults apply to every WAF-enabled website: the default mode only affects sites set to inherit, and global lists are merged into each site's lists (deny still wins over allow).",
+        wafDefaultRules: 'Built-in rules',
+        wafDefaultRulesTip:
+            'Switches for the built-in detection rules. The rules come from the OWASP Core Rule Set and these switches really do change what the engine enforces.',
+        wafGlobalDefaultRulesTip: 'Panel-wide detection policy; a site that sets its own policy wins.',
+        wafRulesInherited: 'Following panel default',
+        wafRulesInheritedTip: 'Showing the panel-wide policy; this site has not set one of its own.',
+        wafRulesOverride: 'Give this site its own policy',
+        wafRulesOwn: 'Site-specific policy',
+        wafRulesFollowGlobal: 'Follow the panel default again',
+        wafRuleSqli: 'SQL injection protection',
+        wafRuleSqliTip:
+            'Detects and blocks SQL injection. Switching it off disables only the SQL injection rules; everything else keeps protecting.',
+        wafRuleXss: 'XSS protection',
+        wafRuleXssTip:
+            'Detects and blocks cross-site scripting. Switching it off disables only the XSS rules; everything else keeps protecting.',
+        wafRuleStrict: 'Strict mode',
+        wafRuleStrictTip:
+            'Applies stricter checks: better detection, noticeably more false positives. Try it in detection mode first.',
+        wafRuleMethods: 'HTTP method filter',
+        wafRuleMethodsTip:
+            'Only the ticked request methods are accepted; every other method is refused. Leave it off to keep the rule set’s own default method list.',
+        wafRuleMethodsEnable: 'Enable method allow-list',
         wafBans: 'Temporary bans',
         wafBansScope: 'Bans currently in force, produced automatically by the frequency limits.',
         wafBansTip:

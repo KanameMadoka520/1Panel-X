@@ -825,6 +825,10 @@ export namespace Website {
         // the gateway actually enforces once the global defaults are merged in.
         rateLimits: WafRateLimit[];
         effectiveRateLimits: WafRateLimit[];
+        // rules is this site's own detection policy (null when it follows the
+        // panel default); effectiveRules is what the gateway actually enforces.
+        rules: WafRulePolicy | null;
+        effectiveRules: WafRulePolicy;
         installed: boolean;
         ready: boolean;
         routed: boolean;
@@ -838,6 +842,18 @@ export namespace Website {
         allowList: string[];
         denyList: string[];
         rateLimits: WafRateLimit[];
+        // Present makes it this site's own policy, replacing the panel default
+        // wholesale; null keeps the site following the panel default.
+        rules: WafRulePolicy | null;
+    }
+
+    export interface WafRulePolicy {
+        // Stored as "disable" flags so the default object is the fully-protecting one.
+        disableSqli: boolean;
+        disableXss: boolean;
+        strict: boolean;
+        // Empty leaves the rule set's own method default in force.
+        allowedMethods: string[];
     }
 
     export interface WafBan {
@@ -886,6 +902,7 @@ export namespace Website {
         allowList: string[];
         denyList: string[];
         rateLimits: WafRateLimit[];
+        rules: WafRulePolicy;
     }
 
     export interface WafEventReq {

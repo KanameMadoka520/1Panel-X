@@ -53,7 +53,10 @@ type WafSitePolicy struct {
 	// replaces the panel-wide entry of the same kind; kinds it does not mention
 	// keep the panel-wide value.
 	RateLimits string `gorm:"type:text" json:"rateLimits"`
-	LastError  string `gorm:"size:2048" json:"lastError"`
+	// RuleOptions is this site's detection policy as JSON. Empty means the site
+	// has stored none of its own and inherits the panel-wide default whole.
+	RuleOptions string `gorm:"type:text" json:"ruleOptions"`
+	LastError   string `gorm:"size:2048" json:"lastError"`
 }
 
 // WafListEntry is one row of the panel-wide black/white lists.
@@ -100,4 +103,6 @@ type WafGlobalPolicy struct {
 	// engine's callback, which reports no Host, so a per-site attack threshold
 	// would be a number the data plane cannot honour.
 	RateLimits string `gorm:"type:text" json:"rateLimits"`
+	// RuleOptions is the panel-wide detection policy as JSON.
+	RuleOptions string `gorm:"type:text" json:"ruleOptions"`
 }

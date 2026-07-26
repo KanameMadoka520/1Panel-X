@@ -79,7 +79,11 @@ func NewRouterWithEnforcer(cfg Config, engine *Engine, mode Mode, realIPHeader s
 		if s.Mode != "" {
 			modeForSite = s.Mode
 		}
-		policyEngine, err := cache.get(enginePolicy{Mode: modeForSite}, s.Host)
+		sitePolicy, err := s.enginePolicy(mode)
+		if err != nil {
+			return nil, fmt.Errorf("router: site %q %w", s.Host, err)
+		}
+		policyEngine, err := cache.get(sitePolicy, s.Host)
 		if err != nil {
 			return nil, fmt.Errorf("router: %w", err)
 		}

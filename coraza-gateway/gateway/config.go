@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -25,6 +27,88 @@ type SiteConfig struct {
 	// RateLimits are this site's frequency limits. They are evaluated after the
 	// IP ACL, so an allow-listed client is never rate-limited.
 	RateLimits []RateLimitConfig `json:"rateLimits,omitempty"`
+	// Rules is this site's detection policy. Absent means the fully-protecting
+	// default, so a config that predates this field never loses protection.
+	Rules *RulePolicy `json:"rules,omitempty"`
+}
+
+// RulePolicy is the per-site detection policy.
+//
+// Each field is expressed so that its ZERO VALUE is the safe one: detection
+// classes are switched off by an explicit "disable", never by omission.
+type RulePolicy struct {
+	// DisableSQLi and DisableXSS remove the corresponding CRS rule families.
+	DisableSQLi bool `json:"disableSqli,omitempty"`
+	DisableXSS  bool `json:"disableXss,omitempty"`
+	// Strict raises the paranoia level: stricter checks, more false positives.
+	Strict bool `json:"strict,omitempty"`
+	// AllowedMethods is the HTTP method allow-list. Empty leaves the ruleset's
+	// own default in force rather than silently allowing everything.
+	AllowedMethods []string `json:"allowedMethods,omitempty"`
+}
+
+// maxAllowedMethods bounds the method allow-list.
+const maxAllowedMethods = 64
+
+// methodPattern matches a syntactically valid HTTP method token. It is enforced
+// because the list is interpolated into a SecAction directive: an unvalidated
+// value containing a quote or newline could inject arbitrary engine directives,
+// and `SecRuleEngine Off` would silently disable the WAF for every site sharing
+// the compiled engine.
+var methodPattern = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_-]{0,19}$`)
+
+// normalizeMethods validates, upper-cases, de-duplicates and sorts the list so
+// two equivalent policies compile to one shared engine instance.
+func normalizeMethods(methods []string) ([]string, error) {
+	if len(methods) == 0 {
+		return nil, nil
+	}
+	if len(methods) > maxAllowedMethods {
+		return nil, fmt.Errorf("too many allowed methods (%d), limit is %d", len(methods), maxAllowedMethods)
+	}
+	seen := make(map[string]struct{}, len(methods))
+	out := make([]string, 0, len(methods))
+	for _, m := range methods {
+		m = strings.TrimSpace(m)
+		if m == "" {
+			continue
+		}
+		if !methodPattern.MatchString(m) {
+			return nil, fmt.Errorf("invalid HTTP method %q", m)
+		}
+		m = strings.ToUpper(m)
+		if _, dup := seen[m]; dup {
+			continue
+		}
+		seen[m] = struct{}{}
+		out = append(out, m)
+	}
+	if len(out) == 0 {
+		return nil, nil
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
+// enginePolicy resolves this site's rule policy into the compiled-engine key.
+func (s SiteConfig) enginePolicy(defaultMode Mode) (enginePolicy, error) {
+	mode := defaultMode
+	if s.Mode != "" {
+		mode = s.Mode
+	}
+	p := enginePolicy{Mode: mode}
+	if s.Rules == nil {
+		return p, nil
+	}
+	p.DisableSQLi = s.Rules.DisableSQLi
+	p.DisableXSS = s.Rules.DisableXSS
+	p.Strict = s.Rules.Strict
+	methods, err := normalizeMethods(s.Rules.AllowedMethods)
+	if err != nil {
+		return enginePolicy{}, err
+	}
+	p.AllowedMethods = strings.Join(methods, " ")
+	return p, nil
 }
 
 // Config is the gateway's versioned per-site routing table.
@@ -143,6 +227,11 @@ func ParseConfig(data []byte) (Config, error) {
 				return Config{}, fmt.Errorf("waf config: site %q has duplicate rate limit kind %q", host, rl.Kind)
 			}
 			seenKinds[rl.Kind] = struct{}{}
+		}
+		// Resolving the policy here rejects an unusable rule set at load time —
+		// in particular a method token that could inject engine directives.
+		if _, err := c.Sites[i].enginePolicy(ModeDetection); err != nil {
+			return Config{}, fmt.Errorf("waf config: site %q %w", host, err)
 		}
 	}
 	return c, nil

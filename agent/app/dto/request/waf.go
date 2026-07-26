@@ -35,6 +35,22 @@ type WafSiteUpdate struct {
 	// kind is refused here: it is enforced gateway-wide and can only be set on
 	// the global policy.
 	RateLimits []WafRateLimit `json:"rateLimits" validate:"omitempty,max=8,dive"`
+	// Rules, when present, becomes this site's OWN detection policy and replaces
+	// the panel-wide default wholesale. Absent means the site keeps following the
+	// panel default.
+	Rules *WafRulePolicy `json:"rules"`
+}
+
+// WafRulePolicy is a detection policy. Fields are "disable" flags so the zero
+// value is the fully-protecting one.
+type WafRulePolicy struct {
+	DisableSQLi bool `json:"disableSqli"`
+	DisableXSS  bool `json:"disableXss"`
+	Strict      bool `json:"strict"`
+	// AllowedMethods is the HTTP method allow-list; empty leaves the rule set's
+	// own default in force. Tokens are validated server-side because they end up
+	// inside an engine directive.
+	AllowedMethods []string `json:"allowedMethods" validate:"omitempty,max=64,dive,max=20"`
 }
 
 // WafListEntrySave creates or updates one panel-wide black/white list row.
@@ -74,4 +90,5 @@ type WafGlobalUpdate struct {
 	AllowList   []string       `json:"allowList" validate:"omitempty,max=512,dive,max=64"`
 	DenyList    []string       `json:"denyList" validate:"omitempty,max=512,dive,max=64"`
 	RateLimits  []WafRateLimit `json:"rateLimits" validate:"omitempty,max=8,dive"`
+	Rules       *WafRulePolicy `json:"rules"`
 }

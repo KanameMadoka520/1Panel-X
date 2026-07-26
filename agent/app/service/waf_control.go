@@ -244,6 +244,17 @@ func (s *WafControlService) GetStatus(websiteID uint) (response.WafSiteStatus, e
 	// report the running policy rather than the site's overrides alone.
 	effective, _ := splitAttackLimit(mergeRateLimits(globalLimits, siteLimits))
 	status.EffectiveRateLimits = rateLimitsToResponse(effective)
+
+	siteRules, err := parseRulePolicy(policy.RuleOptions)
+	if err != nil {
+		status.LastError = strings.TrimSpace(status.LastError + " " + err.Error())
+	}
+	globalRules, err := parseRulePolicy(globalPolicy.RuleOptions)
+	if err != nil {
+		status.LastError = strings.TrimSpace(status.LastError + " " + err.Error())
+	}
+	status.Rules = rulePolicyToResponse(siteRules)
+	status.EffectiveRules = rulePolicyValue(wafconfig.MergeRulePolicy(globalRules, siteRules))
 	status.Installed = files.NewFileOp().Stat(GetWafConfigPath())
 	generation := ""
 	if status.Installed {
@@ -310,6 +321,18 @@ func (s *WafControlService) update(websiteID uint, req request.WafSiteUpdate) (r
 	if err != nil {
 		return response.WafSiteStatus{}, err
 	}
+	var siteRules *wafconfig.RulePolicy
+	if raw := rulePolicyFromRequest(req.Rules); raw != nil {
+		normalized, err := wafconfig.NormalizeRulePolicy(*raw)
+		if err != nil {
+			return response.WafSiteStatus{}, fmt.Errorf("invalid WAF rule options: %w", err)
+		}
+		siteRules = &normalized
+	}
+	siteRulesJSON, err := marshalRulePolicy(siteRules)
+	if err != nil {
+		return response.WafSiteStatus{}, err
+	}
 
 	wafRepo := repo.NewIWafRepo()
 	oldPolicy, oldPolicyErr := wafRepo.GetPolicy(websiteID)
@@ -318,12 +341,13 @@ func (s *WafControlService) update(websiteID uint, req request.WafSiteUpdate) (r
 	oldProxy, proxyExisted := readOptional(proxyPath)
 
 	candidate := model.WafSitePolicy{
-		WebsiteID:  websiteID,
-		Enabled:    req.Enabled,
-		Mode:       mode,
-		AllowIPs:   strings.Join(allowList, "\n"),
-		DenyIPs:    strings.Join(denyList, "\n"),
-		RateLimits: siteLimitsJSON,
+		WebsiteID:   websiteID,
+		Enabled:     req.Enabled,
+		Mode:        mode,
+		AllowIPs:    strings.Join(allowList, "\n"),
+		DenyIPs:     strings.Join(denyList, "\n"),
+		RateLimits:  siteLimitsJSON,
+		RuleOptions: siteRulesJSON,
 	}
 	if err := wafRepo.SavePolicy(candidate); err != nil {
 		return response.WafSiteStatus{}, err
@@ -431,11 +455,16 @@ func (s *WafControlService) GetGlobal() (response.WafGlobalConfig, error) {
 	if err != nil {
 		return response.WafGlobalConfig{}, err
 	}
+	rules, err := parseRulePolicy(policy.RuleOptions)
+	if err != nil {
+		return response.WafGlobalConfig{}, err
+	}
 	return response.WafGlobalConfig{
 		DefaultMode: normalizedPolicyMode(policy.DefaultMode),
 		AllowList:   splitIPLines(policy.AllowIPs),
 		DenyList:    splitIPLines(policy.DenyIPs),
 		RateLimits:  rateLimitsToResponse(limits),
+		Rules:       rulePolicyValue(rules),
 	}, nil
 }
 
@@ -470,6 +499,18 @@ func (s *WafControlService) UpdateGlobal(req request.WafGlobalUpdate) (response.
 	if err != nil {
 		return response.WafGlobalConfig{}, err
 	}
+	var globalRules *wafconfig.RulePolicy
+	if raw := rulePolicyFromRequest(req.Rules); raw != nil {
+		normalized, err := wafconfig.NormalizeRulePolicy(*raw)
+		if err != nil {
+			return response.WafGlobalConfig{}, fmt.Errorf("invalid WAF rule options: %w", err)
+		}
+		globalRules = &normalized
+	}
+	globalRulesJSON, err := marshalRulePolicy(globalRules)
+	if err != nil {
+		return response.WafGlobalConfig{}, err
+	}
 
 	wafRepo := repo.NewIWafRepo()
 	oldGlobal, oldGlobalErr := wafRepo.GetGlobalPolicy()
@@ -483,6 +524,7 @@ func (s *WafControlService) UpdateGlobal(req request.WafGlobalUpdate) (response.
 		AllowIPs:    strings.Join(allowList, "\n"),
 		DenyIPs:     strings.Join(denyList, "\n"),
 		RateLimits:  globalLimitsJSON,
+		RuleOptions: globalRulesJSON,
 	}); err != nil {
 		return response.WafGlobalConfig{}, err
 	}
@@ -612,6 +654,10 @@ func (s *WafControlService) writeGatewayConfig() (string, error) {
 	// The attack limit is gateway-wide; it is emitted once at the top level, not
 	// copied into every site (the gateway refuses a per-site copy outright).
 	globalSiteLimits, attackLimit := splitAttackLimit(globalLimits)
+	globalRules, err := parseRulePolicy(globalPolicy.RuleOptions)
+	if err != nil {
+		return "", err
+	}
 	listEntries, err := wafRepo.ListEntries()
 	if err != nil {
 		return "", err
@@ -650,6 +696,10 @@ func (s *WafControlService) writeGatewayConfig() (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("website %q: %w", website.Alias, err)
 		}
+		siteRules, err := parseRulePolicy(policy.RuleOptions)
+		if err != nil {
+			return "", fmt.Errorf("website %q: %w", website.Alias, err)
+		}
 		mergedLimits, _ := splitAttackLimit(mergeRateLimits(globalSiteLimits, siteLimits))
 		inputs = append(inputs, wafconfig.Site{
 			Website:    website,
@@ -659,6 +709,7 @@ func (s *WafControlService) writeGatewayConfig() (string, error) {
 			AllowIPs:   allowIPs,
 			DenyIPs:    denyIPs,
 			RateLimits: mergedLimits,
+			Rules:      wafconfig.MergeRulePolicy(globalRules, siteRules),
 		})
 	}
 	cfg, err := wafconfig.BuildWithOptions(inputs, wafconfig.BuildOptions{
@@ -871,6 +922,66 @@ func rateLimitsFromRequest(in []request.WafRateLimit) []wafconfig.RateLimit {
 		})
 	}
 	return out
+}
+
+// --- detection-policy storage helpers --------------------------------------
+
+func parseRulePolicy(raw string) (*wafconfig.RulePolicy, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	var p wafconfig.RulePolicy
+	if err := json.Unmarshal([]byte(raw), &p); err != nil {
+		return nil, fmt.Errorf("stored WAF rule options are unreadable: %w", err)
+	}
+	return &p, nil
+}
+
+func marshalRulePolicy(p *wafconfig.RulePolicy) (string, error) {
+	if p == nil {
+		return "", nil
+	}
+	data, err := json.Marshal(*p)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+func rulePolicyFromRequest(in *request.WafRulePolicy) *wafconfig.RulePolicy {
+	if in == nil {
+		return nil
+	}
+	return &wafconfig.RulePolicy{
+		DisableSQLi:    in.DisableSQLi,
+		DisableXSS:     in.DisableXSS,
+		Strict:         in.Strict,
+		AllowedMethods: in.AllowedMethods,
+	}
+}
+
+func rulePolicyToResponse(p *wafconfig.RulePolicy) *response.WafRulePolicy {
+	if p == nil {
+		return nil
+	}
+	methods := p.AllowedMethods
+	if methods == nil {
+		methods = []string{}
+	}
+	return &response.WafRulePolicy{
+		DisableSQLi:    p.DisableSQLi,
+		DisableXSS:     p.DisableXSS,
+		Strict:         p.Strict,
+		AllowedMethods: methods,
+	}
+}
+
+func rulePolicyValue(p *wafconfig.RulePolicy) response.WafRulePolicy {
+	if converted := rulePolicyToResponse(p); converted != nil {
+		return *converted
+	}
+	return response.WafRulePolicy{AllowedMethods: []string{}}
 }
 
 func rateLimitsToResponse(in []wafconfig.RateLimit) []response.WafRateLimit {

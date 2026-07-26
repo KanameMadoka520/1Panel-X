@@ -7,6 +7,7 @@ package gateway
 
 import (
 	"fmt"
+	"strings"
 	"sync/atomic"
 
 	coreruleset "github.com/corazawaf/coraza-coreruleset/v4"
@@ -29,6 +30,8 @@ type Engine struct {
 	mode         Mode
 	bodyLimit    int
 	auditLogPath string
+	// policy is the detection policy this instance was compiled with.
+	policy enginePolicy
 	// observer is called for every rule match Coraza logs, in BOTH detection and
 	// block mode. It is the only way to see a match in detection mode: nothing is
 	// interrupted there, so the response status carries no signal at all.
@@ -44,8 +47,18 @@ func NewEngineWithAudit(mode Mode, bodyLimit int, auditLogPath string) (*Engine,
 }
 
 func NewEngineWithObserver(mode Mode, bodyLimit int, auditLogPath string, observer func(types.MatchedRule)) (*Engine, error) {
-	e := &Engine{mode: mode, bodyLimit: bodyLimit, auditLogPath: auditLogPath, observer: observer}
-	if err := e.reloadRaw(directivesFor(mode, bodyLimit, auditLogPath)); err != nil {
+	return newEngine(enginePolicy{Mode: mode, BodyLimit: bodyLimit}, auditLogPath, observer)
+}
+
+func newEngine(policy enginePolicy, auditLogPath string, observer func(types.MatchedRule)) (*Engine, error) {
+	e := &Engine{
+		mode:         policy.Mode,
+		bodyLimit:    policy.BodyLimit,
+		auditLogPath: auditLogPath,
+		observer:     observer,
+		policy:       policy,
+	}
+	if err := e.reloadRaw(directivesFor(policy, auditLogPath)); err != nil {
 		return nil, fmt.Errorf("waf init failed: %w", err)
 	}
 	return e, nil
@@ -66,29 +79,54 @@ func (e *Engine) WAF() coraza.WAF {
 type enginePolicy struct {
 	Mode      Mode
 	BodyLimit int
+	// DisableSQLi and DisableXSS are stored as NEGATIVES on purpose: the zero
+	// value of this struct must be the fully-protecting policy, so a site that
+	// configures nothing can never end up with detection silently switched off.
+	DisableSQLi bool
+	DisableXSS  bool
+	// Strict raises the CRS paranoia level, applying stricter checks at the cost
+	// of more false positives.
+	Strict bool
+	// AllowedMethods is the canonical space-separated HTTP method allow-list.
+	// Empty leaves the ruleset's own default in force.
+	AllowedMethods string
 }
 
 func (p enginePolicy) String() string {
-	if p.BodyLimit <= 0 {
-		return string(p.Mode)
+	parts := []string{string(p.Mode)}
+	if p.BodyLimit > 0 {
+		parts = append(parts, fmt.Sprintf("body=%d", p.BodyLimit))
 	}
-	return fmt.Sprintf("%s/body=%d", p.Mode, p.BodyLimit)
+	if p.DisableSQLi {
+		parts = append(parts, "sqli=off")
+	}
+	if p.DisableXSS {
+		parts = append(parts, "xss=off")
+	}
+	if p.Strict {
+		parts = append(parts, "strict")
+	}
+	if p.AllowedMethods != "" {
+		parts = append(parts, "methods="+p.AllowedMethods)
+	}
+	return strings.Join(parts, "/")
 }
 
 // ForMode returns an independently compiled engine with the same body, audit and
 // observer settings. It is used when site policies mix detection and block mode.
 func (e *Engine) ForMode(mode Mode) (*Engine, error) {
-	return NewEngineWithObserver(mode, e.bodyLimit, e.auditLogPath, e.observer)
+	p := e.policy
+	p.Mode = mode
+	return newEngine(p, e.auditLogPath, e.observer)
 }
 
 // ForPolicy compiles a sibling engine for one resolved per-site policy. The
 // observer is inherited, so a site on a non-default policy is still observed.
 func (e *Engine) ForPolicy(p enginePolicy) (*Engine, error) {
-	bodyLimit := p.BodyLimit
-	if bodyLimit <= 0 {
-		bodyLimit = e.bodyLimit
+	if p.BodyLimit <= 0 {
+		p.BodyLimit = e.bodyLimit
 	}
-	return NewEngineWithObserver(p.Mode, bodyLimit, e.auditLogPath, e.observer)
+	return newEngine(p, e.auditLogPath, e.observer)
 }
 
 // maxCompiledEngines bounds how many distinct per-site policies one gateway may
@@ -134,11 +172,15 @@ func (c *engineCache) get(p enginePolicy, host string) (*Engine, error) {
 func (c *engineCache) size() int { return len(c.compiled) }
 
 func (e *Engine) Reload(mode Mode, bodyLimit int) error {
-	if err := e.reloadRaw(directivesFor(mode, bodyLimit, e.auditLogPath)); err != nil {
+	policy := e.policy
+	policy.Mode = mode
+	policy.BodyLimit = bodyLimit
+	if err := e.reloadRaw(directivesFor(policy, e.auditLogPath)); err != nil {
 		return fmt.Errorf("waf reload rejected (keeping running engine): %w", err)
 	}
 	e.mode = mode
 	e.bodyLimit = bodyLimit
+	e.policy = policy
 	return nil
 }
 
@@ -155,11 +197,38 @@ func (e *Engine) reloadRaw(directives string) error {
 	return nil
 }
 
-func directivesFor(mode Mode, bodyLimit int, auditLogPath string) string {
+// CRS rule-id ranges the detection toggles map onto. These are the ONLY ranges a
+// toggle may remove; the initialization (901), common-exception (905), blocking
+// evaluation (949/959) and correlation (980) families are structurally
+// load-bearing — removing 949/959 would silently disable ALL blocking while
+// every attack-class toggle still read "on".
+const (
+	crsSQLiRuleRange = "942011-942560"
+	crsXSSRuleRange  = "941010-941400"
+	// crsSQLLeakageRuleRange is the RESPONSE-side SQL error leakage family. It is
+	// deliberately NOT removed together with the request-side SQLi rules: the
+	// toggle is named "SQL injection protection", and silently widening it to
+	// response inspection would turn one switch into two undisclosed effects.
+	crsSQLLeakageRuleRange = "951010-951260"
+
+	// strictParanoiaLevel is what "strict mode" raises CRS to. PL2 adds
+	// noticeably stricter checks at the cost of more false positives.
+	strictParanoiaLevel = 2
+
+	// setupRuleIDParanoia is our own rule id for the paranoia override. CRS
+	// reserves 900000-900999 for setup and ships those rules commented out, but
+	// we stay well clear of the whole CRS numbering space so a future ruleset
+	// cannot collide with us.
+	setupRuleIDParanoia = 8000001
+	setupRuleIDMethods  = 8000002
+)
+
+func directivesFor(policy enginePolicy, auditLogPath string) string {
 	engineDirective := "SecRuleEngine On"
-	if mode == ModeDetection {
+	if policy.Mode == ModeDetection {
 		engineDirective = "SecRuleEngine DetectionOnly"
 	}
+	bodyLimit := policy.BodyLimit
 	if bodyLimit <= 0 {
 		bodyLimit = defaultBodyLimit
 	}
@@ -167,22 +236,48 @@ func directivesFor(mode Mode, bodyLimit int, auditLogPath string) string {
 	if inMem > inMemoryBodyCap {
 		inMem = inMemoryBodyCap
 	}
-	base := fmt.Sprintf(`Include @coraza.conf-recommended
-Include @crs-setup.conf.example
-Include @owasp_crs/*.conf
-%s
-SecRequestBodyAccess On
-SecRequestBodyLimit %d
-SecRequestBodyInMemoryLimit %d
-SecRequestBodyLimitAction Reject
-`, engineDirective, bodyLimit, inMem)
-	if auditLogPath == "" {
-		return base
+
+	var b strings.Builder
+	b.WriteString("Include @coraza.conf-recommended\n")
+	b.WriteString("Include @crs-setup.conf.example\n")
+
+	// CRS applies its own defaults from REQUEST-901-INITIALIZATION.conf, each
+	// guarded by `SecRule &TX:<var> "@eq 0"` — i.e. only when the variable has
+	// never been set. Phase-1 rules run in definition order, so an override must
+	// be emitted HERE, between the setup include and the rule include. Emitting
+	// it afterwards would run too late: 901 would already have installed the
+	// default and the consuming rules would already have read it.
+	if policy.Strict {
+		fmt.Fprintf(&b, "SecAction \"id:%d,phase:1,pass,t:none,nolog,setvar:tx.blocking_paranoia_level=%d\"\n",
+			setupRuleIDParanoia, strictParanoiaLevel)
 	}
-	return base + fmt.Sprintf(`SecAuditEngine RelevantOnly
-SecAuditLogParts ABHZ
-SecAuditLogFormat json
-SecAuditLogType Serial
-SecAuditLog %s
-`, auditLogPath)
+	if policy.AllowedMethods != "" {
+		// Enforcement rides CRS rule 911100, which refuses any method outside
+		// this list. We never touch 911 itself.
+		fmt.Fprintf(&b, "SecAction \"id:%d,phase:1,pass,t:none,nolog,setvar:'tx.allowed_methods=%s'\"\n",
+			setupRuleIDMethods, policy.AllowedMethods)
+	}
+
+	b.WriteString("Include @owasp_crs/*.conf\n")
+	b.WriteString(engineDirective + "\n")
+	fmt.Fprintf(&b, "SecRequestBodyAccess On\nSecRequestBodyLimit %d\nSecRequestBodyInMemoryLimit %d\nSecRequestBodyLimitAction Reject\n",
+		bodyLimit, inMem)
+
+	if auditLogPath != "" {
+		fmt.Fprintf(&b, "SecAuditEngine RelevantOnly\nSecAuditLogParts ABHZ\nSecAuditLogFormat json\nSecAuditLogType Serial\nSecAuditLog %s\n", auditLogPath)
+	}
+
+	// Removals must come AFTER the rules are loaded. Ranges are used rather than
+	// individual ids because SecRuleRemoveById treats an absent id as a silent
+	// no-op, so a CRS upgrade that renumbers or drops rules can never brick the
+	// configuration. SecRuleUpdateActionById is deliberately never emitted: it
+	// hard-errors on a missing id, which would take every site down on a ruleset
+	// bump, and its multi-id form only applies the first id.
+	if policy.DisableSQLi {
+		fmt.Fprintf(&b, "SecRuleRemoveById %s\n", crsSQLiRuleRange)
+	}
+	if policy.DisableXSS {
+		fmt.Fprintf(&b, "SecRuleRemoveById %s\n", crsXSSRuleRange)
+	}
+	return b.String()
 }

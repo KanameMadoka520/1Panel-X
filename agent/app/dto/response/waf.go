@@ -21,11 +21,15 @@ type WafSiteStatus struct {
 	// UI must show the effective set when reporting what is in force.
 	RateLimits          []WafRateLimit `json:"rateLimits"`
 	EffectiveRateLimits []WafRateLimit `json:"effectiveRateLimits"`
-	Installed           bool           `json:"installed"`
-	Ready               bool           `json:"ready"`
-	Routed              bool           `json:"routed"`
-	Protected           bool           `json:"protected"`
-	LastError           string         `json:"lastError"`
+	// Rules is this site's own detection policy (null when it follows the panel
+	// default); EffectiveRules is what the gateway actually enforces.
+	Rules          *WafRulePolicy `json:"rules"`
+	EffectiveRules WafRulePolicy  `json:"effectiveRules"`
+	Installed      bool           `json:"installed"`
+	Ready          bool           `json:"ready"`
+	Routed         bool           `json:"routed"`
+	Protected      bool           `json:"protected"`
+	LastError      string         `json:"lastError"`
 }
 
 // WafRateLimit mirrors one stored frequency limit.
@@ -85,10 +89,19 @@ type WafLists struct {
 	IPGroups []WafIPGroup   `json:"ipGroups"`
 }
 
+// WafRulePolicy mirrors a stored detection policy.
+type WafRulePolicy struct {
+	DisableSQLi    bool     `json:"disableSqli"`
+	DisableXSS     bool     `json:"disableXss"`
+	Strict         bool     `json:"strict"`
+	AllowedMethods []string `json:"allowedMethods"`
+}
+
 // WafGlobalConfig echoes the stored panel-wide defaults with canonicalized lists.
 type WafGlobalConfig struct {
 	DefaultMode string         `json:"defaultMode"`
 	AllowList   []string       `json:"allowList"`
 	DenyList    []string       `json:"denyList"`
 	RateLimits  []WafRateLimit `json:"rateLimits"`
+	Rules       WafRulePolicy  `json:"rules"`
 }

@@ -18,6 +18,8 @@ gofmt -l \
   "$GW/gateway/ratelimit.go" "$GW/gateway/ratelimit_test.go" "$GW/gateway/bans.go" \
   "$GW/gateway/attack.go" "$GW/gateway/attack_test.go" \
   "$GW/gateway/lists.go" "$GW/gateway/lists_test.go" \
+  "$GW/gateway/admin.go" "$GW/gateway/admin_test.go" \
+  "$GW/gateway/rulepolicy_test.go" \
   "$GW/main.go" || true
 
 echo "=== coraza-gateway: go build ==="
@@ -37,7 +39,10 @@ gofmt -l \
   "$AGENT/utils/wafconfig/ratelimit_test.go" \
   "$AGENT/utils/wafconfig/lists.go" \
   "$AGENT/utils/wafconfig/lists_test.go" \
+  "$AGENT/utils/wafconfig/rulepolicy.go" \
+  "$AGENT/utils/wafconfig/rulepolicy_test.go" \
   "$AGENT/app/service/waf_list.go" \
+  "$AGENT/app/service/waf_ban.go" \
   "$AGENT/app/model/waf.go" \
   "$AGENT/app/repo/waf.go" \
   "$AGENT/app/dto/request/waf.go" \

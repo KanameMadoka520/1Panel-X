@@ -72,6 +72,24 @@
 
         <div class="waf-acl">
             <div class="waf-acl-head">
+                <strong>{{ $t('website.wafDefaultRules') }}</strong>
+                <span>{{ $t('website.wafDefaultRulesTip') }}</span>
+            </div>
+            <DefaultRules
+                v-model="siteRules"
+                :effective="status.effectiveRules"
+                scope="site"
+                :disabled="!status.supported"
+            />
+            <div class="waf-acl-actions">
+                <el-button type="primary" size="small" :loading="saving" :disabled="!status.supported" @click="saveAcl">
+                    {{ $t('commons.button.save') }}
+                </el-button>
+            </div>
+        </div>
+
+        <div class="waf-acl">
+            <div class="waf-acl-head">
                 <strong>{{ $t('website.wafBans') }}</strong>
                 <span>{{ $t('website.wafBansScope') }}</span>
             </div>
@@ -186,6 +204,11 @@
                 <span class="waf-acl-hint">{{ $t('website.wafGlobalRateLimitTip') }}</span>
                 <RateLimits v-model="globalForm.rateLimits" scope="global" />
             </div>
+            <div class="waf-global-rl">
+                <label>{{ $t('website.wafDefaultRules') }}</label>
+                <span class="waf-acl-hint">{{ $t('website.wafGlobalDefaultRulesTip') }}</span>
+                <DefaultRules v-model="globalRules" scope="global" />
+            </div>
             <template #footer>
                 <el-button @click="globalOpen = false">{{ $t('commons.button.cancel') }}</el-button>
                 <el-button type="primary" :loading="globalSaving" @click="saveGlobal">
@@ -205,6 +228,7 @@ import { MsgSuccess } from '@/utils/message';
 import RateLimits from './RateLimits.vue';
 import BlackWhiteLists from './BlackWhiteLists.vue';
 import BanRecords from './BanRecords.vue';
+import DefaultRules from './DefaultRules.vue';
 
 const { t: $t } = useI18n();
 
@@ -229,6 +253,8 @@ const status = reactive<Website.WafSiteStatus>({
     denyList: [],
     rateLimits: [],
     effectiveRateLimits: [],
+    rules: null,
+    effectiveRules: { disableSqli: false, disableXss: false, strict: false, allowedMethods: [] },
     installed: false,
     ready: false,
     routed: false,
@@ -240,6 +266,13 @@ const mode = ref<Website.WafSiteUpdate['mode']>('inherit');
 const allowText = ref('');
 const denyText = ref('');
 const rateLimits = ref<Website.WafRateLimit[]>([]);
+const siteRules = ref<Website.WafRulePolicy | null>(null);
+const globalRules = ref<Website.WafRulePolicy>({
+    disableSqli: false,
+    disableXss: false,
+    strict: false,
+    allowedMethods: [],
+});
 const aclPlaceholder = '203.0.113.10\n198.51.100.0/24\n2001:db8::/32';
 const loadingStatus = ref(false);
 const saving = ref(false);
@@ -315,6 +348,7 @@ const syncFromStatus = (data: Website.WafSiteStatus) => {
     allowText.value = (data.allowList || []).join('\n');
     denyText.value = (data.denyList || []).join('\n');
     rateLimits.value = data.rateLimits || [];
+    siteRules.value = data.rules ?? null;
 };
 
 const loadStatus = async () => {
@@ -338,6 +372,7 @@ const updateConfig = async () => {
             allowList: linesToList(allowText.value),
             denyList: linesToList(denyText.value),
             rateLimits: rateLimits.value,
+            rules: siteRules.value,
         });
         syncFromStatus(res.data);
     } catch {
@@ -354,6 +389,12 @@ const syncGlobal = (data: Website.WafGlobalConfig) => {
     globalForm.allowList = data.allowList || [];
     globalForm.denyList = data.denyList || [];
     globalForm.rateLimits = data.rateLimits || [];
+    globalRules.value = data.rules || {
+        disableSqli: false,
+        disableXss: false,
+        strict: false,
+        allowedMethods: [],
+    };
     globalAllowText.value = (data.allowList || []).join('\n');
     globalDenyText.value = (data.denyList || []).join('\n');
 };
@@ -377,6 +418,7 @@ const saveGlobal = async () => {
             allowList: linesToList(globalAllowText.value),
             denyList: linesToList(globalDenyText.value),
             rateLimits: globalForm.rateLimits,
+            rules: globalRules.value,
         });
         syncGlobal(res.data);
         globalOpen.value = false;
