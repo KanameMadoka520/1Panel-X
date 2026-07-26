@@ -31,12 +31,13 @@ const (
 // Site is the agent-side input for one explicitly enabled reverse-proxy site.
 // The caller remains responsible for loading domains from the managed registry.
 type Site struct {
-	Website  model.Website
-	Domains  []model.WebsiteDomain
-	Enabled  bool
-	Mode     Mode
-	AllowIPs []string
-	DenyIPs  []string
+	Website    model.Website
+	Domains    []model.WebsiteDomain
+	Enabled    bool
+	Mode       Mode
+	AllowIPs   []string
+	DenyIPs    []string
+	RateLimits []RateLimit
 }
 
 // GatewayConfig mirrors the data-plane JSON contract without importing the
@@ -48,13 +49,14 @@ type GatewayConfig struct {
 }
 
 type GatewaySite struct {
-	WebsiteID uint     `json:"websiteId"`
-	Alias     string   `json:"alias"`
-	Host      string   `json:"host"`
-	Upstream  string   `json:"upstream"`
-	Mode      Mode     `json:"mode"`
-	AllowIPs  []string `json:"allowIps,omitempty"`
-	DenyIPs   []string `json:"denyIps,omitempty"`
+	WebsiteID  uint        `json:"websiteId"`
+	Alias      string      `json:"alias"`
+	Host       string      `json:"host"`
+	Upstream   string      `json:"upstream"`
+	Mode       Mode        `json:"mode"`
+	AllowIPs   []string    `json:"allowIps,omitempty"`
+	DenyIPs    []string    `json:"denyIps,omitempty"`
+	RateLimits []RateLimit `json:"rateLimits,omitempty"`
 }
 
 // Build creates a deterministic routing table from the panel's authoritative
@@ -97,6 +99,10 @@ func Build(sites []Site) (GatewayConfig, error) {
 		if err != nil {
 			return GatewayConfig{}, fmt.Errorf("waf config: website %q deny list: %w", alias, err)
 		}
+		rateLimits, err := NormalizeRateLimits(input.RateLimits)
+		if err != nil {
+			return GatewayConfig{}, fmt.Errorf("waf config: website %q rate limits: %w", alias, err)
+		}
 
 		for _, domain := range input.Domains {
 			host, err := normalizeHost(domain.Domain)
@@ -108,13 +114,14 @@ func Build(sites []Site) (GatewayConfig, error) {
 			}
 			seen[host] = alias
 			cfg.Sites = append(cfg.Sites, GatewaySite{
-				WebsiteID: website.ID,
-				Alias:     alias,
-				Host:      host,
-				Upstream:  upstream,
-				Mode:      mode,
-				AllowIPs:  allowIPs,
-				DenyIPs:   denyIPs,
+				WebsiteID:  website.ID,
+				Alias:      alias,
+				Host:       host,
+				Upstream:   upstream,
+				Mode:       mode,
+				AllowIPs:   allowIPs,
+				DenyIPs:    denyIPs,
+				RateLimits: rateLimits,
 			})
 		}
 	}

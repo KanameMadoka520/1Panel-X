@@ -26,6 +26,10 @@ const (
 	EventACLDeny     EventKind = "acl-deny"
 	EventUnknownHost EventKind = "unknown-host"
 	EventOversize    EventKind = "oversize-body"
+	EventRateLimit   EventKind = "ratelimit"
+	EventBan         EventKind = "ban"
+	EventBanned      EventKind = "banned"
+	EventBanReleased EventKind = "ban-released"
 )
 
 const (
@@ -55,9 +59,12 @@ type EnforcementEvent struct {
 	// Rule names the specific list, limit, or rule that fired.
 	Rule string `json:"rule,omitempty"`
 	// Action is what actually happened to the request: "blocked" when it was
-	// refused, "detected" when it was recorded but allowed through. It must
-	// reflect the real outcome, never the configured intent.
+	// refused, "detected" when it was recorded but allowed through, "banned" and
+	// "released" for ban lifecycle records. It must reflect the real outcome,
+	// never the configured intent.
 	Action string `json:"action"`
+	// Detail carries record-specific structured context (e.g. a ban's expiry).
+	Detail string `json:"detail,omitempty"`
 }
 
 // EventJournal appends enforcement events as JSON lines. A journal that cannot

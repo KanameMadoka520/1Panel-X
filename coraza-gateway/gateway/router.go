@@ -44,6 +44,13 @@ func NewRouter(cfg Config, engine *Engine, mode Mode, realIPHeader string) (*Rou
 }
 
 func NewRouterWithJournal(cfg Config, engine *Engine, mode Mode, realIPHeader string, journal *EventJournal) (*Router, error) {
+	return NewRouterWithEnforcer(cfg, engine, mode, realIPHeader, journal, nil)
+}
+
+// NewRouterWithEnforcer builds the routing table over shared enforcement state.
+// The enforcer is owned by the process, not by the routing table, so rebuilding
+// the table on a config reload does not reset live bans or counters.
+func NewRouterWithEnforcer(cfg Config, engine *Engine, mode Mode, realIPHeader string, journal *EventJournal, enforcer *Enforcer) (*Router, error) {
 	rt := &Router{handlers: make(map[string]http.Handler, len(cfg.Sites)), journal: journal}
 	cache := newEngineCache(engine, enginePolicy{Mode: mode})
 	for _, s := range cfg.Sites {
@@ -75,7 +82,8 @@ func NewRouterWithJournal(cfg Config, engine *Engine, mode Mode, realIPHeader st
 			WithRealIPHeader(realIPHeader).
 			WithIPACL(acl).
 			WithSite(siteRef{WebsiteID: s.WebsiteID, Host: host}).
-			WithJournal(journal)
+			WithJournal(journal).
+			WithEnforcer(enforcer, s.RateLimits)
 		rt.handlers[host] = h
 	}
 	rt.engines = cache.size()

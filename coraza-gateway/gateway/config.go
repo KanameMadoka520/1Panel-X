@@ -22,6 +22,9 @@ type SiteConfig struct {
 	// are explicit operator ACLs honored regardless of Mode; deny wins.
 	AllowIPs []string `json:"allowIps,omitempty"`
 	DenyIPs  []string `json:"denyIps,omitempty"`
+	// RateLimits are this site's frequency limits. They are evaluated after the
+	// IP ACL, so an allow-listed client is never rate-limited.
+	RateLimits []RateLimitConfig `json:"rateLimits,omitempty"`
 }
 
 // Config is the gateway's versioned per-site routing table.
@@ -93,6 +96,18 @@ func ParseConfig(data []byte) (Config, error) {
 		}
 		if _, err := parseIPNets(c.Sites[i].DenyIPs); err != nil {
 			return Config{}, fmt.Errorf("waf config: site %q deny %w", host, err)
+		}
+		seenKinds := make(map[RateLimitKind]struct{}, len(c.Sites[i].RateLimits))
+		for _, rl := range c.Sites[i].RateLimits {
+			if err := rl.validate(); err != nil {
+				return Config{}, fmt.Errorf("waf config: site %q %w", host, err)
+			}
+			// Two limits of the same kind would share a counter key and silently
+			// enforce whichever threshold happened to be checked first.
+			if _, dup := seenKinds[rl.Kind]; dup {
+				return Config{}, fmt.Errorf("waf config: site %q has duplicate rate limit kind %q", host, rl.Kind)
+			}
+			seenKinds[rl.Kind] = struct{}{}
 		}
 	}
 	return c, nil

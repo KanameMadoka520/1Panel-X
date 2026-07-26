@@ -15,6 +15,7 @@ gofmt -l \
   "$GW/gateway/router.go" "$GW/gateway/config.go" "$GW/gateway/blockpage.go" \
   "$GW/gateway/reload.go" "$GW/gateway/reload_test.go" "$GW/gateway/engine.go" \
   "$GW/gateway/health.go" "$GW/gateway/events.go" "$GW/gateway/events_test.go" \
+  "$GW/gateway/ratelimit.go" "$GW/gateway/ratelimit_test.go" "$GW/gateway/bans.go" \
   "$GW/main.go" || true
 
 echo "=== coraza-gateway: go build ==="
@@ -30,6 +31,8 @@ gofmt -l \
   "$AGENT/utils/wafconfig/ipacl_test.go" \
   "$AGENT/utils/wafconfig/config.go" \
   "$AGENT/utils/wafconfig/config_test.go" \
+  "$AGENT/utils/wafconfig/ratelimit.go" \
+  "$AGENT/utils/wafconfig/ratelimit_test.go" \
   "$AGENT/app/model/waf.go" \
   "$AGENT/app/repo/waf.go" \
   "$AGENT/app/dto/request/waf.go" \

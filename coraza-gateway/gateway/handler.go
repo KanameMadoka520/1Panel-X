@@ -29,6 +29,11 @@ type Handler struct {
 	site siteRef
 	// journal records non-CRS decisions. nil disables recording.
 	journal *EventJournal
+	// enforcer holds the process-wide ban table and rate-limit counters. It is
+	// shared across config reloads so a policy save does not erase live state.
+	enforcer *Enforcer
+	// rateLimits are this site's configured frequency limits.
+	rateLimits []RateLimitConfig
 }
 
 func NewHandler(engine *Engine, upstream http.Handler, mode Mode) *Handler {
@@ -45,6 +50,13 @@ func (h *Handler) WithSite(site siteRef) *Handler {
 // chaining. A nil journal is a no-op.
 func (h *Handler) WithJournal(j *EventJournal) *Handler {
 	h.journal = j
+	return h
+}
+
+// WithEnforcer attaches the shared ban/rate-limit state and this site's limits.
+func (h *Handler) WithEnforcer(e *Enforcer, limits []RateLimitConfig) *Handler {
+	h.enforcer = e
+	h.rateLimits = limits
 	return h
 }
 
@@ -103,10 +115,27 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// A trusted (allow-listed) client bypasses CRS inspection but is still proxied
-	// through the same hardened reverse proxy.
+	// through the same hardened reverse proxy. The operator's explicit exemption
+	// also outranks bans and frequency limits — those are automatic heuristics,
+	// this is a deliberate decision — so it is evaluated before both.
 	if decision == aclAllow {
 		h.serveTrusted(w, r)
 		return
+	}
+	// A client already banned is refused before any counting: letting a banned
+	// client keep feeding the counters that banned it would extend its own ban
+	// for as long as it keeps knocking.
+	if entry, ok := h.enforcer.Banned(clientIPString(r.RemoteAddr)); ok {
+		h.recordEvent(r, EventBanned, "ratelimit:"+string(entry.Kind), "blocked")
+		writeForbidden(w)
+		return
+	}
+	if out := h.enforcer.CountRequest(h.site, h.rateLimits, r); out.Triggered {
+		h.recordEvent(r, EventRateLimit, out.Rule, outcomeAction(out))
+		if out.Banned {
+			writeForbidden(w)
+			return
+		}
 	}
 	// ran records whether the upstream was actually invoked, so we can tell a
 	// WAF interruption (upstream never ran) from a real upstream 4xx/5xx, and so
@@ -135,6 +164,23 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !ran && bw.status >= 400 && !bw.wroteBody {
 		writeBlockPage(bw)
 	}
+
+	// Response-status limits are counted after the fact. A ban installed here
+	// cannot retroactively refuse THIS request — the response is already on the
+	// wire — it takes effect from the next one, which is exactly how a scanner
+	// tripping a 404 threshold is supposed to behave.
+	if out := h.enforcer.CountStatus(h.site, h.rateLimits, r, bw.status); out.Triggered {
+		h.recordEvent(r, EventRateLimit, out.Rule, outcomeAction(out))
+	}
+}
+
+// outcomeAction reports what actually happened, not what was configured: a limit
+// with no ban duration is recorded as detected because the request went through.
+func outcomeAction(out rateLimitOutcome) string {
+	if out.Banned {
+		return "blocked"
+	}
+	return "detected"
 }
 
 // serveTrusted forwards an allow-listed request straight to the origin without

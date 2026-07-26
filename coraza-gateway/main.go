@@ -59,8 +59,12 @@ func main() {
 		// it — otherwise those blocks would be enforced but unreportable.
 		journal := gateway.NewEventJournal(*eventLog)
 		defer func() { _ = journal.Close() }()
+		// The enforcer outlives every routing table: bans and rate-limit counters
+		// must survive a config reload, otherwise saving an unrelated setting
+		// would silently un-ban everyone.
+		enforcer := gateway.NewEnforcer(journal)
 		build := func(cfg gateway.Config) (*gateway.Router, error) {
-			return gateway.NewRouterWithJournal(cfg, engine, mode, *realIP, journal)
+			return gateway.NewRouterWithEnforcer(cfg, engine, mode, *realIP, journal, enforcer)
 		}
 		live, rerr := gateway.NewReloadableRouter(*config, mode, build)
 		if rerr != nil {
