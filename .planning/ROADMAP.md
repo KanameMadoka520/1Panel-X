@@ -222,16 +222,41 @@ Key finding: the community source already ships a **hollow mTLS shell** (two-mod
 
 Release: `v1.5.0-open.1`. Milestone audit: `gaps_found` — cross-network live acceptance (Slice C) + browser UAT pending; not archived.
 
+## Current Milestone: v1.6 Website Access Monitoring (code-complete, unreleased)
+
+The CI-verifiable half of the monitoring/WAF domain: parse each site's nginx access log into durable per-hour statistics and rankings, then surface them as a dashboard. Design: `.planning/research/WEBSITE-MONITORING-DESIGN.md`.
+
+- [x] **Phase 16: Access-log parser + aggregator (pure functions)** — nginx `main`-format parser + time-bucketed PV/UV/QPS/status-class aggregation + top-N ranking, with M1 control-character stripping and M2 bounded-DoS handling. 13/13 CI.
+- [x] **Phase 17: Monitoring backend** — new `website_stat.db` (`WebsiteAccessStat` / `WebsiteAccessRank` / `WebsiteAccessCursor`); per-site offset-incremental `access.log` tail; **hold-back settlement of closed hourly buckets only, so UV is exact**; geo ranking reuses the existing `agent/utils/geo` (graceful degradation when the mmdb is absent); crash-self-healing idempotent writes; 30-day retention; 10-minute cron; `POST /websites/:id/monitor/stat|rank`.
+- [x] **Phase 18: Monitoring dashboard (frontend)** — range 24h/7d/30d, PV / peak-UV / traffic cards, PV·UV and 2xx/4xx/5xx trend charts, URI/IP/Referer/region top-N tables. ESLint + `build:pro` clean.
+
+Adversarial review done (2026-07-15). Release: **pending** — no artifact built yet.
+
+## Current Milestone: v1.7 WAF-Proper, own engine (code-complete, unreleased)
+
+The closed `1pwaf`/OpenResty Lua engine is **absent** from the community tree (its `createWafConfig`/`moveDefaultWafConfig`/`delWafConfig` helpers are filesystem shims that must never be surfaced as a working WAF — red-line W11). So the community WAF is a **real engine of our own**: OWASP Coraza v3 + CRS v4 (PL1) compiled into a loopback reverse-proxy sidecar (`coraza-gateway/`, a third Go module) placed behind OpenResty's TLS termination. Threat model W1–W12: `.planning/research/WAF-ENGINE-DESIGN.md`. Decision: `.planning/v1.7-MILESTONE-DECISION.md`.
+
+- [x] **Phase 19: Engine** — compile-then-swap atomic reload (W9), detection/block modes, decode/normalize (W2/W4), recover block-vs-pass (W1), listener timeouts + body caps (W3), no-leak block page + fingerprint stripping (W7). 10/10 CI: SQLi/XSS/traversal→403, clean→200, detection passes+logs, bad ruleset keeps the old engine, oversize rejected, panic recovered.
+- [x] **Phase 20: Attack-event store** — gateway emits a Coraza JSON audit log; agent `wafaudit` parser (ModSecurity brackets in `error_message`, primary attack rule over anomaly-eval, all attacker fields W6-sanitized); `waf.db` store + offset tailer + host→websiteID resolution + TxID-deduped idempotent ingest + retention prune + `POST /websites/:id/waf/events`.
+- [x] **Phase 21: Packaging + config generation** — compose app asset (our own directory, never `1pwaf/data`); `agent/utils/wafconfig` deterministic routing-table generation with a SHA-256 `generation` hash; port-insensitive host normalization with explicit collision rejection (W12); multi-site Host dispatch with unknown-Host default-deny.
+- [x] **Phase 22: Per-site nginx wiring** — real `root.conf` `proxy_pass` re-routing to the gateway, aligned `client_max_body_size`, generation-gated readiness probe, nginx check/reload with full rollback of config + policy + gateway on any failure, honest `protected` derived from gateway readiness **and** actual routing. **Verified live on the experiment VPS.**
+- [x] **Phase 23: Site policy UI + IP access lists + two-tier spine** — per-site enable/mode/attack-log tab; per-site IP allow/deny lists (deny→403 in both modes evaluated before CRS; allow bypasses CRS yet is still proxied through the hardened reverse proxy and still body-capped; IPv4/IPv6 + CIDR; invalid entries fail startup; canonicalized/deduped/sorted, capped at 512); panel-wide `WafGlobalPolicy` defaults with an explicit `"inherit"` site sentinel and control-plane list merging (`MergeIPLists`), `GET/POST /websites/waf/global`.
+
+Automated gates green across all three modules (gateway + `wafconfig` + `waf_control` Go tests, ESLint, `build:pro`). Release: **pending**. Live blocking, IP-list enforcement, and two-tier behavior in a browser remain **human UAT** — explicitly deferred by the user on 2026-07-26 and therefore still `pending`, never marked passed.
+
+## Next Domain: Community WAF Pro-Parity Build-Out
+
+The user supplied 10 screenshots of the commercial WAF on 2026-07-26; the observed **user-visible surface** (7 tabs: overview / attack reports / intercept log / ban log / black-white lists / site settings / global settings) is recorded in `.planning/research/WAF-PRO-PARITY.md`, together with honesty traps R1–R7. Candidate capabilities, none yet implemented: rate limiting (access/attack/404/URL) with temporary IP bans, URL / User-Agent / IP-group black-white lists, geo access restrictions, file-upload limits, a CDN real-IP header list, CRS rule-group toggles, custom condition→action rules, and a dedicated top-level WAF page. A gap matrix and phase plan are being produced from a 6-area code recon; nothing here may be described as implemented until it is.
+
 ## Future Milestone Themes
 
-These themes are intentionally outside v1.0–v1.5. They have no current phase number and must not be described as implemented. Ordering reflects the dependency graph and risk ranking in `.planning/research/CAPABILITY-MATRIX.md`:
+These themes are intentionally outside v1.0–v1.7. They have no current phase number and must not be described as implemented. Ordering reflects the dependency graph and risk ranking in `.planning/research/CAPABILITY-MATRIX.md`:
 
-1. Advanced WAF and website request monitoring.
-2. Secure multi-node enrollment, synchronization, overview, and RBAC.
-3. Website anti-tamper, operations reports, Skills Hub, and AI benchmark testing.
-4. Custom repositories, proxy enhancements, model downloads, and vLLM management.
-5. Database high availability, a complete AI gateway, virtual machines, mobile clients, local AI site building, and independent SMS delivery.
+1. Website anti-tamper, operations reports, Skills Hub, and AI benchmark testing.
+2. Custom repositories, proxy enhancements, model downloads, and vLLM management.
+3. Multi-node synchronization, overview, and RBAC (enrollment + mTLS federation already shipped in v1.5).
+4. Database high availability, a complete AI gateway, virtual machines, mobile clients, local AI site building, and independent SMS delivery.
 
 ---
-*Roadmap created: 2026-07-10*
-*Current milestone: v1.5 Secure Multi-Node (keystone) — backend PKI+enrollment+mTLS proxy (both modules) + community node UI shipped as v1.5.0-open.1; cross-network live acceptance deferred (Slice C, needs 2nd VPS). v1.0–v1.4 UAT debt persists.*
+*Roadmap created: 2026-07-10 · last updated: 2026-07-26*
+*Current milestones: v1.6 Website Access Monitoring and v1.7 WAF-Proper are both code-complete and CI-green but **unreleased**. Next domain is the community WAF Pro-parity build-out. v1.0–v1.5 shipped; v1.5 Slice C (cross-network acceptance) and all accumulated browser/VPS UAT debt persist.*
