@@ -3287,6 +3287,9 @@ const message = {
         wafLogSettingsTip: '控制记录保留多久，以及哪些类型干脆不记。',
         wafLogRetention: '保留天数',
         wafLogRetentionTip: '超过这个天数的攻击记录会被清理。清理由面板执行——记录进的是面板的库，删除权不该交给网关。',
+        wafLogMaxSize: '最大体积 (MB)',
+        wafLogMaxSizeTip:
+            '0 表示使用内置上限 256MB。写满后停止新增记录而不是滚动覆盖——丢掉还没被面板摄入的旧记录是不可恢复的。',
         wafLogExcluded: '不记录的类型',
         wafLogExcludedTip: '勾上的类型将完全不写入。适合某一类记录刷屏时单独关掉，而不必连其余的一起丢。',
         wafKind_acl_deny: '黑名单拦截',

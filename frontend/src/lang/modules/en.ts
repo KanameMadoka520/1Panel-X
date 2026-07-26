@@ -3546,6 +3546,9 @@ const message = {
         wafLogRetention: 'Retention',
         wafLogRetentionTip:
             'Attack records older than this are removed. The panel does the removing — the records land in its database, so deletion does not belong to the gateway.',
+        wafLogMaxSize: 'Max size (MB)',
+        wafLogMaxSizeTip:
+            '0 keeps the built-in 256 MB ceiling. Once full, new records stop rather than overwriting old ones — discarding records the panel has not ingested yet cannot be undone.',
         wafLogExcluded: 'Do not record',
         wafLogExcludedTip:
             'A checked kind is not written at all. Useful when one kind floods the log, without losing the rest with it.',

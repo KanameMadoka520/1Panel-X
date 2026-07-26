@@ -147,8 +147,11 @@ func BuildWithOptions(sites []Site, opts BuildOptions) (GatewayConfig, error) {
 		if err != nil {
 			return GatewayConfig{}, fmt.Errorf("waf config: log settings: %w", err)
 		}
-		if len(log.ExcludedKinds) > 0 {
-			cfg.Log = &GatewayLogSettings{ExcludedKinds: log.ExcludedKinds}
+		if len(log.ExcludedKinds) > 0 || log.MaxMB > 0 {
+			cfg.Log = &GatewayLogSettings{
+				ExcludedKinds: log.ExcludedKinds,
+				MaxBytes:      int64(log.MaxMB) << 20,
+			}
 		}
 	}
 	seen := make(map[string]string)

@@ -162,7 +162,16 @@ type LogSettings struct {
 	// ExcludedKinds are record kinds not to write at all. An operator drowning in
 	// one kind can turn it off rather than lose the rest.
 	ExcludedKinds []string `json:"excludedKinds,omitempty"`
+	// MaxBytes caps the journal. Zero keeps the built-in ceiling.
+	MaxBytes int64 `json:"maxBytes,omitempty"`
 }
+
+const (
+	// minJournalBytes keeps a cap from being set so low the journal is useless.
+	minJournalBytes = 1 << 20
+	// maxJournalBytesLimit is the ceiling an operator may raise the cap to.
+	maxJournalBytesLimit = 8 << 30
+)
 
 // knownEventKinds is the closed set an exclusion may name. An unknown kind is
 // refused rather than ignored: silently accepting "ratelimits" (plural) would
@@ -189,6 +198,9 @@ func (l LogSettings) validate() error {
 		if _, ok := knownEventKinds[kind]; !ok {
 			return fmt.Errorf("unknown record kind %q", k)
 		}
+	}
+	if l.MaxBytes != 0 && (l.MaxBytes < minJournalBytes || l.MaxBytes > maxJournalBytesLimit) {
+		return fmt.Errorf("record log size must be between %d and %d bytes", minJournalBytes, maxJournalBytesLimit)
 	}
 	return nil
 }

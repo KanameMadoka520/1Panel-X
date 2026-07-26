@@ -38,6 +38,11 @@
                 />
                 <span class="waf-cfg-hint">{{ $t('website.wafLogRetentionTip') }}</span>
             </div>
+            <div class="waf-cfg-row">
+                <span class="waf-cfg-label">{{ $t('website.wafLogMaxSize') }}</span>
+                <el-input-number v-model="log.maxMb" :min="0" :max="8192" size="small" controls-position="right" />
+                <span class="waf-cfg-hint">{{ $t('website.wafLogMaxSizeTip') }}</span>
+            </div>
             <div class="waf-cfg-row waf-cfg-row-top">
                 <span class="waf-cfg-label">{{ $t('website.wafLogExcluded') }}</span>
                 <div class="waf-cfg-kinds">

@@ -94,6 +94,33 @@ type EventJournal struct {
 	// process-wide journal so a config reload updates it without discarding what
 	// is already written.
 	excluded map[EventKind]struct{}
+	// maxBytes caps the journal; zero means the built-in ceiling.
+	maxBytes int64
+}
+
+// SetMaxBytes raises or lowers the journal cap. Lowering it below what is
+// already written stops further writes rather than truncating: discarding
+// records the control plane has not ingested yet would lose them permanently,
+// and an operator shrinking a cap is asking for less growth, not for deletion.
+func (j *EventJournal) SetMaxBytes(limit int64) {
+	if j == nil {
+		return
+	}
+	j.mu.Lock()
+	j.maxBytes = limit
+	// A cap raised above the current size revives a journal that had stopped.
+	if j.full && j.written < j.limit() {
+		j.full = false
+	}
+	j.mu.Unlock()
+}
+
+// limit resolves the cap in force. Callers must hold the lock.
+func (j *EventJournal) limit() int64 {
+	if j.maxBytes > 0 {
+		return j.maxBytes
+	}
+	return maxEventJournalBytes
 }
 
 // SetExcluded replaces the set of record kinds that are not written.
@@ -166,9 +193,9 @@ func (j *EventJournal) Record(e EnforcementEvent) {
 		return
 	}
 	line = append(line, '\n')
-	if j.written+int64(len(line)) > maxEventJournalBytes {
+	if j.written+int64(len(line)) > j.limit() {
 		j.full = true
-		log.Printf("coraza-gateway: enforcement journal reached %d bytes; not recording further events", maxEventJournalBytes)
+		log.Printf("coraza-gateway: enforcement journal reached %d bytes; not recording further events", j.limit())
 		return
 	}
 	n, err := j.file.Write(line)

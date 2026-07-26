@@ -72,6 +72,7 @@ func NewRouterWithGeo(cfg Config, engine *Engine, mode Mode, realIPHeader string
 	// journal, so a reload updates them without discarding what is already
 	// written.
 	journal.SetExcluded(cfg.Log.excludedKinds())
+	journal.SetMaxBytes(cfg.Log.MaxBytes)
 	// The attack limit lives on the process-wide enforcer, so a reload updates the
 	// threshold without discarding the counts accumulated so far.
 	enforcer.SetAttackLimit(cfg.AttackRateLimit)

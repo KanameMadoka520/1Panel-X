@@ -181,4 +181,5 @@ type WafBlockPage struct {
 type WafLogSettings struct {
 	RetentionDays int      `json:"retentionDays" validate:"omitempty,min=1,max=3650"`
 	ExcludedKinds []string `json:"excludedKinds" validate:"omitempty,max=16,dive,max=32"`
+	MaxMB         int      `json:"maxMb" validate:"omitempty,min=1,max=8192"`
 }

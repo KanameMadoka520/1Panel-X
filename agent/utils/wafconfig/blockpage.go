@@ -79,22 +79,35 @@ var EventKinds = []string{
 type LogSettings struct {
 	RetentionDays int      `json:"retentionDays,omitempty"`
 	ExcludedKinds []string `json:"excludedKinds,omitempty"`
+	// MaxMB caps the data plane's record file. Zero keeps the built-in ceiling.
+	MaxMB int `json:"maxMb,omitempty"`
 }
 
 // GatewayLogSettings is the subset the data plane is given.
 type GatewayLogSettings struct {
 	ExcludedKinds []string `json:"excludedKinds,omitempty"`
+	MaxBytes      int64    `json:"maxBytes,omitempty"`
 }
+
+const (
+	// MinLogMB and MaxLogMB bound the record file cap: too small and the journal
+	// is useless, too large and it is not a cap.
+	MinLogMB = 1
+	MaxLogMB = 8192
+)
 
 // IsZero reports the default record policy.
 func (l *LogSettings) IsZero() bool {
-	return l == nil || (l.RetentionDays == 0 && len(l.ExcludedKinds) == 0)
+	return l == nil || (l.RetentionDays == 0 && len(l.ExcludedKinds) == 0 && l.MaxMB == 0)
 }
 
 // NormalizeLogSettings validates and canonicalizes the record policy.
 func NormalizeLogSettings(l LogSettings) (LogSettings, error) {
 	if l.RetentionDays < 0 || l.RetentionDays > MaxRetentionDays {
 		return LogSettings{}, fmt.Errorf("retention must be between 1 and %d days", MaxRetentionDays)
+	}
+	if l.MaxMB != 0 && (l.MaxMB < MinLogMB || l.MaxMB > MaxLogMB) {
+		return LogSettings{}, fmt.Errorf("record log size must be between %d and %d MB", MinLogMB, MaxLogMB)
 	}
 	known := make(map[string]struct{}, len(EventKinds))
 	for _, k := range EventKinds {

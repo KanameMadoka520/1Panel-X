@@ -190,4 +190,5 @@ type WafBlockPage struct {
 type WafLogSettings struct {
 	RetentionDays int      `json:"retentionDays"`
 	ExcludedKinds []string `json:"excludedKinds"`
+	MaxMB         int      `json:"maxMb"`
 }

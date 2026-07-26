@@ -134,6 +134,45 @@ func TestExcludedRecordKindsAreNotWritten(t *testing.T) {
 	}
 }
 
+// The cap must actually cap, and lowering it must stop growth rather than
+// truncate: discarding records the control plane has not ingested yet cannot be
+// undone, whereas dropping new ones can be recovered from.
+func TestJournalSizeCapIsConfigurable(t *testing.T) {
+	dir := t.TempDir()
+	journal := NewEventJournal(dir + "/events.log")
+	defer journal.Close()
+	journal.SetMaxBytes(minJournalBytes)
+
+	// A tiny cap stops writing almost at once.
+	journal.SetMaxBytes(200)
+	for i := 0; i < 20; i++ {
+		journal.Record(EnforcementEvent{Kind: EventACLDeny, Action: "blocked", Rule: "some-rule"})
+	}
+	written := readJournal(t, dir+"/events.log")
+	if len(written) == 0 {
+		t.Fatal("the cap must not stop the very first record")
+	}
+	if len(written) >= 20 {
+		t.Fatalf("the cap must stop further records, got %d", len(written))
+	}
+	// Raising it revives the journal rather than requiring a restart.
+	journal.SetMaxBytes(0)
+	journal.Record(EnforcementEvent{Kind: EventACLDeny, Action: "blocked", Rule: "after-raise"})
+	after := readJournal(t, dir+"/events.log")
+	if len(after) != len(written)+1 {
+		t.Fatalf("raising the cap must resume recording, got %d then %d", len(written), len(after))
+	}
+	// And the config refuses a nonsense cap rather than accepting it.
+	for _, bad := range []int64{1, minJournalBytes - 1, maxJournalBytesLimit + 1} {
+		if err := (LogSettings{MaxBytes: bad}).validate(); err == nil {
+			t.Fatalf("cap %d must be refused", bad)
+		}
+	}
+	if err := (LogSettings{MaxBytes: 0}).validate(); err != nil {
+		t.Fatalf("zero must mean the built-in ceiling: %v", err)
+	}
+}
+
 func TestUnknownRecordKindIsRefused(t *testing.T) {
 	if err := (LogSettings{ExcludedKinds: []string{"ratelimits"}}).validate(); err == nil {
 		t.Fatal("a misspelled record kind must be refused, not silently ignored")

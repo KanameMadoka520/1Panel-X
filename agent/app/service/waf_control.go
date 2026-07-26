@@ -593,6 +593,7 @@ func (s *WafControlService) UpdateGlobal(req request.WafGlobalUpdate) (response.
 		normalized, err := wafconfig.NormalizeLogSettings(wafconfig.LogSettings{
 			RetentionDays: req.Log.RetentionDays,
 			ExcludedKinds: req.Log.ExcludedKinds,
+			MaxMB:         req.Log.MaxMB,
 		})
 		if err != nil {
 			return response.WafGlobalConfig{}, fmt.Errorf("invalid WAF record policy: %w", err)
@@ -1230,7 +1231,7 @@ func logSettingsValue(l *wafconfig.LogSettings) response.WafLogSettings {
 	if kinds == nil {
 		kinds = []string{}
 	}
-	return response.WafLogSettings{RetentionDays: l.RetentionDays, ExcludedKinds: kinds}
+	return response.WafLogSettings{RetentionDays: l.RetentionDays, ExcludedKinds: kinds, MaxMB: l.MaxMB}
 }
 
 // --- detection-policy storage helpers --------------------------------------

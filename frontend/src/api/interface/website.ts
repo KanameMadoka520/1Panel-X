@@ -990,6 +990,8 @@ export namespace Website {
     export interface WafLogSettings {
         retentionDays: number;
         excludedKinds: string[];
+        // Caps the data plane's record file in MB. 0 keeps the built-in ceiling.
+        maxMb: number;
     }
 
     export interface WafEventReq {

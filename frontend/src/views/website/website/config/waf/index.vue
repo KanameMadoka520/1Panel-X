@@ -364,7 +364,7 @@ const globalRegion = ref<Website.WafRegionPolicy>({ mode: 'deny', regions: [], e
 // a switch that cannot take effect.
 const globalGeoAvailable = ref(true);
 const globalBlockPage = reactive<Website.WafBlockPage>({ status: 403, html: '' });
-const globalLog = reactive<Website.WafLogSettings>({ retentionDays: 30, excludedKinds: [] });
+const globalLog = reactive<Website.WafLogSettings>({ retentionDays: 30, excludedKinds: [], maxMb: 0 });
 // Supplied by the server so the UI can never offer a record kind the data plane
 // does not know.
 const globalRecordKinds = ref<string[]>([]);
@@ -488,6 +488,7 @@ const syncGlobal = (data: Website.WafGlobalConfig) => {
     globalBlockPage.html = data.blockPage?.html || '';
     globalLog.retentionDays = data.log?.retentionDays || 30;
     globalLog.excludedKinds = data.log?.excludedKinds || [];
+    globalLog.maxMb = data.log?.maxMb || 0;
     globalRecordKinds.value = data.recordKinds || [];
     globalAllowText.value = (data.allowList || []).join('\n');
     globalDenyText.value = (data.denyList || []).join('\n');
@@ -515,7 +516,11 @@ const saveGlobal = async () => {
             rules: globalRules.value,
             region: globalRegion.value,
             blockPage: { ...globalBlockPage },
-            log: { retentionDays: globalLog.retentionDays, excludedKinds: [...globalLog.excludedKinds] },
+            log: {
+                retentionDays: globalLog.retentionDays,
+                excludedKinds: [...globalLog.excludedKinds],
+                maxMb: globalLog.maxMb,
+            },
         });
         syncGlobal(res.data);
         globalOpen.value = false;
