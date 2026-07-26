@@ -418,6 +418,10 @@ export const UpdateWafSite = (id: number, req: Website.WafSiteUpdate) => {
     return http.post<Website.WafSiteStatus>(`/websites/${id}/waf/config`, req);
 };
 
+export const LoadWafBlocks = (id: number, req: Website.WafBlockReq) => {
+    return http.post<ResPage<Website.WafBlockRecord>>(`/websites/${id}/waf/blocks`, req);
+};
+
 export const LoadWafEvents = (id: number, req: Website.WafEventReq) => {
     return http.post<ResPage<Website.WafEvent>>(`/websites/${id}/waf/events`, req);
 };

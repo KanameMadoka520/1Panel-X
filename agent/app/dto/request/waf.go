@@ -12,6 +12,17 @@ type WafEventSearch struct {
 	PageSize  int       `json:"pageSize"`
 }
 
+// WafBlockSearch queries a website's enforcement records — the decisions the
+// gateway made on its own, which never appear in the rule set's audit log.
+// An empty range defaults to the last 7 days; Kind optionally filters.
+type WafBlockSearch struct {
+	StartTime time.Time `json:"startTime"`
+	EndTime   time.Time `json:"endTime"`
+	Kind      string    `json:"kind" validate:"omitempty,max=32"`
+	Page      int       `json:"page"`
+	PageSize  int       `json:"pageSize"`
+}
+
 // WafRateLimit is one frequency limit. BanSec 0 means the limit is recorded but
 // does not ban — the per-limit equivalent of the engine's detection mode.
 type WafRateLimit struct {

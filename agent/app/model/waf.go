@@ -24,6 +24,32 @@ type WafAttackEvent struct {
 	Action      string    `json:"action"` // "blocked" | "detected"
 }
 
+// WafBlockRecord is one decision the GATEWAY made on its own — a deny list hit,
+// a custom rule, a region refusal, a frequency limit, a ban, a challenge, an
+// unknown host, an oversize body. None of these appear in the rule set's audit
+// log, so without this table they would enforce correctly and be invisible.
+//
+// Every attacker-influenced field has been sanitized (control-char strip +
+// length cap) on the way in.
+type WafBlockRecord struct {
+	BaseModel
+	// RecordID is the gateway's own id for the line, unique so re-reading a
+	// region of the journal after a crash cannot double-count it.
+	RecordID  string    `gorm:"uniqueIndex;size:64" json:"recordID"`
+	WebsiteID uint      `gorm:"index:idx_waf_block_site_time" json:"websiteID"`
+	Time      time.Time `gorm:"index:idx_waf_block_site_time" json:"time"`
+	Kind      string    `gorm:"index;size:32" json:"kind"`
+	Host      string    `gorm:"size:253" json:"host"`
+	SourceIP  string    `gorm:"index;size:45" json:"sourceIP"`
+	Method    string    `gorm:"size:16" json:"method"`
+	URI       string    `gorm:"size:1024" json:"uri"`
+	Rule      string    `gorm:"size:128" json:"rule"`
+	// Action is what actually happened: "blocked", "detected", "challenged",
+	// "banned" or "released". It reflects the real outcome, never the intent.
+	Action string `gorm:"size:16" json:"action"`
+	Detail string `gorm:"size:256" json:"detail"`
+}
+
 // WafAuditCursor tracks how far the audit log has been ingested (one row per
 // audit-file path) so the tailer only reads new bytes.
 type WafAuditCursor struct {

@@ -994,6 +994,31 @@ export namespace Website {
         maxMb: number;
     }
 
+    // One decision the gateway made on its own — a deny list hit, a custom rule,
+    // a region refusal, a frequency limit, a ban, a challenge, an unknown host,
+    // an oversize body. None of these appear in the rule set's audit log.
+    export interface WafBlockReq {
+        startTime?: string;
+        endTime?: string;
+        kind?: string;
+        page: number;
+        pageSize: number;
+    }
+
+    export interface WafBlockRecord {
+        id: number;
+        time: string;
+        kind: string;
+        host: string;
+        sourceIP: string;
+        method: string;
+        uri: string;
+        rule: string;
+        // What actually happened, never what was configured.
+        action: string;
+        detail: string;
+    }
+
     export interface WafEventReq {
         startTime?: string;
         endTime?: string;

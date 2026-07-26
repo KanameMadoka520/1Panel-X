@@ -66,6 +66,7 @@ var (
 	wafBanService             = service.NewIWafBanService()
 	wafCustomRuleService      = service.NewIWafCustomRuleService()
 	wafUploadRuleService      = service.NewIWafUploadRuleService()
+	wafBlockRecordService     = service.NewIWafBlockRecordService()
 
 	nginxService = service.NewINginxService()
 

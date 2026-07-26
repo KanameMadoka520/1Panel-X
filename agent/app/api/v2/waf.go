@@ -33,6 +33,33 @@ func (b *BaseApi) LoadWafEvents(c *gin.Context) {
 	helper.SuccessWithData(c, res)
 }
 
+// @Tags Website
+// @Summary Load a website's WAF enforcement records
+// @Accept json
+// @Param id path integer true "website id"
+// @Param request body request.WafBlockSearch true "request"
+// @Success 200 {object} dto.PageResult
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /websites/{id}/waf/blocks [post]
+func (b *BaseApi) LoadWafBlocks(c *gin.Context) {
+	id, err := helper.GetParamID(c)
+	if err != nil {
+		helper.BadRequest(c, err)
+		return
+	}
+	var req request.WafBlockSearch
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	res, err := wafBlockRecordService.Load(id, req)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, res)
+}
+
 func (b *BaseApi) GetWafStatus(c *gin.Context) {
 	id, err := helper.GetParamID(c)
 	if err != nil {

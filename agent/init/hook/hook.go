@@ -182,6 +182,6 @@ func initMonitorDB() {
 	if global.WafDB != nil {
 		_ = global.WafDB.AutoMigrate(&model.WafAttackEvent{}, &model.WafAuditCursor{}, &model.WafSitePolicy{},
 			&model.WafGlobalPolicy{}, &model.WafListEntry{}, &model.WafIPGroup{},
-			&model.WafCustomRule{}, &model.WafUploadRule{})
+			&model.WafCustomRule{}, &model.WafUploadRule{}, &model.WafBlockRecord{})
 	}
 }

@@ -38,6 +38,10 @@ type IWafRepo interface {
 	SaveIPGroup(group *model.WafIPGroup) error
 	DeleteIPGroups(ids []uint) error
 
+	BatchCreateBlocks(list []model.WafBlockRecord) error
+	ListBlocks(websiteID uint, start, end time.Time, kind string, limit, offset int) ([]model.WafBlockRecord, int64, error)
+	PruneBlocksBefore(t time.Time) error
+
 	ListUploadRules(websiteID uint) ([]model.WafUploadRule, error)
 	ListAllUploadRules() ([]model.WafUploadRule, error)
 	SaveUploadRule(rule *model.WafUploadRule) error
@@ -87,6 +91,50 @@ func (r *WafRepo) List(websiteID uint, start, end time.Time, category string, li
 	}
 	err := q.Find(&out).Error
 	return out, total, err
+}
+
+// BatchCreateBlocks inserts enforcement records, skipping any whose gateway id
+// is already stored. Ingestion has to be idempotent for the same reason the
+// audit tailer's is: if the tailer dies after inserting but before advancing its
+// cursor, the same lines re-read next run must be dropped, not counted twice.
+func (r *WafRepo) BatchCreateBlocks(list []model.WafBlockRecord) error {
+	if len(list) == 0 {
+		return nil
+	}
+	return global.WafDB.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "record_id"}},
+		DoNothing: true,
+	}).CreateInBatches(&list, 200).Error
+}
+
+// ListBlocks returns a page of enforcement records, newest first.
+//
+// websiteID 0 means every site, which is how the unattributed records (an
+// unknown Host belongs to no website) stay reachable instead of being stranded.
+func (r *WafRepo) ListBlocks(websiteID uint, start, end time.Time, kind string, limit, offset int) ([]model.WafBlockRecord, int64, error) {
+	q := global.WafDB.Model(&model.WafBlockRecord{}).
+		Where("`time` >= ? AND `time` < ?", start, end)
+	if websiteID != 0 {
+		q = q.Where("website_id = ?", websiteID)
+	}
+	if kind != "" {
+		q = q.Where("kind = ?", kind)
+	}
+	var total int64
+	if err := q.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	var out []model.WafBlockRecord
+	q = q.Order("`time` desc, id desc")
+	if limit > 0 {
+		q = q.Limit(limit).Offset(offset)
+	}
+	err := q.Find(&out).Error
+	return out, total, err
+}
+
+func (r *WafRepo) PruneBlocksBefore(t time.Time) error {
+	return global.WafDB.Where("`time` < ?", t).Delete(&model.WafBlockRecord{}).Error
 }
 
 func (r *WafRepo) GetCursor(path string) (model.WafAuditCursor, error) {

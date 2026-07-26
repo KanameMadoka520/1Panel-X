@@ -130,6 +130,14 @@
 
         <div class="waf-acl">
             <div class="waf-acl-head">
+                <strong>{{ $t('website.wafBlocks') }}</strong>
+                <span>{{ $t('website.wafBlocksTip') }}</span>
+            </div>
+            <BlockRecords :id="props.id" />
+        </div>
+
+        <div class="waf-acl">
+            <div class="waf-acl-head">
                 <strong>{{ $t('website.wafBans') }}</strong>
                 <span>{{ $t('website.wafBansScope') }}</span>
             </div>
@@ -290,6 +298,7 @@ import RegionAccess from './RegionAccess.vue';
 import WafSettings from './WafSettings.vue';
 import CdnRealIP from './CdnRealIP.vue';
 import UploadRules from './UploadRules.vue';
+import BlockRecords from './BlockRecords.vue';
 
 const { t: $t } = useI18n();
 

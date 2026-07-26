@@ -45,6 +45,21 @@ type WafSiteStatus struct {
 	LastError  string    `json:"lastError"`
 }
 
+// WafBlockRecord is one decision the gateway made on its own.
+type WafBlockRecord struct {
+	ID       uint      `json:"id"`
+	Time     time.Time `json:"time"`
+	Kind     string    `json:"kind"`
+	Host     string    `json:"host"`
+	SourceIP string    `json:"sourceIP"`
+	Method   string    `json:"method"`
+	URI      string    `json:"uri"`
+	Rule     string    `json:"rule"`
+	// Action is what actually happened, never what was configured.
+	Action string `json:"action"`
+	Detail string `json:"detail"`
+}
+
 // WafRateLimit mirrors one stored frequency limit.
 type WafRateLimit struct {
 	Kind      string `json:"kind"`
