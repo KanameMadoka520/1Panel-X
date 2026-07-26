@@ -55,6 +55,12 @@ func NewRouterWithEnforcer(cfg Config, engine *Engine, mode Mode, realIPHeader s
 	// The attack limit lives on the process-wide enforcer, so a reload updates the
 	// threshold without discarding the counts accumulated so far.
 	enforcer.SetAttackLimit(cfg.AttackRateLimit)
+	// One compiled list set is shared by every site: the lists are panel-wide, so
+	// compiling them per site would multiply identical regexes by the site count.
+	lists, err := newListMatcher(cfg.Lists, cfg.IPGroups)
+	if err != nil {
+		return nil, fmt.Errorf("router: %w", err)
+	}
 	cache := newEngineCache(engine, enginePolicy{Mode: mode})
 	for _, s := range cfg.Sites {
 		host := normalizeHost(s.Host)
@@ -84,6 +90,7 @@ func NewRouterWithEnforcer(cfg Config, engine *Engine, mode Mode, realIPHeader s
 		h := NewHandler(policyEngine, NewReverseProxy(origin), modeForSite).
 			WithRealIPHeader(realIPHeader).
 			WithIPACL(acl).
+			WithLists(lists).
 			WithSite(siteRef{WebsiteID: s.WebsiteID, Host: host}).
 			WithJournal(journal).
 			WithEnforcer(enforcer, s.RateLimits)

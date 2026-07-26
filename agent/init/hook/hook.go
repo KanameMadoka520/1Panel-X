@@ -180,6 +180,7 @@ func initMonitorDB() {
 		_ = global.WebsiteStatDB.AutoMigrate(&model.WebsiteAccessStat{}, &model.WebsiteAccessRank{}, &model.WebsiteAccessCursor{})
 	}
 	if global.WafDB != nil {
-		_ = global.WafDB.AutoMigrate(&model.WafAttackEvent{}, &model.WafAuditCursor{}, &model.WafSitePolicy{}, &model.WafGlobalPolicy{})
+		_ = global.WafDB.AutoMigrate(&model.WafAttackEvent{}, &model.WafAuditCursor{}, &model.WafSitePolicy{},
+			&model.WafGlobalPolicy{}, &model.WafListEntry{}, &model.WafIPGroup{})
 	}
 }

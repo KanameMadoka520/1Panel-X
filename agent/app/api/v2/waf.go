@@ -74,6 +74,67 @@ func (b *BaseApi) GetWafGlobal(c *gin.Context) {
 	helper.SuccessWithData(c, res)
 }
 
+func (b *BaseApi) GetWafLists(c *gin.Context) {
+	res, err := wafListService.List()
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, res)
+}
+
+func (b *BaseApi) SaveWafListEntry(c *gin.Context) {
+	var req request.WafListEntrySave
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	res, err := wafListService.SaveEntry(req)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, res)
+}
+
+func (b *BaseApi) DeleteWafListEntries(c *gin.Context) {
+	var req request.WafListDelete
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	res, err := wafListService.DeleteEntries(req.IDs)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, res)
+}
+
+func (b *BaseApi) SaveWafIPGroup(c *gin.Context) {
+	var req request.WafIPGroupSave
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	res, err := wafListService.SaveIPGroup(req)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, res)
+}
+
+func (b *BaseApi) DeleteWafIPGroups(c *gin.Context) {
+	var req request.WafListDelete
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	res, err := wafListService.DeleteIPGroups(req.IDs)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, res)
+}
+
 func (b *BaseApi) UpdateWafGlobal(c *gin.Context) {
 	var req request.WafGlobalUpdate
 	if err := helper.CheckBindAndValidate(&req, c); err != nil {

@@ -24,6 +24,10 @@ type Handler struct {
 	// acl is the per-site explicit operator IP allow/deny list, evaluated before
 	// the CRS engine. nil means no ACL configured.
 	acl *ipACL
+	// lists is the panel-wide black/white list set (IP, IP group, URL,
+	// User-Agent). It is shared by every site; the per-site acl above is the
+	// narrower, additional control.
+	lists *listMatcher
 	// site identifies which protected website this handler serves, so a decision
 	// can be attributed to it in the enforcement journal.
 	site siteRef
@@ -38,6 +42,15 @@ type Handler struct {
 
 func NewHandler(engine *Engine, upstream http.Handler, mode Mode) *Handler {
 	return &Handler{engine: engine, upstream: upstream, mode: mode}
+}
+
+// WithLists attaches the panel-wide black/white lists. A nil or empty matcher
+// is a no-op.
+func (h *Handler) WithLists(m *listMatcher) *Handler {
+	if !m.empty() {
+		h.lists = m
+	}
+	return h
 }
 
 // WithSite attaches the protected site's identity for event attribution.
@@ -99,14 +112,35 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// The explicit operator ACL is evaluated before anything else: a denied IP is
 	// refused with the same generic 403 as an unknown Host, regardless of mode,
 	// and never reaches the body reader or the CRS engine.
+	// Explicit operator lists are evaluated before anything else, and an explicit
+	// DENY outranks an explicit ALLOW. Both outrank the automatic mechanisms
+	// (bans, rate limits, CRS): an allow entry is an exemption from automatic
+	// machinery, never a licence to override another explicit refusal.
+	//
+	// The panel-wide lists are checked first, then the site's own IP list, so a
+	// site-level allow cannot re-admit a client the panel refused globally.
+	clientAddr := clientIP(r.RemoteAddr)
 	decision := aclNormal
-	if h.acl != nil {
-		decision = h.acl.decide(clientIP(r.RemoteAddr))
-		if decision == aclDeny {
-			h.recordEvent(r, EventACLDeny, "ip-deny-list", "blocked")
-			writeForbidden(w)
-			return
+	rule := ""
+	if h.lists != nil {
+		decision, rule = h.lists.decide(r, clientAddr)
+	}
+	if decision == aclNormal && h.acl != nil {
+		decision = h.acl.decide(clientAddr)
+		switch decision {
+		case aclDeny:
+			rule = "site:ip-deny"
+		case aclAllow:
+			rule = "site:ip-allow"
 		}
+	}
+	if decision == aclDeny {
+		if rule == "" {
+			rule = "ip-deny-list"
+		}
+		h.recordEvent(r, EventACLDeny, rule, "blocked")
+		writeForbidden(w)
+		return
 	}
 	// Content-Length is rejected before Coraza reads the stream. Production nginx
 	// also enforces the same 13 MiB ceiling and returns its stable public 413.

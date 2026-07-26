@@ -52,11 +52,17 @@ type GatewayConfig struct {
 	// serves every site sharing a policy. A per-site attack threshold would be a
 	// number the data plane cannot honour, so it is not offered.
 	AttackRateLimit *RateLimit `json:"attackRateLimit,omitempty"`
+	// Lists are the panel-wide black/white lists; IPGroups are the named address
+	// sets they can reference. Both apply to every protected site.
+	Lists    []ListRule `json:"lists,omitempty"`
+	IPGroups []IPGroup  `json:"ipGroups,omitempty"`
 }
 
 // BuildOptions carries the gateway-wide settings that are not per-site.
 type BuildOptions struct {
 	AttackRateLimit *RateLimit
+	Lists           []ListRule
+	IPGroups        []IPGroup
 }
 
 type GatewaySite struct {
@@ -94,6 +100,16 @@ func BuildWithOptions(sites []Site, opts BuildOptions) (GatewayConfig, error) {
 		}
 		cfg.AttackRateLimit = &normalized[0]
 	}
+	groups, err := NormalizeIPGroups(opts.IPGroups)
+	if err != nil {
+		return GatewayConfig{}, fmt.Errorf("waf config: %w", err)
+	}
+	lists, err := NormalizeListRules(opts.Lists, groups)
+	if err != nil {
+		return GatewayConfig{}, fmt.Errorf("waf config: %w", err)
+	}
+	cfg.IPGroups = groups
+	cfg.Lists = lists
 	seen := make(map[string]string)
 	for _, input := range sites {
 		if !input.Enabled {

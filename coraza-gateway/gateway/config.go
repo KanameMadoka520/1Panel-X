@@ -39,6 +39,12 @@ type Config struct {
 	// actually be honoured. It is therefore modelled, and presented, as one
 	// gateway-level limit.
 	AttackRateLimit *RateLimitConfig `json:"attackRateLimit,omitempty"`
+	// Lists are the panel-wide black/white lists (IP, IP group, URL, User-Agent).
+	// They apply to every protected site; a site's own IP list is an additional,
+	// narrower control layered underneath them.
+	Lists []ListRule `json:"lists,omitempty"`
+	// IPGroups are named address sets referenced by ipgroup list entries.
+	IPGroups []IPGroup `json:"ipGroups,omitempty"`
 }
 
 // ConfigVersion is the contract version this build understands.
@@ -86,6 +92,12 @@ func ParseConfig(data []byte) (Config, error) {
 		if err := c.AttackRateLimit.validate(); err != nil {
 			return Config{}, fmt.Errorf("waf config: %w", err)
 		}
+	}
+	// Compiled here purely to reject an unusable list set at load time; the
+	// router compiles it again for real. A bad entry must fail the whole config
+	// rather than leave part of the operator's policy silently unenforced.
+	if _, err := newListMatcher(c.Lists, c.IPGroups); err != nil {
+		return Config{}, fmt.Errorf("waf config: %w", err)
 	}
 	for i := range c.Sites {
 		host := normalizeHost(c.Sites[i].Host)

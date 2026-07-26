@@ -27,6 +27,16 @@ type IWafRepo interface {
 	GetGlobalPolicy() (model.WafGlobalPolicy, error)
 	SaveGlobalPolicy(policy model.WafGlobalPolicy) error
 
+	ListEntries() ([]model.WafListEntry, error)
+	GetEntry(id uint) (model.WafListEntry, error)
+	SaveEntry(entry *model.WafListEntry) error
+	DeleteEntries(ids []uint) error
+
+	ListIPGroups() ([]model.WafIPGroup, error)
+	GetIPGroup(id uint) (model.WafIPGroup, error)
+	SaveIPGroup(group *model.WafIPGroup) error
+	DeleteIPGroups(ids []uint) error
+
 	PruneBefore(t time.Time) error
 }
 
@@ -117,6 +127,66 @@ func (r *WafRepo) SaveGlobalPolicy(policy model.WafGlobalPolicy) error {
 		Columns:   []clause.Column{{Name: "id"}},
 		DoUpdates: clause.AssignmentColumns([]string{"default_mode", "allow_ips", "deny_ips", "rate_limits", "updated_at"}),
 	}).Create(&policy).Error
+}
+
+// ListEntries returns every black/white list row, newest first within a stable
+// grouping so the table order does not shuffle between reads.
+func (r *WafRepo) ListEntries() ([]model.WafListEntry, error) {
+	var out []model.WafListEntry
+	err := global.WafDB.Order("list asc, target asc, id asc").Find(&out).Error
+	return out, err
+}
+
+func (r *WafRepo) GetEntry(id uint) (model.WafListEntry, error) {
+	var entry model.WafListEntry
+	err := global.WafDB.Where("id = ?", id).First(&entry).Error
+	return entry, err
+}
+
+// SaveEntry creates or updates a row. Enabled is written through Select so a
+// switch turned OFF is persisted rather than skipped as a zero value.
+func (r *WafRepo) SaveEntry(entry *model.WafListEntry) error {
+	if entry.ID == 0 {
+		return global.WafDB.Create(entry).Error
+	}
+	return global.WafDB.Model(entry).
+		Select("list", "target", "match", "pattern", "remark", "enabled", "updated_at").
+		Updates(entry).Error
+}
+
+func (r *WafRepo) DeleteEntries(ids []uint) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	return global.WafDB.Where("id in (?)", ids).Delete(&model.WafListEntry{}).Error
+}
+
+func (r *WafRepo) ListIPGroups() ([]model.WafIPGroup, error) {
+	var out []model.WafIPGroup
+	err := global.WafDB.Order("name asc").Find(&out).Error
+	return out, err
+}
+
+func (r *WafRepo) GetIPGroup(id uint) (model.WafIPGroup, error) {
+	var group model.WafIPGroup
+	err := global.WafDB.Where("id = ?", id).First(&group).Error
+	return group, err
+}
+
+func (r *WafRepo) SaveIPGroup(group *model.WafIPGroup) error {
+	if group.ID == 0 {
+		return global.WafDB.Create(group).Error
+	}
+	return global.WafDB.Model(group).
+		Select("name", "entries", "remark", "updated_at").
+		Updates(group).Error
+}
+
+func (r *WafRepo) DeleteIPGroups(ids []uint) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	return global.WafDB.Where("id in (?)", ids).Delete(&model.WafIPGroup{}).Error
 }
 
 func (r *WafRepo) PruneBefore(t time.Time) error {

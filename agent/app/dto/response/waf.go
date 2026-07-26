@@ -35,6 +35,33 @@ type WafRateLimit struct {
 	PerURL    bool   `json:"perUrl"`
 }
 
+// WafListEntry is one stored black/white list row.
+type WafListEntry struct {
+	ID      uint   `json:"id"`
+	List    string `json:"list"`
+	Target  string `json:"target"`
+	Match   string `json:"match"`
+	Pattern string `json:"pattern"`
+	Remark  string `json:"remark"`
+	Enabled bool   `json:"enabled"`
+}
+
+// WafIPGroup is a named address set referenced by ipgroup entries.
+type WafIPGroup struct {
+	ID      uint     `json:"id"`
+	Name    string   `json:"name"`
+	Entries []string `json:"entries"`
+	Remark  string   `json:"remark"`
+}
+
+// WafLists is the whole panel-wide list set. Entries and groups are returned
+// together because an entry is only meaningful alongside the groups it can
+// reference.
+type WafLists struct {
+	Entries  []WafListEntry `json:"entries"`
+	IPGroups []WafIPGroup   `json:"ipGroups"`
+}
+
 // WafGlobalConfig echoes the stored panel-wide defaults with canonicalized lists.
 type WafGlobalConfig struct {
 	DefaultMode string         `json:"defaultMode"`

@@ -98,6 +98,11 @@ func (a *WebsiteRouter) InitRouter(Router *gin.RouterGroup) {
 		websiteRouter.POST("/:id/waf/config", baseApi.UpdateWafSite)
 		websiteRouter.GET("/waf/global", baseApi.GetWafGlobal)
 		websiteRouter.POST("/waf/global", baseApi.UpdateWafGlobal)
+		websiteRouter.GET("/waf/lists", baseApi.GetWafLists)
+		websiteRouter.POST("/waf/lists/entry", baseApi.SaveWafListEntry)
+		websiteRouter.POST("/waf/lists/entry/del", baseApi.DeleteWafListEntries)
+		websiteRouter.POST("/waf/lists/group", baseApi.SaveWafIPGroup)
+		websiteRouter.POST("/waf/lists/group/del", baseApi.DeleteWafIPGroups)
 
 		websiteRouter.GET("/resource/:id", baseApi.GetWebsiteResource)
 		websiteRouter.GET("/databases", baseApi.GetWebsiteDatabase)

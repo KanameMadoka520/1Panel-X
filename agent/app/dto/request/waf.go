@@ -37,6 +37,31 @@ type WafSiteUpdate struct {
 	RateLimits []WafRateLimit `json:"rateLimits" validate:"omitempty,max=8,dive"`
 }
 
+// WafListEntrySave creates or updates one panel-wide black/white list row.
+// ID 0 creates. Match is ignored for address targets.
+type WafListEntrySave struct {
+	ID      uint   `json:"id"`
+	List    string `json:"list" validate:"required,oneof=deny allow"`
+	Target  string `json:"target" validate:"required,oneof=ip ipgroup url ua"`
+	Match   string `json:"match" validate:"omitempty,oneof=exact prefix contains regex"`
+	Pattern string `json:"pattern" validate:"required,max=512"`
+	Remark  string `json:"remark" validate:"omitempty,max=256"`
+	Enabled bool   `json:"enabled"`
+}
+
+// WafIPGroupSave creates or updates a named address set.
+type WafIPGroupSave struct {
+	ID      uint     `json:"id"`
+	Name    string   `json:"name" validate:"required,max=64"`
+	Entries []string `json:"entries" validate:"omitempty,max=4096,dive,max=64"`
+	Remark  string   `json:"remark" validate:"omitempty,max=256"`
+}
+
+// WafListDelete removes list rows or IP groups by id.
+type WafListDelete struct {
+	IDs []uint `json:"ids" validate:"required,min=1,max=500"`
+}
+
 // WafGlobalUpdate replaces the panel-wide WAF defaults: the mode applied to
 // "inherit" sites plus IP lists merged into every enabled site.
 type WafGlobalUpdate struct {

@@ -72,6 +72,14 @@
 
         <div class="waf-acl">
             <div class="waf-acl-head">
+                <strong>{{ $t('website.wafLists') }}</strong>
+                <span>{{ $t('website.wafListsScope') }}</span>
+            </div>
+            <BlackWhiteLists />
+        </div>
+
+        <div class="waf-acl">
+            <div class="waf-acl-head">
                 <strong>{{ $t('website.wafRateLimit') }}</strong>
                 <span>{{ $t('website.wafRateLimitTip') }}</span>
             </div>
@@ -187,6 +195,7 @@ import { GetWafGlobal, GetWafStatus, LoadWafEvents, UpdateWafGlobal, UpdateWafSi
 import { Website } from '@/api/interface/website';
 import { MsgSuccess } from '@/utils/message';
 import RateLimits from './RateLimits.vue';
+import BlackWhiteLists from './BlackWhiteLists.vue';
 
 const { t: $t } = useI18n();
 

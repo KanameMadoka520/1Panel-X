@@ -64,7 +64,14 @@ func (c RateLimitConfig) validate() error {
 }
 
 // countsPerURL reports whether this limit tracks each target separately.
+//
+// The 404 limit is deliberately excluded: a scanner's signature is many misses
+// across DIFFERENT paths, so bucketing it per target would hold every bucket
+// below the threshold and the limit could never fire.
 func (c RateLimitConfig) countsPerURL() bool {
+	if c.Kind == RateLimitNotFound {
+		return false
+	}
 	return c.PerURL || c.Kind == RateLimitURL
 }
 

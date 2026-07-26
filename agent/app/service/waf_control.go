@@ -575,6 +575,14 @@ func (s *WafControlService) writeGatewayConfig() (string, error) {
 	// The attack limit is gateway-wide; it is emitted once at the top level, not
 	// copied into every site (the gateway refuses a per-site copy outright).
 	globalSiteLimits, attackLimit := splitAttackLimit(globalLimits)
+	listEntries, err := wafRepo.ListEntries()
+	if err != nil {
+		return "", err
+	}
+	ipGroups, err := wafRepo.ListIPGroups()
+	if err != nil {
+		return "", err
+	}
 	policies, err := wafRepo.ListPolicies()
 	if err != nil {
 		return "", err
@@ -616,7 +624,11 @@ func (s *WafControlService) writeGatewayConfig() (string, error) {
 			RateLimits: mergedLimits,
 		})
 	}
-	cfg, err := wafconfig.BuildWithOptions(inputs, wafconfig.BuildOptions{AttackRateLimit: attackLimit})
+	cfg, err := wafconfig.BuildWithOptions(inputs, wafconfig.BuildOptions{
+		AttackRateLimit: attackLimit,
+		Lists:           enabledListRules(listEntries),
+		IPGroups:        ipGroupsToConfig(ipGroups),
+	})
 	if err != nil {
 		return "", err
 	}

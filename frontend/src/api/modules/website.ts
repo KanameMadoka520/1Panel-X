@@ -429,3 +429,23 @@ export const GetWafGlobal = () => {
 export const UpdateWafGlobal = (req: Website.WafGlobalConfig) => {
     return http.post<Website.WafGlobalConfig>(`/websites/waf/global`, req);
 };
+
+export const GetWafLists = () => {
+    return http.get<Website.WafLists>(`/websites/waf/lists`);
+};
+
+export const SaveWafListEntry = (req: Partial<Website.WafListEntry>) => {
+    return http.post<Website.WafLists>(`/websites/waf/lists/entry`, req);
+};
+
+export const DeleteWafListEntries = (ids: number[]) => {
+    return http.post<Website.WafLists>(`/websites/waf/lists/entry/del`, { ids });
+};
+
+export const SaveWafIPGroup = (req: Partial<Website.WafIPGroup>) => {
+    return http.post<Website.WafLists>(`/websites/waf/lists/group`, req);
+};
+
+export const DeleteWafIPGroups = (ids: number[]) => {
+    return http.post<Website.WafLists>(`/websites/waf/lists/group/del`, { ids });
+};

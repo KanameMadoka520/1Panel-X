@@ -56,6 +56,36 @@ type WafSitePolicy struct {
 	LastError  string `gorm:"size:2048" json:"lastError"`
 }
 
+// WafListEntry is one row of the panel-wide black/white lists.
+//
+// The lists are panel-wide rather than per-site, matching how they are presented
+// as a single top-level set. A site's own IP list remains available as an
+// additional, narrower control layered underneath these.
+type WafListEntry struct {
+	BaseModel
+	// List is "deny" (blacklist) or "allow" (whitelist).
+	List string `gorm:"size:8;not null;index" json:"list"`
+	// Target is "ip", "ipgroup", "url" or "ua".
+	Target string `gorm:"size:16;not null;index" json:"target"`
+	// Match is "exact", "prefix", "contains" or "regex"; empty for address targets.
+	Match   string `gorm:"size:16" json:"match"`
+	Pattern string `gorm:"size:512;not null" json:"pattern"`
+	Remark  string `gorm:"size:256" json:"remark"`
+	// Enabled rows are the only ones sent to the gateway, so switching a row off
+	// stops it being enforced instead of merely hiding it.
+	Enabled bool `gorm:"not null;default:true" json:"enabled"`
+}
+
+// WafIPGroup is a named address set that list entries can reference, so one
+// shared set can back several rules.
+type WafIPGroup struct {
+	BaseModel
+	Name string `gorm:"size:64;uniqueIndex;not null" json:"name"`
+	// Entries is newline-separated canonical IP/CIDR text.
+	Entries string `gorm:"type:text" json:"entries"`
+	Remark  string `gorm:"size:256" json:"remark"`
+}
+
 // WafGlobalPolicy is the panel-wide default WAF policy, kept as a single row.
 // DefaultMode applies to sites whose policy mode is "inherit"; AllowIPs/DenyIPs
 // are merged into every enabled site's lists at config generation (deny still

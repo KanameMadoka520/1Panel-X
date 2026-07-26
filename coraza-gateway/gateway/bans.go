@@ -265,7 +265,10 @@ func (e *Enforcer) CountStatus(site siteRef, limits []RateLimitConfig, r *http.R
 		if cfg.Kind != RateLimitNotFound {
 			continue
 		}
-		if out := e.count(site, cfg, ip, r.URL.Path); out.Triggered && !fired.Triggered {
+		// Counted per client, NOT per target: a scanner's signature is many 404s
+		// across DIFFERENT paths, so bucketing by path would keep every bucket
+		// below the threshold and the limit would never fire.
+		if out := e.count(site, cfg, ip, ""); out.Triggered && !fired.Triggered {
 			fired = out
 		}
 	}

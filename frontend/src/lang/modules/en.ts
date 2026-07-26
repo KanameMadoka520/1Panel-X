@@ -3423,6 +3423,32 @@ const message = {
         wafGlobalDefaultMode: 'Default mode',
         wafGlobalTip:
             "Global defaults apply to every WAF-enabled website: the default mode only affects sites set to inherit, and global lists are merged into each site's lists (deny still wins over allow).",
+        wafLists: 'Access lists (panel-wide)',
+        wafListsScope: 'Panel-wide lists; they apply to every WAF-enabled website.',
+        wafListsTip:
+            'A deny match returns 403. An allow match skips rule-engine inspection, bans and frequency limits, but is still proxied through the hardened gateway. If both match, deny wins.',
+        wafListDeny: 'Blacklist',
+        wafListAllow: 'Whitelist',
+        wafListDenyHint: 'Matching requests are refused with 403.',
+        wafListAllowHint:
+            'Matching requests skip the rule engine, bans and frequency limits, but are still proxied through the hardened gateway.',
+        wafListIpGroup: 'IP group',
+        wafListGroupHint:
+            'Group frequently used addresses or ranges so list entries can reference them; a group still in use cannot be deleted.',
+        wafListGroupName: 'Group name',
+        wafListGroupMembers: 'Members (one IP or CIDR per line)',
+        wafListGroupTitle: 'IP group',
+        wafListEntryTitle: 'List entry',
+        wafListWhich: 'List',
+        wafListTarget: 'Match against',
+        wafListPattern: 'Pattern',
+        wafListRemark: 'Remark',
+        wafListMatch: 'Match type',
+        wafListMatchContains: 'Contains',
+        wafListMatchPrefix: 'Prefix',
+        wafListMatchExact: 'Exact',
+        wafListMatchRegex: 'Regex',
+        wafListMatchIp: 'IP / CIDR',
         wafRateLimit: 'Frequency limits',
         wafRateLimitTip:
             'Counts requests per source IP and temporarily bans an address that passes the threshold. A limit set here replaces the global limit of the same kind.',

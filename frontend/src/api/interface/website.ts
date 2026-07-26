@@ -840,6 +840,32 @@ export namespace Website {
         rateLimits: WafRateLimit[];
     }
 
+    export type WafListName = 'deny' | 'allow';
+    export type WafListTarget = 'ip' | 'ipgroup' | 'url' | 'ua';
+    export type WafListMatch = 'exact' | 'prefix' | 'contains' | 'regex' | '';
+
+    export interface WafListEntry {
+        id: number;
+        list: WafListName;
+        target: WafListTarget;
+        match: WafListMatch;
+        pattern: string;
+        remark: string;
+        enabled: boolean;
+    }
+
+    export interface WafIPGroup {
+        id: number;
+        name: string;
+        entries: string[];
+        remark: string;
+    }
+
+    export interface WafLists {
+        entries: WafListEntry[];
+        ipGroups: WafIPGroup[];
+    }
+
     export interface WafGlobalConfig {
         defaultMode: 'detection' | 'block';
         allowList: string[];
