@@ -1,3 +1,8 @@
+# 1panel-x-waf-compose-version: 1
+# The version marker above lets the agent tell an outdated deployed compose file
+# from a current one. EnsureWafRuntimeFiles rewrites the file (and recreates the
+# container) when the embedded asset is newer, so packaging changes — new mounts,
+# new flags — actually reach installations that already have a compose file.
 services:
   waf-gateway:
     image: ${WAF_IMAGE:-1panel-x/coraza-gateway:local}

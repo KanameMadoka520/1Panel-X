@@ -10,12 +10,14 @@
 package main
 
 import (
+	"context"
 	"flag"
-	"fmt"
 	"log"
 	"net/http"
 	"net/url"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/1Panel-dev/1Panel/coraza-gateway/gateway"
@@ -47,16 +49,22 @@ func main() {
 	var handler http.Handler
 	var desc string
 	if *config != "" {
-		cfg, cerr := gateway.LoadConfig(*config)
-		if cerr != nil {
-			log.Fatalf("coraza-gateway: %v", cerr)
+		// The routing table is reloaded IN-PROCESS when the agent rewrites the
+		// config file. Restarting the container on every policy save would erase
+		// this process's in-memory enforcement state, so the container restart is
+		// kept as the control plane's fallback, not its normal path.
+		build := func(cfg gateway.Config) (*gateway.Router, error) {
+			return gateway.NewRouter(cfg, engine, mode, *realIP)
 		}
-		rt, rerr := gateway.NewRouter(cfg, engine, mode, *realIP)
+		live, rerr := gateway.NewReloadableRouter(*config, mode, build)
 		if rerr != nil {
 			log.Fatalf("coraza-gateway: %v", rerr)
 		}
-		handler = gateway.WithHealth(rt, len(cfg.Sites), mode, cfg.Generation)
-		desc = fmt.Sprintf("%d sites", len(cfg.Sites))
+		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+		defer stop()
+		go live.Watch(ctx)
+		handler = gateway.WithHealthSource(live, live)
+		desc = live.Describe()
 	} else {
 		origin, uerr := url.Parse(*upstream)
 		if uerr != nil || origin.Scheme == "" || origin.Host == "" {

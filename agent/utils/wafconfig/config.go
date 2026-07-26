@@ -14,7 +14,12 @@ import (
 	"github.com/1Panel-dev/1Panel/agent/constant"
 )
 
-const Version = 1
+// Version is the gateway config contract version this agent emits. The gateway
+// refuses a version it does not understand rather than parsing it leniently, so
+// an agent newer than the deployed gateway image fails loudly (container
+// unhealthy -> readiness wait times out -> the control-plane transaction rolls
+// back) instead of silently enforcing a policy with the new fields dropped.
+const Version = 2
 
 type Mode string
 
@@ -120,7 +125,12 @@ func Build(sites []Site) (GatewayConfig, error) {
 		}
 		return cfg.Sites[i].WebsiteID < cfg.Sites[j].WebsiteID
 	})
-	generationInput, err := json.Marshal(cfg.Sites)
+	// The generation digest covers the WHOLE config (with the digest field itself
+	// zeroed), not just Sites: the control plane confirms a policy is live by
+	// comparing the generation the gateway echoes back, so anything outside the
+	// digest could change without the handshake noticing.
+	cfg.Generation = ""
+	generationInput, err := json.Marshal(cfg)
 	if err != nil {
 		return GatewayConfig{}, err
 	}

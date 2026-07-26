@@ -46,11 +46,82 @@ func (e *Engine) WAF() coraza.WAF {
 	return e.waf.Load().(coraza.WAF)
 }
 
+// enginePolicy is the set of per-site settings that require an INDEPENDENTLY
+// compiled Coraza engine. Sites that resolve to the same policy share one
+// compiled instance: a full CRS v4 compile loads a thousand-plus rules and their
+// lookup data files, so instances are a real memory and startup cost and their
+// number is capped rather than left to grow with the site count.
+//
+// A zero BodyLimit means "inherit the process default", so a site that only
+// overrides its mode still collapses onto the shared base engine.
+type enginePolicy struct {
+	Mode      Mode
+	BodyLimit int
+}
+
+func (p enginePolicy) String() string {
+	if p.BodyLimit <= 0 {
+		return string(p.Mode)
+	}
+	return fmt.Sprintf("%s/body=%d", p.Mode, p.BodyLimit)
+}
+
 // ForMode returns an independently compiled engine with the same body and audit
 // settings. It is used when site policies mix detection and block mode.
 func (e *Engine) ForMode(mode Mode) (*Engine, error) {
 	return NewEngineWithAudit(mode, e.bodyLimit, e.auditLogPath)
 }
+
+// ForPolicy compiles a sibling engine for one resolved per-site policy.
+func (e *Engine) ForPolicy(p enginePolicy) (*Engine, error) {
+	bodyLimit := p.BodyLimit
+	if bodyLimit <= 0 {
+		bodyLimit = e.bodyLimit
+	}
+	return NewEngineWithAudit(p.Mode, bodyLimit, e.auditLogPath)
+}
+
+// maxCompiledEngines bounds how many distinct per-site policies one gateway may
+// compile. Exceeding it is reported at config-generation time — naming the site
+// that overflowed — instead of quietly compiling one full ruleset per site.
+const maxCompiledEngines = 8
+
+// engineCache hands out one compiled engine per distinct policy, seeded with the
+// process-wide base engine so the common case (every site on the global default)
+// compiles exactly once.
+type engineCache struct {
+	base     *Engine
+	compiled map[enginePolicy]*Engine
+	order    []enginePolicy
+}
+
+func newEngineCache(base *Engine, basePolicy enginePolicy) *engineCache {
+	return &engineCache{
+		base:     base,
+		compiled: map[enginePolicy]*Engine{basePolicy: base},
+		order:    []enginePolicy{basePolicy},
+	}
+}
+
+func (c *engineCache) get(p enginePolicy, host string) (*Engine, error) {
+	if e, ok := c.compiled[p]; ok {
+		return e, nil
+	}
+	if len(c.compiled) >= maxCompiledEngines {
+		return nil, fmt.Errorf(
+			"site %q needs distinct WAF policy %s but at most %d policies can be compiled (already compiled: %v); merge site policies onto a shared default",
+			host, p, maxCompiledEngines, c.order)
+	}
+	e, err := c.base.ForPolicy(p)
+	if err != nil {
+		return nil, fmt.Errorf("compile site %q policy %s: %w", host, p, err)
+	}
+	c.compiled[p] = e
+	c.order = append(c.order, p)
+	return e, nil
+}
+
+func (c *engineCache) size() int { return len(c.compiled) }
 
 func (e *Engine) Reload(mode Mode, bodyLimit int) error {
 	if err := e.reloadRaw(directivesFor(mode, bodyLimit, e.auditLogPath)); err != nil {

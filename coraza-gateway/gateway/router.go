@@ -32,11 +32,14 @@ func NewReverseProxy(origin *url.URL) *httputil.ReverseProxy {
 // unknown Host cannot bypass the WAF or reach an origin.
 type Router struct {
 	handlers map[string]http.Handler
+	// engines is the number of distinct compiled policies this routing table
+	// needed; kept so tests can assert that sites actually share instances.
+	engines int
 }
 
 func NewRouter(cfg Config, engine *Engine, mode Mode, realIPHeader string) (*Router, error) {
 	rt := &Router{handlers: make(map[string]http.Handler, len(cfg.Sites))}
-	engines := make(map[Mode]*Engine)
+	cache := newEngineCache(engine, enginePolicy{Mode: mode})
 	for _, s := range cfg.Sites {
 		host := normalizeHost(s.Host)
 		if host == "" {
@@ -54,16 +57,9 @@ func NewRouter(cfg Config, engine *Engine, mode Mode, realIPHeader string) (*Rou
 		if s.Mode != "" {
 			modeForSite = s.Mode
 		}
-		policyEngine := engine
-		if modeForSite != mode {
-			if _, exists := engines[modeForSite]; !exists {
-				candidate, err := engine.ForMode(modeForSite)
-				if err != nil {
-					return nil, fmt.Errorf("router: compile site %q policy: %w", s.Host, err)
-				}
-				engines[modeForSite] = candidate
-			}
-			policyEngine = engines[modeForSite]
+		policyEngine, err := cache.get(enginePolicy{Mode: modeForSite}, s.Host)
+		if err != nil {
+			return nil, fmt.Errorf("router: %w", err)
 		}
 		acl, err := newIPACL(s.AllowIPs, s.DenyIPs)
 		if err != nil {
@@ -74,6 +70,7 @@ func NewRouter(cfg Config, engine *Engine, mode Mode, realIPHeader string) (*Rou
 			WithIPACL(acl)
 		rt.handlers[host] = h
 	}
+	rt.engines = cache.size()
 	return rt, nil
 }
 

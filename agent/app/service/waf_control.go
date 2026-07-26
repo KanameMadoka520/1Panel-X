@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -79,14 +80,20 @@ type IWafControlService interface {
 type WafControlService struct {
 	healthClient *http.Client
 	runtime      wafRuntime
+	// readyTimeout bounds the wait after a container start/restart.
 	readyTimeout time.Duration
+	// reloadTimeout bounds the wait for an already-running gateway to pick the
+	// new config file up in-process. It only has to cover the gateway's watch
+	// interval plus one ruleset compile, so it is much shorter than a restart.
+	reloadTimeout time.Duration
 }
 
 func NewIWafControlService() IWafControlService {
 	return &WafControlService{
-		healthClient: &http.Client{Timeout: 2 * time.Second},
-		runtime:      systemWafRuntime{},
-		readyTimeout: 15 * time.Second,
+		healthClient:  &http.Client{Timeout: 2 * time.Second},
+		runtime:       systemWafRuntime{},
+		readyTimeout:  15 * time.Second,
+		reloadTimeout: 10 * time.Second,
 	}
 }
 
@@ -102,20 +109,54 @@ func GetWafComposePath() string {
 	return path.Join(GetWafDir(), "docker-compose.yml")
 }
 
-func EnsureWafRuntimeFiles() error {
+// composeVersionMarker prefixes the version comment carried by the embedded
+// compose asset. Deployed files written before the marker existed parse as
+// version 0 and are therefore treated as outdated.
+const composeVersionMarker = "# 1panel-x-waf-compose-version:"
+
+// EnsureWafRuntimeFiles creates the runtime directories and keeps the deployed
+// compose file up to date with the embedded asset. It reports whether the
+// compose file was (re)written, because a rewritten compose only takes effect
+// once the container is recreated — the caller must then take the restart path
+// rather than the in-process reload path.
+func EnsureWafRuntimeFiles() (bool, error) {
 	if err := os.MkdirAll(path.Join(GetWafDir(), "config"), 0750); err != nil {
-		return err
+		return false, err
 	}
 	if err := os.MkdirAll(path.Join(GetWafDir(), "audit"), 0750); err != nil {
-		return err
+		return false, err
 	}
 	composePath := GetWafComposePath()
-	if _, err := os.Stat(composePath); errors.Is(err, os.ErrNotExist) {
-		return wafconfig.WriteAtomic(composePath, wafasset.Compose, 0640)
-	} else if err != nil {
-		return err
+	current, err := os.ReadFile(composePath)
+	if errors.Is(err, os.ErrNotExist) {
+		return true, wafconfig.WriteAtomic(composePath, wafasset.Compose, 0640)
 	}
-	return nil
+	if err != nil {
+		return false, err
+	}
+	// Only move forward. An operator-edited file with an equal or newer marker is
+	// left alone; overwriting unconditionally would silently discard local tuning.
+	if composeAssetVersion(current) >= composeAssetVersion(wafasset.Compose) {
+		return false, nil
+	}
+	return true, wafconfig.WriteAtomic(composePath, wafasset.Compose, 0640)
+}
+
+// composeAssetVersion reads the embedded version marker, returning 0 when the
+// file predates the marker or carries an unparsable one.
+func composeAssetVersion(data []byte) int {
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, composeVersionMarker) {
+			continue
+		}
+		v, err := strconv.Atoi(strings.TrimSpace(strings.TrimPrefix(line, composeVersionMarker)))
+		if err != nil {
+			return 0
+		}
+		return v
+	}
+	return 0
 }
 
 func (s *WafControlService) GetStatus(websiteID uint) (response.WafSiteStatus, error) {
@@ -178,7 +219,8 @@ func (s *WafControlService) update(websiteID uint, req request.WafSiteUpdate) (r
 	if global.WafDB == nil {
 		return response.WafSiteStatus{}, errors.New("WAF database is not available")
 	}
-	if err := EnsureWafRuntimeFiles(); err != nil {
+	composeChanged, err := EnsureWafRuntimeFiles()
+	if err != nil {
 		return response.WafSiteStatus{}, err
 	}
 	websiteRepo := repo.NewIWebsiteRepo()
@@ -252,14 +294,8 @@ func (s *WafControlService) update(websiteID uint, req request.WafSiteUpdate) (r
 	if err != nil {
 		return fail(err)
 	}
-	if err := s.runtime.Up(GetWafComposePath()); err != nil {
-		return fail(fmt.Errorf("apply WAF gateway config: %w", err))
-	}
-	if err := s.runtime.Restart(GetWafComposePath()); err != nil {
-		return fail(fmt.Errorf("reload WAF gateway config: %w", err))
-	}
-	if !s.waitGatewayReady(s.readyTimeout, generation) {
-		return fail(errors.New("WAF gateway did not load the requested configuration"))
+	if err := s.applyGatewayConfig(generation, composeChanged); err != nil {
+		return fail(err)
 	}
 	if req.Enabled {
 		if isWafRouted(proxyPath) {
@@ -303,17 +339,16 @@ func (s *WafControlService) Remove(websiteID uint) error {
 	if err := wafRepo.DeletePolicy(websiteID); err != nil {
 		return err
 	}
-	if err := EnsureWafRuntimeFiles(); err != nil {
+	composeChanged, err := EnsureWafRuntimeFiles()
+	if err != nil {
 		return err
 	}
-	if _, err := s.writeGatewayConfig(); err != nil {
+	generation, err := s.writeGatewayConfig()
+	if err != nil {
 		return err
 	}
-	if err := s.runtime.Up(GetWafComposePath()); err != nil {
+	if err := s.applyGatewayConfig(generation, composeChanged); err != nil {
 		return fmt.Errorf("apply WAF gateway config after website removal: %w", err)
-	}
-	if err := s.runtime.Restart(GetWafComposePath()); err != nil {
-		return fmt.Errorf("reload WAF gateway after website removal: %w", err)
 	}
 	return nil
 }
@@ -340,7 +375,8 @@ func (s *WafControlService) UpdateGlobal(req request.WafGlobalUpdate) (response.
 	if global.WafDB == nil {
 		return response.WafGlobalConfig{}, errors.New("WAF database is not available")
 	}
-	if err := EnsureWafRuntimeFiles(); err != nil {
+	composeChanged, err := EnsureWafRuntimeFiles()
+	if err != nil {
 		return response.WafGlobalConfig{}, err
 	}
 	mode := wafconfig.Mode(req.DefaultMode)
@@ -397,16 +433,47 @@ func (s *WafControlService) UpdateGlobal(req request.WafGlobalUpdate) (response.
 	if err != nil {
 		return fail(err)
 	}
-	if err := s.runtime.Up(GetWafComposePath()); err != nil {
-		return fail(fmt.Errorf("apply WAF gateway config: %w", err))
-	}
-	if err := s.runtime.Restart(GetWafComposePath()); err != nil {
-		return fail(fmt.Errorf("reload WAF gateway config: %w", err))
-	}
-	if !s.waitGatewayReady(s.readyTimeout, generation) {
-		return fail(errors.New("WAF gateway did not load the requested configuration"))
+	if err := s.applyGatewayConfig(generation, composeChanged); err != nil {
+		return fail(err)
 	}
 	return s.GetGlobal()
+}
+
+// applyGatewayConfig makes the freshly written config the one the gateway is
+// actually enforcing, confirmed by the generation it echoes on /healthz.
+//
+// A running gateway watches its config file and swaps the routing table
+// in-process, so the normal path is just "wait for the generation to appear".
+// Restarting the container is reserved for the cases that genuinely need it —
+// it is not free: the gateway holds enforcement state in memory (rate-limit
+// counters and temporary IP bans), and restarting on every unrelated policy save
+// would silently erase it.
+func (s *WafControlService) applyGatewayConfig(generation string, composeChanged bool) error {
+	if !composeChanged {
+		if health, ok := s.fetchGatewayHealth(); ok && health.Status == "ready" {
+			if s.waitGatewayReady(s.reloadTimeout, generation) {
+				return nil
+			}
+			// Still running but not on the requested generation: if it refused the
+			// candidate, say why instead of reporting a bare timeout.
+			if refreshed, ok := s.fetchGatewayHealth(); ok && refreshed.LastError != "" {
+				return fmt.Errorf("WAF gateway refused the configuration: %s", refreshed.LastError)
+			}
+		}
+	}
+	if err := s.runtime.Up(GetWafComposePath()); err != nil {
+		return fmt.Errorf("apply WAF gateway config: %w", err)
+	}
+	if err := s.runtime.Restart(GetWafComposePath()); err != nil {
+		return fmt.Errorf("reload WAF gateway config: %w", err)
+	}
+	if !s.waitGatewayReady(s.readyTimeout, generation) {
+		if health, ok := s.fetchGatewayHealth(); ok && health.LastError != "" {
+			return fmt.Errorf("WAF gateway refused the configuration: %s", health.LastError)
+		}
+		return errors.New("WAF gateway did not load the requested configuration")
+	}
+	return nil
 }
 
 func (s *WafControlService) saveLastError(websiteID uint, operationErr error) error {
@@ -518,24 +585,39 @@ func (s *WafControlService) waitGatewayReady(timeout time.Duration, generation s
 	return false
 }
 
-func (s *WafControlService) gatewayReadyGeneration(expected string) bool {
+// gatewayHealth mirrors the gateway's /healthz payload. Generation always
+// describes the config the gateway is RUNNING, and LastError is set when a
+// candidate config on disk was refused — so "not applied yet" and "refused" are
+// distinguishable instead of both surfacing as a readiness timeout.
+type gatewayHealth struct {
+	Status     string `json:"status"`
+	Generation string `json:"generation"`
+	LastError  string `json:"lastError"`
+}
+
+func (s *WafControlService) fetchGatewayHealth() (gatewayHealth, bool) {
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://127.0.0.1:9000/healthz", nil)
 	if err != nil {
-		return false
+		return gatewayHealth{}, false
 	}
 	resp, err := s.healthClient.Do(req)
 	if err != nil {
-		return false
+		return gatewayHealth{}, false
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return false
+		return gatewayHealth{}, false
 	}
-	var health struct {
-		Status     string `json:"status"`
-		Generation string `json:"generation"`
+	var health gatewayHealth
+	if json.NewDecoder(resp.Body).Decode(&health) != nil {
+		return gatewayHealth{}, false
 	}
-	if json.NewDecoder(resp.Body).Decode(&health) != nil || health.Status != "ready" {
+	return health, true
+}
+
+func (s *WafControlService) gatewayReadyGeneration(expected string) bool {
+	health, ok := s.fetchGatewayHealth()
+	if !ok || health.Status != "ready" {
 		return false
 	}
 	return expected == "" || health.Generation == expected

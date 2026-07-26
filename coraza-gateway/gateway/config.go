@@ -31,6 +31,19 @@ type Config struct {
 	Sites      []SiteConfig `json:"sites"`
 }
 
+// ConfigVersion is the contract version this build understands.
+//
+// A version NEWER than this one is refused rather than parsed leniently.
+// encoding/json silently drops unknown fields, so an older gateway handed a
+// newer config would come up enforcing a policy with the new fields missing
+// while still echoing the new generation on /healthz — and the control plane,
+// which confirms application by comparing generations, would report the policy
+// as live. Refusing to start instead makes the container unhealthy, the
+// readiness wait time out, and the control-plane transaction roll back honestly.
+//
+// Version 0 (absent) is still accepted so a hand-written config keeps working.
+const ConfigVersion = 2
+
 // LoadConfig reads and validates the routing config from a file.
 func LoadConfig(path string) (Config, error) {
 	data, err := os.ReadFile(path)
@@ -50,8 +63,8 @@ func ParseConfig(data []byte) (Config, error) {
 		return Config{}, fmt.Errorf("waf config: invalid json: %w", err)
 	}
 	seen := make(map[string]struct{}, len(c.Sites))
-	if c.Version != 0 && c.Version != 1 {
-		return Config{}, fmt.Errorf("waf config: unsupported version %d", c.Version)
+	if c.Version < 0 || c.Version > ConfigVersion {
+		return Config{}, fmt.Errorf("waf config: unsupported version %d (this gateway understands up to %d; upgrade the WAF gateway image)", c.Version, ConfigVersion)
 	}
 	for i := range c.Sites {
 		host := normalizeHost(c.Sites[i].Host)

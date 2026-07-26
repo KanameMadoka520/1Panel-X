@@ -1,6 +1,10 @@
 package wafconfig
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -91,7 +95,52 @@ func TestMarshalStableShape(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(data), `"version": 1`) || !strings.Contains(string(data), `"websiteId": 7`) {
+	if !strings.Contains(string(data), fmt.Sprintf(`"version": %d`, Version)) || !strings.Contains(string(data), `"websiteId": 7`) {
 		t.Fatalf("unexpected JSON: %s", data)
+	}
+}
+
+// The generation digest is the control plane's proof that the gateway is
+// enforcing the policy it was handed. It must therefore cover the whole config,
+// not just the site list — a change outside the digest would apply silently
+// while the handshake still reported success.
+func TestGenerationCoversNonSiteFields(t *testing.T) {
+	site := []Site{{
+		Website: model.Website{BaseModel: model.BaseModel{ID: 7}, Alias: "site", Type: constant.Proxy, Proxy: "127.0.0.1:8080"},
+		Domains: []model.WebsiteDomain{{Domain: "site.example"}},
+		Enabled: true,
+	}}
+	cfg, err := Build(site)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Generation == "" {
+		t.Fatal("generation must be set")
+	}
+
+	// Same sites, different contract version => different digest.
+	bumped := cfg
+	bumped.Version = Version + 1
+	bumped.Generation = ""
+	raw, err := json.Marshal(bumped)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(raw)
+	if hex.EncodeToString(sum[:]) == cfg.Generation {
+		t.Fatal("a change outside Sites must change the generation digest")
+	}
+
+	// The digest must be computed with the digest field itself zeroed, so it is
+	// reproducible from the emitted config.
+	check := cfg
+	check.Generation = ""
+	raw, err = json.Marshal(check)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum = sha256.Sum256(raw)
+	if hex.EncodeToString(sum[:]) != cfg.Generation {
+		t.Fatal("generation must be reproducible by re-hashing the config with the field zeroed")
 	}
 }
