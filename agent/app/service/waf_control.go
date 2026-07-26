@@ -954,10 +954,11 @@ func rulePolicyFromRequest(in *request.WafRulePolicy) *wafconfig.RulePolicy {
 		return nil
 	}
 	return &wafconfig.RulePolicy{
-		DisableSQLi:    in.DisableSQLi,
-		DisableXSS:     in.DisableXSS,
-		Strict:         in.Strict,
-		AllowedMethods: in.AllowedMethods,
+		DisableSQLi:      in.DisableSQLi,
+		DisableXSS:       in.DisableXSS,
+		Strict:           in.Strict,
+		AllowedMethods:   in.AllowedMethods,
+		BannedUploadExts: in.BannedUploadExts,
 	}
 }
 
@@ -969,11 +970,16 @@ func rulePolicyToResponse(p *wafconfig.RulePolicy) *response.WafRulePolicy {
 	if methods == nil {
 		methods = []string{}
 	}
+	exts := p.BannedUploadExts
+	if exts == nil {
+		exts = []string{}
+	}
 	return &response.WafRulePolicy{
-		DisableSQLi:    p.DisableSQLi,
-		DisableXSS:     p.DisableXSS,
-		Strict:         p.Strict,
-		AllowedMethods: methods,
+		DisableSQLi:      p.DisableSQLi,
+		DisableXSS:       p.DisableXSS,
+		Strict:           p.Strict,
+		AllowedMethods:   methods,
+		BannedUploadExts: exts,
 	}
 }
 
@@ -981,7 +987,7 @@ func rulePolicyValue(p *wafconfig.RulePolicy) response.WafRulePolicy {
 	if converted := rulePolicyToResponse(p); converted != nil {
 		return *converted
 	}
-	return response.WafRulePolicy{AllowedMethods: []string{}}
+	return response.WafRulePolicy{AllowedMethods: []string{}, BannedUploadExts: []string{}}
 }
 
 func rateLimitsToResponse(in []wafconfig.RateLimit) []response.WafRateLimit {

@@ -854,6 +854,9 @@ export namespace Website {
         strict: boolean;
         // Empty leaves the rule set's own method default in force.
         allowedMethods: string[];
+        // Extensions refused when they name an uploaded file. Empty applies no
+        // extension check of our own.
+        bannedUploadExts: string[];
     }
 
     export interface WafBan {

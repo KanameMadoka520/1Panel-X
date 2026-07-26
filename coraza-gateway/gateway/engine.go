@@ -90,6 +90,9 @@ type enginePolicy struct {
 	// AllowedMethods is the canonical space-separated HTTP method allow-list.
 	// Empty leaves the ruleset's own default in force.
 	AllowedMethods string
+	// BannedUploadExts is the canonical space-separated list of upload
+	// extensions to refuse. Empty emits no upload rule at all.
+	BannedUploadExts string
 }
 
 func (p enginePolicy) String() string {
@@ -108,6 +111,9 @@ func (p enginePolicy) String() string {
 	}
 	if p.AllowedMethods != "" {
 		parts = append(parts, "methods="+p.AllowedMethods)
+	}
+	if p.BannedUploadExts != "" {
+		parts = append(parts, "noupload="+p.BannedUploadExts)
 	}
 	return strings.Join(parts, "/")
 }
@@ -259,6 +265,9 @@ func directivesFor(policy enginePolicy, auditLogPath string) string {
 	}
 
 	b.WriteString("Include @owasp_crs/*.conf\n")
+	// Our own upload-extension rule is emitted after the rule include so it can
+	// never be shadowed by a ruleset rule that runs earlier in the same phase.
+	b.WriteString(uploadDenyDirective(policy.BannedUploadExts))
 	b.WriteString(engineDirective + "\n")
 	fmt.Fprintf(&b, "SecRequestBodyAccess On\nSecRequestBodyLimit %d\nSecRequestBodyInMemoryLimit %d\nSecRequestBodyLimitAction Reject\n",
 		bodyLimit, inMem)

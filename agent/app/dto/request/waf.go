@@ -51,6 +51,10 @@ type WafRulePolicy struct {
 	// own default in force. Tokens are validated server-side because they end up
 	// inside an engine directive.
 	AllowedMethods []string `json:"allowedMethods" validate:"omitempty,max=64,dive,max=20"`
+	// BannedUploadExts are extensions refused when they name an uploaded file.
+	// Validated server-side for the same reason as the methods above: they end up
+	// inside an engine directive.
+	BannedUploadExts []string `json:"bannedUploadExts" validate:"omitempty,max=64,dive,max=16"`
 }
 
 // WafListEntrySave creates or updates one panel-wide black/white list row.

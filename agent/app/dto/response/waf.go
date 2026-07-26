@@ -91,10 +91,11 @@ type WafLists struct {
 
 // WafRulePolicy mirrors a stored detection policy.
 type WafRulePolicy struct {
-	DisableSQLi    bool     `json:"disableSqli"`
-	DisableXSS     bool     `json:"disableXss"`
-	Strict         bool     `json:"strict"`
-	AllowedMethods []string `json:"allowedMethods"`
+	DisableSQLi      bool     `json:"disableSqli"`
+	DisableXSS       bool     `json:"disableXss"`
+	Strict           bool     `json:"strict"`
+	AllowedMethods   []string `json:"allowedMethods"`
+	BannedUploadExts []string `json:"bannedUploadExts"`
 }
 
 // WafGlobalConfig echoes the stored panel-wide defaults with canonicalized lists.

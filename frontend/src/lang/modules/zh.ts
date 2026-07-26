@@ -3196,6 +3196,11 @@ const message = {
         wafRuleMethods: 'HTTP 方法过滤',
         wafRuleMethodsTip: '只允许勾选的请求方法访问，未勾选的方法一律拒绝。不启用则沿用规则集自带的默认方法集合。',
         wafRuleMethodsEnable: '启用方法白名单',
+        wafRuleUploads: '文件上传限制',
+        wafRuleUploadsTip: '拒绝上传这些扩展名的文件。双扩展名（如 shell.php.jpg）同样会被拦截；留空则不做此项检查。',
+        wafRuleUploadsPlaceholder: '输入扩展名后回车，如 php',
+        wafRuleUploadsPreset: '填入常见危险扩展名',
+        wafRuleUploadsInvalid: '以下扩展名无效，仅允许字母和数字：{0}',
         wafBans: '封锁记录',
         wafBansScope: '当前生效的临时封禁，由频率限制自动产生。',
         wafBansTip:

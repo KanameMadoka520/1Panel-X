@@ -254,7 +254,13 @@ const status = reactive<Website.WafSiteStatus>({
     rateLimits: [],
     effectiveRateLimits: [],
     rules: null,
-    effectiveRules: { disableSqli: false, disableXss: false, strict: false, allowedMethods: [] },
+    effectiveRules: {
+        disableSqli: false,
+        disableXss: false,
+        strict: false,
+        allowedMethods: [],
+        bannedUploadExts: [],
+    },
     installed: false,
     ready: false,
     routed: false,
@@ -272,6 +278,7 @@ const globalRules = ref<Website.WafRulePolicy>({
     disableXss: false,
     strict: false,
     allowedMethods: [],
+    bannedUploadExts: [],
 });
 const aclPlaceholder = '203.0.113.10\n198.51.100.0/24\n2001:db8::/32';
 const loadingStatus = ref(false);
@@ -394,6 +401,7 @@ const syncGlobal = (data: Website.WafGlobalConfig) => {
         disableXss: false,
         strict: false,
         allowedMethods: [],
+        bannedUploadExts: [],
     };
     globalAllowText.value = (data.allowList || []).join('\n');
     globalDenyText.value = (data.denyList || []).join('\n');

@@ -3445,6 +3445,12 @@ const message = {
         wafRuleMethodsTip:
             'Only the ticked request methods are accepted; every other method is refused. Leave it off to keep the rule set’s own default method list.',
         wafRuleMethodsEnable: 'Enable method allow-list',
+        wafRuleUploads: 'Upload extension limit',
+        wafRuleUploadsTip:
+            'Refuse uploads whose file name carries one of these extensions. Double extensions such as shell.php.jpg are refused too; leave empty to skip this check.',
+        wafRuleUploadsPlaceholder: 'Type an extension and press Enter, e.g. php',
+        wafRuleUploadsPreset: 'Fill in the common dangerous extensions',
+        wafRuleUploadsInvalid: 'These extensions are invalid; letters and digits only: {0}',
         wafBans: 'Temporary bans',
         wafBansScope: 'Bans currently in force, produced automatically by the frequency limits.',
         wafBansTip:
