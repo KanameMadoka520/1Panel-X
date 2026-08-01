@@ -30,6 +30,17 @@ source\
 
 `upstream` points to the official repository and is for fetching and comparison. Do not push 1Panel-X commits to `upstream`, rewrite official history, or force-push shared work.
 
+## Public Repository Policy
+
+The public `origin` repository is a source-code storage and collaboration remote, not a CI/CD, deployment, mirroring, scheduled-maintenance, or automated-review platform.
+
+- Keep `main` as the only local development branch and the only branch on `origin` unless the user explicitly authorizes another branch or pull request.
+- Do not add or restore `.github/workflows`, GitHub Actions, Dependabot configuration, automated pull requests, repository mirroring, bot translation, automated code review, scheduled jobs, Pages deployment, or similar hosted automation without the user's explicit approval.
+- Keep repository-level GitHub Actions disabled. If an upstream synchronization reintroduces hosted-automation files, exclude those files before committing the synchronization.
+- Do not carry upstream Issue or pull-request templates into 1Panel-X by default. They can misdirect users to upstream maintainers or upstream support channels.
+- Continue to run required tests and release checks locally or in an explicitly approved external environment, and record the results in the handoff. Do not replace verification with a hosted workflow.
+- GitHub secret scanning and push protection may remain enabled because they do not add repository workflows, create development branches, or replace local verification.
+
 ## Legal and Product Boundary
 
 - Keep distributed modifications GPL-3.0-compatible and preserve required notices and source availability.
