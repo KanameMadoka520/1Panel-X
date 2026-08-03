@@ -50,6 +50,104 @@ func (b *BaseApi) CheckBackup(c *gin.Context) {
 }
 
 // @Tags Backup Account
+// @Summary Load OAuth credential status
+// @Success 200 {object} dto.OAuthCredentialInfo
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Param id path integer true "backup account id"
+// @Router /backups/oauth/credential/{id} [get]
+func (b *BaseApi) GetBackupOAuthCredential(c *gin.Context) {
+	id, err := helper.GetIntParamByKey(c, "id")
+	if err != nil {
+		helper.BadRequest(c, err)
+		return
+	}
+	data, err := backupService.GetOAuthCredential(id)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, data)
+}
+
+// @Tags Backup Account
+// @Summary Begin OAuth authorization
+// @Accept json
+// @Param request body dto.OAuthBegin true "request"
+// @Success 200 {object} dto.OAuthBeginResponse
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /backups/oauth/begin [post]
+func (b *BaseApi) BeginBackupOAuth(c *gin.Context) {
+	var req dto.OAuthBegin
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	data, err := backupService.BeginOAuth(req)
+	if err != nil {
+		helper.BadRequest(c, err)
+		return
+	}
+	helper.SuccessWithData(c, data)
+}
+
+// @Tags Backup Account
+// @Summary Complete OAuth authorization
+// @Accept json
+// @Param request body dto.OAuthComplete true "request"
+// @Success 200 {object} dto.OAuthCompleteResponse
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /backups/oauth/complete [post]
+func (b *BaseApi) CompleteBackupOAuth(c *gin.Context) {
+	var req dto.OAuthComplete
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	data, err := backupService.CompleteOAuth(req)
+	if err != nil {
+		helper.BadRequest(c, err)
+		return
+	}
+	helper.SuccessWithData(c, data)
+}
+
+// @Tags Backup Account
+// @Summary Clear OAuth credential
+// @Accept json
+// @Param request body dto.OAuthClear true "request"
+// @Success 200
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /backups/oauth/credential/clear [post]
+func (b *BaseApi) ClearBackupOAuthCredential(c *gin.Context) {
+	var req dto.OAuthClear
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	if err := backupService.ClearOAuthCredential(req.ID); err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.Success(c)
+}
+
+// SyncPublicBackupAccounts accepts the complete public-account snapshot from
+// core over the local Unix socket or the enrolled-node mTLS channel. It never
+// returns credential material.
+func (b *BaseApi) SyncPublicBackupAccounts(c *gin.Context) {
+	var req dto.BackupPublicSync
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	if err := backupService.SyncPublicAccounts(req); err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.Success(c)
+}
+
+// @Tags Backup Account
 // @Summary Create backup account
 // @Accept json
 // @Param request body dto.BackupOperate true "request"

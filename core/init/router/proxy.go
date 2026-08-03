@@ -18,9 +18,17 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const internalPublicBackupSyncPath = "/api/v2/backups/public/sync"
+
 func Proxy() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		reqPath := c.Request.URL.Path
+		// This endpoint carries a core-owned secret snapshot directly over the
+		// Unix socket or pinned mTLS. Browser/API traffic must never proxy to it.
+		if reqPath == internalPublicBackupSyncPath {
+			c.AbortWithStatus(http.StatusNotFound)
+			return
+		}
 		if !middleware.ShouldProxyToAgent(reqPath) {
 			c.Next()
 			return

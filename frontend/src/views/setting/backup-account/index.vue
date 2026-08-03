@@ -50,6 +50,13 @@
                     <el-table-column :label="$t('commons.table.type')" :min-width="100" prop="type">
                         <template #default="{ row }">
                             <el-tag>{{ $t('setting.' + row.type) }}</el-tag>
+                            <el-tag
+                                v-if="isOAuthProvider(row.type)"
+                                class="ml-1"
+                                :type="getOAuthStatusMeta(row.varsJson).tagType"
+                            >
+                                {{ $t(getOAuthStatusMeta(row.varsJson).labelKey) }}
+                            </el-tag>
                             <el-tooltip v-if="hasTokenRefresh(row)">
                                 <template #content>
                                     {{ $t('setting.clickToRefresh') }}
@@ -124,6 +131,7 @@ import i18n from '@/lang';
 import { MsgSuccess } from '@/utils/message';
 import { Base64 } from 'js-base64';
 import { useGlobalStore } from '@/composables/useGlobalStore';
+import { getOAuthStatusMeta, isOAuthProvider, mergeOAuthCredentialInfo } from './oauth';
 
 const { isProductPro, isFxplay, docsUrl } = useGlobalStore();
 const loading = ref();
@@ -153,8 +161,9 @@ const search = async () => {
             loading.value = false;
             data.value = res.data.items || [];
             for (const bac of data.value) {
-                if (bac.vars) {
-                    bac.varsJson = JSON.parse(bac.vars);
+                bac.varsJson = bac.vars ? JSON.parse(bac.vars) : {};
+                if (isOAuthProvider(bac.type)) {
+                    bac.varsJson = mergeOAuthCredentialInfo(bac.varsJson, bac.oauth);
                 }
             }
             data.value.sort((a, b) => {
@@ -180,7 +189,7 @@ const loadEndpoint = (row: any) => {
 };
 
 const hasTokenRefresh = (row: any) => {
-    return row.type === 'OneDrive' || row.type === 'ALIYUN';
+    return row.type === 'ALIYUN';
 };
 
 const onDelete = async (row: Backup.BackupInfo) => {

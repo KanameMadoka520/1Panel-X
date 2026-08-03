@@ -2,8 +2,11 @@
 
 package xpack
 
-import "github.com/1Panel-dev/1Panel/core/utils/xpack/helper"
+import (
+	"github.com/1Panel-dev/1Panel/core/utils/xpack/helper"
+	"github.com/1Panel-dev/1Panel/core/utils/xpack/providers"
+)
 
 var AuthProvider = helper.NewIAuthProvider()
 
-var MultiNodeProvider = helper.NewIMultiNodeProvider()
+var MultiNodeProvider providers.MultiNodeProvider = helper.NewIMultiNodeProvider()

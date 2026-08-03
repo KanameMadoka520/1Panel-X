@@ -28,7 +28,7 @@ func setupHelperTestDB(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open helper test database: %v", err)
 	}
-	if err := db.AutoMigrate(&model.Node{}, &model.Setting{}); err != nil {
+	if err := db.AutoMigrate(&model.Node{}, &model.Setting{}, &model.BackupAccount{}, &model.BackupOAuthCredential{}); err != nil {
 		t.Fatalf("migrate helper test database: %v", err)
 	}
 	global.DB = db
@@ -176,5 +176,112 @@ func TestResolveNode(t *testing.T) {
 	}
 	if _, err := resolveNode("nope"); err == nil {
 		t.Fatal("resolveNode should fail for an unknown node")
+	}
+}
+
+func TestBuildPublicBackupSyncPayloadDecryptsAndSanitizes(t *testing.T) {
+	setupHelperTestDB(t)
+	accessKey, err := encrypt.StringEncrypt("synthetic-access-key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	accountCredential, err := encrypt.StringEncrypt("synthetic-account-credential")
+	if err != nil {
+		t.Fatal(err)
+	}
+	account := model.BackupAccount{
+		Name:         "shared-drive",
+		Type:         constant.OneDrive,
+		IsPublic:     true,
+		AccessKey:    accessKey,
+		Credential:   accountCredential,
+		Vars:         `{"directory":"safe","clientSecret":"remove-me","refresh_token":"remove-me","codeChallenge":"remove-me"}`,
+		RememberAuth: true,
+	}
+	if err := global.DB.Create(&account).Error; err != nil {
+		t.Fatal(err)
+	}
+	clientSecret, err := encrypt.StringEncryptGCM("administrator-client-secret", model.BackupOAuthClientSecretEncryptionDomain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	refreshToken, err := encrypt.StringEncryptGCM("administrator-refresh-token", model.BackupOAuthRefreshTokenEncryptionDomain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := global.DB.Create(&model.BackupOAuthCredential{
+		BackupAccountID: account.ID,
+		Provider:        model.BackupOAuthProviderMicrosoft,
+		ClientID:        "administrator-client-id",
+		ClientSecret:    clientSecret,
+		RefreshToken:    refreshToken,
+		Status:          model.BackupOAuthStatusConfigured,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	payload, err := buildPublicBackupSyncPayload()
+	if err != nil {
+		t.Fatalf("build public backup sync payload: %v", err)
+	}
+	if len(payload.Accounts) != 1 || payload.Accounts[0].OAuth == nil {
+		t.Fatalf("unexpected sync payload: %#v", payload)
+	}
+	item := payload.Accounts[0]
+	if item.AccessKey != "synthetic-access-key" || item.Credential != "synthetic-account-credential" {
+		t.Fatalf("account credentials were not decrypted for the trusted transport")
+	}
+	if item.OAuth.ClientSecret != "administrator-client-secret" || item.OAuth.RefreshToken != "administrator-refresh-token" {
+		t.Fatal("OAuth credentials were not decrypted for the trusted transport")
+	}
+	for _, forbidden := range []string{"clientSecret", "refresh_token", "codeChallenge", "remove-me"} {
+		if strings.Contains(item.Vars, forbidden) {
+			t.Fatalf("sync Vars contains %q", forbidden)
+		}
+	}
+
+	if err := global.DB.Model(&model.BackupOAuthCredential{}).
+		Where("backup_account_id = ?", account.ID).
+		Update("status", model.BackupOAuthStatusLegacyReconfigurationRequired).Error; err != nil {
+		t.Fatal(err)
+	}
+	payload, err = buildPublicBackupSyncPayload()
+	if err != nil {
+		t.Fatalf("build legacy public backup sync payload: %v", err)
+	}
+	if payload.Accounts[0].OAuth.ClientSecret != "" || payload.Accounts[0].OAuth.RefreshToken != "" {
+		t.Fatal("retired shared OAuth material was propagated to an agent")
+	}
+}
+
+func TestSyncPublicBackupAccountsToNodesReportsPendingAndAggregatesFailures(t *testing.T) {
+	nodes := []model.Node{
+		{Name: "online-failed", Enrolled: true, Status: constant.NodeStatusOnline},
+		{Name: "offline-pending", Enrolled: true, Status: constant.NodeStatusOffline},
+		{Name: "online-succeeded", Enrolled: true, Status: constant.NodeStatusOnline},
+		{Name: "not-enrolled", Enrolled: false, Status: constant.NodeStatusPending},
+	}
+	var attempted []string
+	err := syncPublicBackupAccountsToNodes(nodes, []byte(`{"accounts":[]}`), func(node model.Node, _ []byte) error {
+		attempted = append(attempted, node.Name)
+		if node.Name == "online-failed" {
+			return fmt.Errorf("synthetic transport failure")
+		}
+		return nil
+	})
+	if err == nil {
+		t.Fatal("sync unexpectedly succeeded despite an offline and a failed node")
+	}
+	if strings.Join(attempted, ",") != "online-failed,online-succeeded" {
+		t.Fatalf("online node attempts = %#v", attempted)
+	}
+	message := err.Error()
+	for _, expected := range []string{"online-failed", "offline-pending", "synthetic transport failure"} {
+		if !strings.Contains(message, expected) {
+			t.Fatalf("aggregated sync error does not contain %q: %s", expected, message)
+		}
+	}
+	if strings.Contains(message, "not-enrolled") {
+		t.Fatalf("never-enrolled node was incorrectly reported as pending: %s", message)
 	}
 }

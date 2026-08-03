@@ -3,6 +3,7 @@ package service
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -16,15 +17,21 @@ import (
 	"github.com/1Panel-dev/1Panel/core/global"
 	"github.com/1Panel-dev/1Panel/core/utils/cloud_storage"
 	"github.com/1Panel-dev/1Panel/core/utils/encrypt"
+	"github.com/1Panel-dev/1Panel/core/utils/oauthflow"
 	"github.com/1Panel-dev/1Panel/core/utils/req_helper/proxy_local"
 	"github.com/1Panel-dev/1Panel/core/utils/xpack"
 	"github.com/jinzhu/copier"
+	"gorm.io/gorm"
 )
 
 type BackupService struct{}
 
 type IBackupService interface {
 	LoadBackupClientInfo(clientType string) (dto.BackupClientInfo, error)
+	BeginOAuth(req dto.OAuthBegin) (dto.OAuthBeginResponse, error)
+	CompleteOAuth(req dto.OAuthComplete) (dto.OAuthCompleteResponse, error)
+	GetOAuthCredential(name string) (dto.OAuthCredentialInfo, error)
+	ClearOAuthCredential(name string) error
 	Create(backupDto dto.BackupOperate) error
 	Update(req dto.BackupOperate) error
 	Delete(name string) error
@@ -36,30 +43,15 @@ func NewIBackupService() IBackupService {
 }
 
 func (u *BackupService) LoadBackupClientInfo(clientType string) (dto.BackupClientInfo, error) {
-	var data dto.BackupClientInfo
-	clientIDKey := "OneDriveID"
-	clientIDSc := "OneDriveSc"
-	data.RedirectUri = constant.OneDriveRedirectURI
-	clientID, err := settingRepo.Get(repo.WithByKey(clientIDKey))
-	if err != nil {
-		return data, err
+	if clientType != constant.OneDrive && clientType != constant.GoogleDrive {
+		return dto.BackupClientInfo{}, fmt.Errorf("unsupported OAuth backup provider")
 	}
-	idItem, err := base64.StdEncoding.DecodeString(clientID.Value)
-	if err != nil {
-		return data, err
-	}
-	data.ClientID = string(idItem)
-	clientSecret, err := settingRepo.Get(repo.WithByKey(clientIDSc))
-	if err != nil {
-		return data, err
-	}
-	secretItem, err := base64.StdEncoding.DecodeString(clientSecret.Value)
-	if err != nil {
-		return data, err
-	}
-	data.ClientSecret = string(secretItem)
-
-	return data, err
+	return dto.BackupClientInfo{
+		Provider:    clientType,
+		Configured:  false,
+		RedirectURI: constant.OneDriveRedirectURI,
+		Status:      model.BackupOAuthStatusUnconfigured,
+	}, nil
 }
 
 func (u *BackupService) Create(req dto.BackupOperate) error {
@@ -75,6 +67,32 @@ func (u *BackupService) Create(req dto.BackupOperate) error {
 	}
 	if err := copier.Copy(&backup, &req); err != nil {
 		return buserr.WithDetail("ErrStructTransform", err.Error(), nil)
+	}
+	var err error
+	var storedOAuth oauthflow.StoredResult
+	var aliyunRefreshToken string
+	if req.Type == constant.OneDrive || req.Type == constant.GoogleDrive {
+		storedOAuth, err = consumeBackupOAuthSession(req.OAuthSession, 0, req.Name, req.Type)
+		if err != nil {
+			return err
+		}
+		_, backup.Vars, err = sanitizeBackupOAuthVars(backup.Vars)
+		if err != nil {
+			return err
+		}
+	} else if req.Type == constant.ALIYUN {
+		vars := make(map[string]interface{})
+		if err := json.Unmarshal([]byte(backup.Vars), &vars); err != nil {
+			return errors.New("Aliyun backup metadata is invalid")
+		}
+		aliyunRefreshToken, err = extractAliyunRefreshToken(vars)
+		if err != nil {
+			return err
+		}
+		backup.Vars, err = sanitizeBackupOAuthVarsMap(vars)
+		if err != nil {
+			return err
+		}
 	}
 	itemAccessKey, err := base64.StdEncoding.DecodeString(backup.AccessKey)
 	if err != nil {
@@ -95,11 +113,23 @@ func (u *BackupService) Create(req dto.BackupOperate) error {
 	if err != nil {
 		return err
 	}
-	if err := backupRepo.Create(&backup); err != nil {
+	if isBackupOAuthType(req.Type) {
+		if err := global.DB.Transaction(func(tx *gorm.DB) error {
+			if err := tx.Create(&backup).Error; err != nil {
+				return err
+			}
+			if req.Type == constant.ALIYUN {
+				return saveAliyunCredentialTx(tx, backup.ID, aliyunRefreshToken, false)
+			}
+			return saveBackupOAuthCredentialTx(tx, backup.ID, storedOAuth)
+		}); err != nil {
+			return err
+		}
+	} else if err := backupRepo.Create(&backup); err != nil {
 		return err
 	}
 	if err := xpack.MultiNodeProvider.Sync(constant.SyncBackupAccounts); err != nil {
-		global.LOG.Errorf("sync backup account to node failed, err: %v", err)
+		return fmt.Errorf("backup account was saved but could not be synchronized to the execution agent: %w", err)
 	}
 	return nil
 }
@@ -124,11 +154,20 @@ func (u *BackupService) Delete(name string) error {
 		return buserr.New("ErrBackupInUsed")
 	}
 
-	if err := backupRepo.Delete(repo.WithByName(name)); err != nil {
+	if isBackupOAuthType(backup.Type) {
+		if err := global.DB.Transaction(func(tx *gorm.DB) error {
+			if err := tx.Where("backup_account_id = ?", backup.ID).Delete(&model.BackupOAuthCredential{}).Error; err != nil {
+				return err
+			}
+			return tx.Where("id = ?", backup.ID).Delete(&model.BackupAccount{}).Error
+		}); err != nil {
+			return err
+		}
+	} else if err := backupRepo.Delete(repo.WithByName(name)); err != nil {
 		return err
 	}
 	if err := xpack.MultiNodeProvider.Sync(constant.SyncBackupAccounts); err != nil {
-		global.LOG.Errorf("sync backup account to node failed, err: %v", err)
+		return fmt.Errorf("backup account was deleted in core but could not be removed from the execution agent: %w", err)
 	}
 	return nil
 }
@@ -150,6 +189,40 @@ func (u *BackupService) Update(req dto.BackupOperate) error {
 	var newBackup model.BackupAccount
 	if err := copier.Copy(&newBackup, &req); err != nil {
 		return buserr.WithDetail("ErrStructTransform", err.Error(), nil)
+	}
+	var err error
+	var storedOAuth oauthflow.StoredResult
+	hasOAuthSession := strings.TrimSpace(req.OAuthSession) != ""
+	var aliyunRefreshToken string
+	if req.Type == constant.OneDrive || req.Type == constant.GoogleDrive {
+		if hasOAuthSession {
+			storedOAuth, err = consumeBackupOAuthSession(req.OAuthSession, backup.ID, req.Name, req.Type)
+			if err != nil {
+				return err
+			}
+		} else {
+			credential, _ := backupOAuthRepo.GetByBackupAccountID(backup.ID)
+			if credential.ID == 0 || credential.Provider == model.BackupOAuthProviderAliyun || backup.Type != req.Type {
+				return errOAuthAuthorizationNeeded
+			}
+		}
+		_, newBackup.Vars, err = sanitizeBackupOAuthVars(newBackup.Vars)
+		if err != nil {
+			return err
+		}
+	} else if req.Type == constant.ALIYUN {
+		vars := make(map[string]interface{})
+		if err := json.Unmarshal([]byte(newBackup.Vars), &vars); err != nil {
+			return errors.New("Aliyun backup metadata is invalid")
+		}
+		aliyunRefreshToken, err = extractAliyunRefreshToken(vars)
+		if err != nil {
+			return err
+		}
+		newBackup.Vars, err = sanitizeBackupOAuthVarsMap(vars)
+		if err != nil {
+			return err
+		}
 	}
 	newBackup.ID = backup.ID
 	itemAccessKey, err := base64.StdEncoding.DecodeString(newBackup.AccessKey)
@@ -173,11 +246,30 @@ func (u *BackupService) Update(req dto.BackupOperate) error {
 	newBackup.ID = backup.ID
 	newBackup.CreatedAt = backup.CreatedAt
 	newBackup.UpdatedAt = backup.UpdatedAt
-	if err := backupRepo.Save(&newBackup); err != nil {
+	if isBackupOAuthType(backup.Type) || isBackupOAuthType(req.Type) {
+		if err := global.DB.Transaction(func(tx *gorm.DB) error {
+			if err := tx.Save(&newBackup).Error; err != nil {
+				return err
+			}
+			switch req.Type {
+			case constant.OneDrive, constant.GoogleDrive:
+				if hasOAuthSession {
+					return saveBackupOAuthCredentialTx(tx, backup.ID, storedOAuth)
+				}
+				return nil
+			case constant.ALIYUN:
+				return saveAliyunCredentialTx(tx, backup.ID, aliyunRefreshToken, true)
+			default:
+				return tx.Where("backup_account_id = ?", backup.ID).Delete(&model.BackupOAuthCredential{}).Error
+			}
+		}); err != nil {
+			return err
+		}
+	} else if err := backupRepo.Save(&newBackup); err != nil {
 		return err
 	}
 	if err := xpack.MultiNodeProvider.Sync(constant.SyncBackupAccounts); err != nil {
-		global.LOG.Errorf("sync backup account to node failed, err: %v", err)
+		return fmt.Errorf("backup account was updated in core but could not be synchronized to the execution agent: %w", err)
 	}
 	return nil
 }
@@ -190,36 +282,93 @@ func (u *BackupService) RefreshToken(req dto.OperateByName) error {
 	if !backup.IsPublic {
 		return buserr.New("ErrBackupPublic")
 	}
-	varMap := make(map[string]interface{})
-	if err := json.Unmarshal([]byte(backup.Vars), &varMap); err != nil {
-		return fmt.Errorf("failed to refresh %s - %s token, please retry, err: %v", backup.Type, backup.Name, err)
+	credential, _ := backupOAuthRepo.GetByBackupAccountID(backup.ID)
+	if credential.ID == 0 {
+		return errOAuthNotConfigured
 	}
-	var (
-		refreshToken string
-		err          error
-	)
+	if credential.Status == model.BackupOAuthStatusLegacyReconfigurationRequired {
+		return errOAuthReconfiguration
+	}
+	if credential.Status != model.BackupOAuthStatusConfigured || credential.RefreshToken == "" {
+		return errOAuthNotConfigured
+	}
+	refreshToken, err := encrypt.StringDecryptGCM(credential.RefreshToken, model.BackupOAuthRefreshTokenEncryptionDomain)
+	if err != nil || refreshToken == "" {
+		return errors.New("stored OAuth refresh token cannot be decrypted; authorize the backup account again")
+	}
+	varMap, _, err := sanitizeBackupOAuthVars(backup.Vars)
+	if err != nil {
+		return err
+	}
+	varMap["refresh_token"] = refreshToken
+	varMap["client_id"] = credential.ClientID
+	varMap["redirect_uri"] = credential.RedirectURI
+	varMap["isCN"] = credential.IsCN
+	if credential.ClientSecret != "" {
+		clientSecret, decryptErr := encrypt.StringDecryptGCM(credential.ClientSecret, model.BackupOAuthClientSecretEncryptionDomain)
+		if decryptErr != nil {
+			return errors.New("stored OAuth client secret cannot be decrypted; replace the credential")
+		}
+		varMap["client_secret"] = clientSecret
+	}
+	newRefreshToken := refreshToken
 	switch backup.Type {
 	case constant.OneDrive:
-		refreshToken, err = cloud_storage.RefreshToken("refresh_token", "refreshToken", varMap)
+		newRefreshToken, err = cloud_storage.RefreshToken("refresh_token", "refreshToken", varMap)
+	case constant.GoogleDrive:
+		newRefreshToken, err = cloud_storage.RefreshGoogleToken("refresh_token", "refreshToken", varMap)
 	case constant.ALIYUN:
-		refreshToken, err = cloud_storage.RefreshALIToken(varMap)
+		newRefreshToken, err = cloud_storage.RefreshALIToken(varMap)
+	default:
+		return errors.New("backup account does not use a refreshable OAuth token")
 	}
+	delete(varMap, "refresh_token")
+	delete(varMap, "client_id")
+	delete(varMap, "client_secret")
+	delete(varMap, "redirect_uri")
 	if err != nil {
 		varMap["refresh_status"] = constant.StatusFailed
-		varMap["refresh_msg"] = err.Error()
-		return fmt.Errorf("failed to refresh %s-%s token, please retry, err: %v", backup.Type, backup.Name, err)
+		varMap["refresh_msg"] = "OAuth refresh failed; authorize the backup account again"
+		varsItem, marshalErr := json.Marshal(varMap)
+		if marshalErr != nil {
+			return marshalErr
+		}
+		if persistErr := persistBackupOAuthRefreshResult(
+			backup,
+			credential,
+			credential.RefreshToken,
+			model.BackupOAuthStatusReauthorizationRequired,
+			string(varsItem),
+		); persistErr != nil {
+			return persistErr
+		}
+		if syncErr := xpack.MultiNodeProvider.Sync(constant.SyncBackupAccounts); syncErr != nil {
+			return errors.New("OAuth refresh failed and the reauthorization status could not be synchronized to the execution agent")
+		}
+		return errors.New("OAuth token refresh failed; authorize the backup account again")
 	}
 	varMap["refresh_status"] = constant.StatusSuccess
 	varMap["refresh_time"] = time.Now().Format(constant.DateTimeLayout)
-	varMap["refresh_token"] = refreshToken
-
-	varsItem, _ := json.Marshal(varMap)
-	backup.Vars = string(varsItem)
-	if err := backupRepo.Save(&backup); err != nil {
+	delete(varMap, "refresh_msg")
+	encryptedRefreshToken, err := encrypt.StringEncryptGCM(newRefreshToken, model.BackupOAuthRefreshTokenEncryptionDomain)
+	if err != nil {
+		return err
+	}
+	varsItem, err := json.Marshal(varMap)
+	if err != nil {
+		return err
+	}
+	if err := persistBackupOAuthRefreshResult(
+		backup,
+		credential,
+		encryptedRefreshToken,
+		model.BackupOAuthStatusConfigured,
+		string(varsItem),
+	); err != nil {
 		return err
 	}
 	if err := xpack.MultiNodeProvider.Sync(constant.SyncBackupAccounts); err != nil {
-		global.LOG.Errorf("sync backup account to node failed, err: %v", err)
+		return fmt.Errorf("OAuth token was refreshed in core but could not be synchronized to the execution agent: %w", err)
 	}
 	return nil
 }

@@ -73,6 +73,89 @@ func (b *BaseApi) LoadBackupClientInfo(c *gin.Context) {
 }
 
 // @Tags Backup Account
+// @Summary Load OAuth credential status
+// @Success 200 {object} dto.OAuthCredentialInfo
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Param name path string true "backup account name"
+// @Router /core/backups/oauth/credential/{name} [get]
+func (b *BaseApi) GetBackupOAuthCredential(c *gin.Context) {
+	name, ok := c.Params.Get("name")
+	if !ok || name == "" {
+		helper.BadRequest(c, fmt.Errorf("error %s in path", "name"))
+		return
+	}
+	data, err := backupService.GetOAuthCredential(name)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, data)
+}
+
+// @Tags Backup Account
+// @Summary Begin OAuth authorization
+// @Accept json
+// @Param request body dto.OAuthBegin true "request"
+// @Success 200 {object} dto.OAuthBeginResponse
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /core/backups/oauth/begin [post]
+func (b *BaseApi) BeginBackupOAuth(c *gin.Context) {
+	var req dto.OAuthBegin
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	data, err := backupService.BeginOAuth(req)
+	if err != nil {
+		helper.BadRequest(c, err)
+		return
+	}
+	helper.SuccessWithData(c, data)
+}
+
+// @Tags Backup Account
+// @Summary Complete OAuth authorization
+// @Accept json
+// @Param request body dto.OAuthComplete true "request"
+// @Success 200 {object} dto.OAuthCompleteResponse
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /core/backups/oauth/complete [post]
+func (b *BaseApi) CompleteBackupOAuth(c *gin.Context) {
+	var req dto.OAuthComplete
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	data, err := backupService.CompleteOAuth(req)
+	if err != nil {
+		helper.BadRequest(c, err)
+		return
+	}
+	helper.SuccessWithData(c, data)
+}
+
+// @Tags Backup Account
+// @Summary Clear OAuth credential
+// @Accept json
+// @Param request body dto.OAuthClear true "request"
+// @Success 200
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /core/backups/oauth/credential/clear [post]
+func (b *BaseApi) ClearBackupOAuthCredential(c *gin.Context) {
+	var req dto.OAuthClear
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	if err := backupService.ClearOAuthCredential(req.Name); err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.Success(c)
+}
+
+// @Tags Backup Account
 // @Summary Delete backup account
 // @Accept json
 // @Param request body dto.OperateByName true "request"

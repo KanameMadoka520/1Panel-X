@@ -4,8 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"crypto/tls"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -212,45 +210,27 @@ func RefreshToken(grantType string, tokenType string, varMap map[string]interfac
 		data.Set("code", loadParamFromVars("code", varMap))
 	}
 	data.Set("redirect_uri", loadParamFromVars("redirect_uri", varMap))
-	client := &http.Client{}
-	defer client.CloseIdleConnections()
-	url := "https://login.microsoftonline.com/common/oauth2/v2.0/token"
+	tokenURL := "https://login.microsoftonline.com/common/oauth2/v2.0/token"
 	if isCN == "true" {
-		url = "https://login.chinacloudapi.cn/common/oauth2/v2.0/token"
+		tokenURL = "https://login.chinacloudapi.cn/common/oauth2/v2.0/token"
 	}
-	req, err := http.NewRequest("POST", url, strings.NewReader(data.Encode()))
+	token, err := requestOAuthToken(tokenURL, data)
 	if err != nil {
-		return "", fmt.Errorf("new http post client for access token failed, err: %v", err)
-	}
-	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("request for access token failed, err: %v", err)
-	}
-	defer resp.Body.Close()
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("read data from response body failed, err: %v", err)
-	}
-
-	tokenMap := map[string]interface{}{}
-	if err := json.Unmarshal(respBody, &tokenMap); err != nil {
-		return "", fmt.Errorf("unmarshal data from response body failed, err: %v", err)
+		return "", err
 	}
 	if tokenType == "accessToken" {
-		accessToken, ok := tokenMap["access_token"].(string)
-		if !ok {
-			return "", errors.New("no such access token in response")
+		return token.AccessToken, nil
+	}
+	if token.RefreshToken != "" {
+		return token.RefreshToken, nil
+	}
+	if grantType == "refresh_token" {
+		refreshToken := loadParamFromVars("refresh_token", varMap)
+		if refreshToken != "" {
+			return refreshToken, nil
 		}
-		tokenMap = nil
-		return accessToken, nil
 	}
-	refreshToken, ok := tokenMap["refresh_token"].(string)
-	if !ok {
-		return "", errors.New("no such access token in response")
-	}
-	tokenMap = nil
-	return refreshToken, nil
+	return "", errors.New("OAuth refresh token missing")
 }
 
 func (o *oneDriveClient) createFolder(parent string) error {
@@ -372,13 +352,7 @@ func (o *oneDriveClient) upBig(ctx context.Context, srcPath, folderID string, fi
 		splitCount += 1
 	}
 	bfReader := bufio.NewReader(file)
-	httpClient := http.Client{
-		Timeout: time.Minute * 10,
-		Transport: &http.Transport{
-			Proxy:           http.ProxyFromEnvironment,
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-		},
-	}
+	httpClient := http.Client{Timeout: time.Minute * 10}
 	for splitNow := int64(0); splitNow < splitCount; splitNow++ {
 		length, err := bfReader.Read(buffer)
 		if err != nil {
@@ -396,10 +370,10 @@ func (o *oneDriveClient) upBig(ctx context.Context, srcPath, folderID string, fi
 		if err != nil {
 			return false, err
 		}
+		_, _ = io.Copy(io.Discard, io.LimitReader(res.Body, 64<<10))
 		res.Body.Close()
 		if res.StatusCode != 201 && res.StatusCode != 202 && res.StatusCode != 200 {
-			data, _ := io.ReadAll(res.Body)
-			return false, errors.New(string(data))
+			return false, fmt.Errorf("OneDrive upload session rejected with status %d", res.StatusCode)
 		}
 	}
 	return true, nil

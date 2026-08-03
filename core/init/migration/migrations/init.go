@@ -314,10 +314,10 @@ var InitHost = &gormigrate.Migration{
 var InitOneDrive = &gormigrate.Migration{
 	ID: "20240808-init-one-drive",
 	Migrate: func(tx *gorm.DB) error {
-		if err := tx.Create(&model.Setting{Key: "OneDriveID", Value: "MDEwOTM1YTktMWFhOS00ODU0LWExZGMtNmU0NWZlNjI4YzZi"}).Error; err != nil {
+		if err := tx.Create(&model.Setting{Key: "OneDriveID", Value: ""}).Error; err != nil {
 			return err
 		}
-		if err := tx.Create(&model.Setting{Key: "OneDriveSc", Value: "akpuOFF+YkNXOU1OLWRzS1ZSRDdOcG1LT2ZRM0RLNmdvS1RkVWNGRA=="}).Error; err != nil {
+		if err := tx.Create(&model.Setting{Key: "OneDriveSc", Value: ""}).Error; err != nil {
 			return err
 		}
 		if err := tx.Create(&model.BackupAccount{
@@ -522,16 +522,6 @@ var UpdateXpackHideMenu = &gormigrate.Migration{
 var UpdateOnedrive = &gormigrate.Migration{
 	ID: "20250704-update-onedrive",
 	Migrate: func(tx *gorm.DB) error {
-		if err := tx.Model(&model.Setting{}).
-			Where("key = ?", "OneDriveID").
-			Update("value", "NTQ0NmNmZTMtNGM3OS00N2EwLWFlMjUtZmM2NDU0NzhlMmQ5").Error; err != nil {
-			return err
-		}
-		if err := tx.Model(&model.Setting{}).
-			Where("key = ?", "OneDriveSc").
-			Update("value", "bGRlOFF+WEVrR1M0b25Vb1VsRWpMYzE2MW9rTXZEM25KdnZ1MGN6MA==").Error; err != nil {
-			return err
-		}
 		return nil
 	},
 }

@@ -13,6 +13,11 @@ func (s *BackupRouter) InitRouter(Router *gin.RouterGroup) {
 	{
 		backupRouter.GET("/check/:name", baseApi.CheckBackupUsed)
 		backupRouter.GET("/options", baseApi.LoadBackupOptions)
+		backupRouter.GET("/oauth/credential/:id", baseApi.GetBackupOAuthCredential)
+		backupRouter.POST("/oauth/begin", baseApi.BeginBackupOAuth)
+		backupRouter.POST("/oauth/complete", baseApi.CompleteBackupOAuth)
+		backupRouter.POST("/oauth/credential/clear", baseApi.ClearBackupOAuthCredential)
+		backupRouter.POST("/public/sync", baseApi.SyncPublicBackupAccounts)
 		backupRouter.POST("/search", baseApi.SearchBackup)
 
 		backupRouter.GET("/local", baseApi.GetLocalDir)

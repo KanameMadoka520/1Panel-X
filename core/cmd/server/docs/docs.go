@@ -5604,6 +5604,150 @@ const docTemplate = `{
 				]
 			}
 		},
+		"/backups/oauth/begin": {
+			"post": {
+				"consumes": [
+					"application/json"
+				],
+				"parameters": [
+					{
+						"description": "request",
+						"in": "body",
+						"name": "request",
+						"required": true,
+						"schema": {
+							"$ref": "#/definitions/dto.OAuthBegin"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"schema": {
+							"$ref": "#/definitions/dto.OAuthBeginResponse"
+						}
+					}
+				},
+				"security": [
+					{
+						"ApiKeyAuth": []
+					},
+					{
+						"Timestamp": []
+					}
+				],
+				"summary": "Begin OAuth authorization",
+				"tags": [
+					"Backup Account"
+				]
+			}
+		},
+		"/backups/oauth/complete": {
+			"post": {
+				"consumes": [
+					"application/json"
+				],
+				"parameters": [
+					{
+						"description": "request",
+						"in": "body",
+						"name": "request",
+						"required": true,
+						"schema": {
+							"$ref": "#/definitions/dto.OAuthComplete"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"schema": {
+							"$ref": "#/definitions/dto.OAuthCompleteResponse"
+						}
+					}
+				},
+				"security": [
+					{
+						"ApiKeyAuth": []
+					},
+					{
+						"Timestamp": []
+					}
+				],
+				"summary": "Complete OAuth authorization",
+				"tags": [
+					"Backup Account"
+				]
+			}
+		},
+		"/backups/oauth/credential/clear": {
+			"post": {
+				"consumes": [
+					"application/json"
+				],
+				"parameters": [
+					{
+						"description": "request",
+						"in": "body",
+						"name": "request",
+						"required": true,
+						"schema": {
+							"$ref": "#/definitions/dto.OAuthClear"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				},
+				"security": [
+					{
+						"ApiKeyAuth": []
+					},
+					{
+						"Timestamp": []
+					}
+				],
+				"summary": "Clear OAuth credential",
+				"tags": [
+					"Backup Account"
+				]
+			}
+		},
+		"/backups/oauth/credential/{id}": {
+			"get": {
+				"parameters": [
+					{
+						"description": "backup account id",
+						"in": "path",
+						"name": "id",
+						"required": true,
+						"type": "integer"
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"schema": {
+							"$ref": "#/definitions/dto.OAuthCredentialInfo"
+						}
+					}
+				},
+				"security": [
+					{
+						"ApiKeyAuth": []
+					},
+					{
+						"Timestamp": []
+					}
+				],
+				"summary": "Load OAuth credential status",
+				"tags": [
+					"Backup Account"
+				]
+			}
+		},
 		"/backups/options": {
 			"get": {
 				"consumes": [
@@ -9847,6 +9991,150 @@ const docTemplate = `{
 					"formatZH": "删除备份账号 [name]",
 					"paramKeys": []
 				}
+			}
+		},
+		"/core/backups/oauth/begin": {
+			"post": {
+				"consumes": [
+					"application/json"
+				],
+				"parameters": [
+					{
+						"description": "request",
+						"in": "body",
+						"name": "request",
+						"required": true,
+						"schema": {
+							"$ref": "#/definitions/dto.OAuthBegin"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"schema": {
+							"$ref": "#/definitions/dto.OAuthBeginResponse"
+						}
+					}
+				},
+				"security": [
+					{
+						"ApiKeyAuth": []
+					},
+					{
+						"Timestamp": []
+					}
+				],
+				"summary": "Begin OAuth authorization",
+				"tags": [
+					"Backup Account"
+				]
+			}
+		},
+		"/core/backups/oauth/complete": {
+			"post": {
+				"consumes": [
+					"application/json"
+				],
+				"parameters": [
+					{
+						"description": "request",
+						"in": "body",
+						"name": "request",
+						"required": true,
+						"schema": {
+							"$ref": "#/definitions/dto.OAuthComplete"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"schema": {
+							"$ref": "#/definitions/dto.OAuthCompleteResponse"
+						}
+					}
+				},
+				"security": [
+					{
+						"ApiKeyAuth": []
+					},
+					{
+						"Timestamp": []
+					}
+				],
+				"summary": "Complete OAuth authorization",
+				"tags": [
+					"Backup Account"
+				]
+			}
+		},
+		"/core/backups/oauth/credential/clear": {
+			"post": {
+				"consumes": [
+					"application/json"
+				],
+				"parameters": [
+					{
+						"description": "request",
+						"in": "body",
+						"name": "request",
+						"required": true,
+						"schema": {
+							"$ref": "#/definitions/dto.OAuthClear"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				},
+				"security": [
+					{
+						"ApiKeyAuth": []
+					},
+					{
+						"Timestamp": []
+					}
+				],
+				"summary": "Clear OAuth credential",
+				"tags": [
+					"Backup Account"
+				]
+			}
+		},
+		"/core/backups/oauth/credential/{name}": {
+			"get": {
+				"parameters": [
+					{
+						"description": "backup account name",
+						"in": "path",
+						"name": "name",
+						"required": true,
+						"type": "string"
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"schema": {
+							"$ref": "#/definitions/dto.OAuthCredentialInfo"
+						}
+					}
+				},
+				"security": [
+					{
+						"ApiKeyAuth": []
+					},
+					{
+						"Timestamp": []
+					}
+				],
+				"summary": "Load OAuth credential status",
+				"tags": [
+					"Backup Account"
+				]
 			}
 		},
 		"/core/backups/refresh/token": {
@@ -31112,13 +31400,22 @@ const docTemplate = `{
 		},
 		"dto.BackupClientInfo": {
 			"properties": {
-				"client_id": {
+				"clientIdDisplay": {
 					"type": "string"
 				},
-				"client_secret": {
+				"configured": {
+					"type": "boolean"
+				},
+				"provider": {
 					"type": "string"
 				},
-				"redirect_uri": {
+				"redirectUri": {
+					"type": "string"
+				},
+				"status": {
+					"type": "string"
+				},
+				"updatedAt": {
 					"type": "string"
 				}
 			},
@@ -31145,6 +31442,9 @@ const docTemplate = `{
 					"type": "boolean"
 				},
 				"name": {
+					"type": "string"
+				},
+				"oauthSession": {
 					"type": "string"
 				},
 				"rememberAuth": {
@@ -35835,6 +36135,128 @@ const docTemplate = `{
 				},
 				"swapMemoryUsedPercent": {
 					"type": "number"
+				}
+			},
+			"type": "object"
+		},
+		"dto.OAuthBegin": {
+			"properties": {
+				"accountId": {
+					"type": "integer"
+				},
+				"accountName": {
+					"type": "string"
+				},
+				"clientId": {
+					"type": "string"
+				},
+				"clientSecret": {
+					"type": "string"
+				},
+				"isCN": {
+					"type": "boolean"
+				},
+				"provider": {
+					"enum": [
+						"OneDrive",
+						"GoogleDrive"
+					],
+					"type": "string"
+				},
+				"redirectUri": {
+					"type": "string"
+				}
+			},
+			"required": [
+				"provider"
+			],
+			"type": "object"
+		},
+		"dto.OAuthBeginResponse": {
+			"properties": {
+				"authorizationUrl": {
+					"type": "string"
+				},
+				"clientIdDisplay": {
+					"type": "string"
+				},
+				"expiresAt": {
+					"type": "string"
+				},
+				"flowId": {
+					"type": "string"
+				}
+			},
+			"type": "object"
+		},
+		"dto.OAuthClear": {
+			"properties": {
+				"id": {
+					"type": "integer"
+				},
+				"name": {
+					"type": "string"
+				}
+			},
+			"type": "object"
+		},
+		"dto.OAuthComplete": {
+			"properties": {
+				"authorizationResponse": {
+					"type": "string"
+				},
+				"flowId": {
+					"type": "string"
+				}
+			},
+			"required": [
+				"authorizationResponse",
+				"flowId"
+			],
+			"type": "object"
+		},
+		"dto.OAuthCompleteResponse": {
+			"properties": {
+				"clientIdDisplay": {
+					"type": "string"
+				},
+				"expiresAt": {
+					"type": "string"
+				},
+				"provider": {
+					"type": "string"
+				},
+				"sessionId": {
+					"type": "string"
+				}
+			},
+			"type": "object"
+		},
+		"dto.OAuthCredentialInfo": {
+			"properties": {
+				"authorized": {
+					"type": "boolean"
+				},
+				"clientIdDisplay": {
+					"type": "string"
+				},
+				"configured": {
+					"type": "boolean"
+				},
+				"provider": {
+					"type": "string"
+				},
+				"redirectUri": {
+					"type": "string"
+				},
+				"requiresReauthorization": {
+					"type": "boolean"
+				},
+				"status": {
+					"type": "string"
+				},
+				"updatedAt": {
+					"type": "string"
 				}
 			},
 			"type": "object"

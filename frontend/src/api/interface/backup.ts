@@ -22,18 +22,14 @@ export namespace Backup {
         backupPath: string;
         bucketInput: boolean;
         vars: string;
-        varsJson: object;
+        varsJson: Record<string, any>;
+        oauthSession?: string;
+        oauth?: OAuthCredentialInfo;
         createdAt: Date;
     }
     export interface CheckResult {
         isOk: boolean;
         msg: string;
-        token: string;
-    }
-    export interface ClientInfo {
-        client_id: string;
-        client_secret: string;
-        redirect_uri: string;
     }
     export interface BackupOperate {
         id: number;
@@ -45,6 +41,49 @@ export namespace Backup {
         credential: string;
         backupPath: string;
         vars: string;
+        oauthSession?: string;
+    }
+    export type OAuthProvider = 'OneDrive' | 'GoogleDrive';
+    export type OAuthStatus =
+        | 'configured'
+        | 'unconfigured'
+        | 'legacy_reconfiguration_required'
+        | 'reauthorization_required';
+    export interface OAuthBegin {
+        provider: OAuthProvider;
+        accountId: number;
+        accountName: string;
+        isPublic: boolean;
+        clientId?: string;
+        clientSecret?: string;
+        redirectUri?: string;
+        isCN: boolean;
+    }
+    export interface OAuthBeginResponse {
+        flowId: string;
+        authorizationUrl: string;
+        expiresAt: string;
+        clientIdDisplay: string;
+    }
+    export interface OAuthComplete {
+        flowId: string;
+        authorizationResponse: string;
+    }
+    export interface OAuthCompleteResponse {
+        sessionId: string;
+        provider: OAuthProvider;
+        clientIdDisplay: string;
+        expiresAt: string;
+    }
+    export interface OAuthCredentialInfo {
+        provider: string;
+        configured: boolean;
+        authorized: boolean;
+        clientIdDisplay: string;
+        redirectUri: string;
+        status: OAuthStatus;
+        requiresReauthorization: boolean;
+        updatedAt: string;
     }
     export interface RecordDownload {
         downloadAccountID: number;

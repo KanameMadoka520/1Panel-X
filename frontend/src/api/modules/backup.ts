@@ -15,12 +15,8 @@ export const searchBackup = (params: Backup.SearchWithType) => {
     return http.post<ResPage<Backup.BackupInfo>>(`/backups/search`, params);
 };
 export const checkBackup = (params: Backup.BackupOperate) => {
-    const globalStore = GlobalStore();
     let request = deepCopy(params) as Backup.BackupOperate;
     encodeBase64Fields(request, ['accessKey', 'credential']);
-    if (!params.isPublic || !globalStore.isProductPro) {
-        return http.postLocalNode<Backup.CheckResult>(`/backups/conn/check`, request);
-    }
     return http.post<Backup.CheckResult>(`/backups/conn/check`, request);
 };
 export const listBucket = (params: Backup.ForBucket) => {
@@ -85,8 +81,19 @@ export const refreshToken = (params: { id: number; name: string; isPublic: boole
     }
     return http.post('/core/backups/refresh/token', { name: params.name });
 };
-export const getClientInfo = (clientType: string) => {
-    return http.get<Backup.ClientInfo>(`/core/backups/client/${clientType}`);
+export const beginOAuth = (params: Backup.OAuthBegin) => {
+    const url = params.isPublic ? '/core/backups/oauth/begin' : '/backups/oauth/begin';
+    return http.post<Backup.OAuthBeginResponse>(url, params, TimeoutEnum.T_60S);
+};
+export const completeOAuth = (params: Backup.OAuthComplete, isPublic: boolean) => {
+    const url = isPublic ? '/core/backups/oauth/complete' : '/backups/oauth/complete';
+    return http.post<Backup.OAuthCompleteResponse>(url, params, TimeoutEnum.T_60S);
+};
+export const clearOAuth = (params: { id: number; name: string; isPublic: boolean }) => {
+    if (params.isPublic) {
+        return http.post('/core/backups/oauth/credential/clear', { name: params.name });
+    }
+    return http.post('/backups/oauth/credential/clear', { id: params.id });
 };
 export const addBackup = (params: Backup.BackupOperate) => {
     let request = deepCopy(params) as Backup.BackupOperate;

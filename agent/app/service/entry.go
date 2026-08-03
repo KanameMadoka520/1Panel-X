@@ -35,8 +35,9 @@ var (
 	clamRepo    = repo.NewIClamRepo()
 	monitorRepo = repo.NewIMonitorRepo()
 
-	settingRepo = repo.NewISettingRepo()
-	backupRepo  = repo.NewIBackupRepo()
+	settingRepo     = repo.NewISettingRepo()
+	backupRepo      = repo.NewIBackupRepo()
+	backupOAuthRepo = repo.NewIBackupOAuthCredentialRepo()
 
 	websiteRepo       = repo.NewIWebsiteRepo()
 	websiteDomainRepo = repo.NewIWebsiteDomainRepo()

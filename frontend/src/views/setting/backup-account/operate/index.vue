@@ -316,14 +316,19 @@
                 <el-form-item label="Drive ID" prop="varsJson.drive_id" :rules="Rules.requiredInput">
                     <el-input v-model.trim="dialogData.rowData!.varsJson['drive_id']" />
                 </el-form-item>
-                <el-form-item label="Refresh Token" prop="varsJson.refresh_token" :rules="Rules.requiredInput">
+                <el-form-item
+                    label="Refresh Token"
+                    prop="varsJson.refresh_token"
+                    :rules="dialogData.title === 'create' ? Rules.requiredInput : []"
+                >
                     <el-input v-model.trim="dialogData.rowData!.varsJson['refresh_token']" />
                 </el-form-item>
             </div>
 
             <div v-if="hasClient()">
+                <el-divider content-position="left">{{ $t('setting.oauthApplication') }}</el-divider>
                 <el-form-item v-if="isOneDrive()">
-                    <el-radio-group v-model="dialogData.rowData!.varsJson['isCN']" @change="changeClientFrom">
+                    <el-radio-group v-model="dialogData.rowData!.varsJson['isCN']" @change="changeOAuthCloud">
                         <el-radio-button :value="false">{{ $t('setting.isNotCN') }}</el-radio-button>
                         <el-radio-button :value="true">{{ $t('setting.isCN') }}</el-radio-button>
                     </el-radio-group>
@@ -339,37 +344,100 @@
                         </el-link>
                     </span>
                 </el-form-item>
-                <el-form-item :label="$t('setting.client_id')" prop="varsJson.client_id" :rules="Rules.requiredInput">
-                    <el-input v-model.trim="dialogData.rowData!.varsJson['client_id']" />
+                <el-form-item :label="$t('commons.table.status')">
+                    <div class="oauth-status-line">
+                        <el-tag :type="oauthStatusMeta.tagType">{{ $t(oauthStatusMeta.labelKey) }}</el-tag>
+                        <span v-if="oauthClientIdDisplay" class="input-help">
+                            {{ $t('setting.client_id') }}{{ $t('commons.colon') }}{{ oauthClientIdDisplay }}
+                        </span>
+                        <span v-if="oauthUpdatedAt" class="input-help">
+                            {{ $t('commons.table.updatedAt') }}{{ $t('commons.colon') }}{{ oauthUpdatedAt }}
+                        </span>
+                    </div>
                 </el-form-item>
-                <el-form-item
-                    :label="$t('setting.client_secret')"
-                    prop="varsJson.client_secret"
-                    :rules="Rules.requiredInput"
-                >
-                    <el-input v-model.trim="dialogData.rowData!.varsJson['client_secret']" />
+                <el-alert
+                    v-if="oauthStatus !== 'configured'"
+                    class="mb-4"
+                    :closable="false"
+                    :title="$t(oauthStatusMeta.descriptionKey || oauthStatusMeta.labelKey)"
+                    :type="oauthStatusMeta.tagType === 'danger' ? 'error' : oauthStatusMeta.tagType"
+                    show-icon
+                />
+                <el-form-item :label="$t('setting.client_id')">
+                    <el-input
+                        v-model.trim="oauthForm.clientId"
+                        clearable
+                        autocomplete="off"
+                        :placeholder="oauthClientIdPlaceholder"
+                    />
                 </el-form-item>
-                <el-form-item
-                    :label="$t('setting.redirect_uri')"
-                    prop="varsJson.redirect_uri"
-                    :rules="Rules.requiredInput"
-                >
-                    <el-input v-model.trim="dialogData.rowData!.varsJson['redirect_uri']" />
+                <el-form-item :label="$t('setting.client_secret')">
+                    <el-input
+                        v-model="oauthForm.clientSecret"
+                        type="password"
+                        show-password
+                        clearable
+                        autocomplete="new-password"
+                        :placeholder="$t('setting.oauthSecretPlaceholder')"
+                    />
+                    <span v-if="!oauthRequiresCredentials" class="input-help">
+                        {{ $t('setting.oauthSecretKeepHelper') }}
+                    </span>
                 </el-form-item>
-                <el-form-item :label="$t('setting.code')" prop="varsJson.code">
-                    <div class="!w-full">
-                        <el-input
-                            style="width: calc(100% - 80px)"
-                            :rows="3"
-                            type="textarea"
-                            clearable
-                            v-model.trim="dialogData.rowData!.varsJson['code']"
-                        />
-                        <el-button class="append-button" @click="jumpForCode(formRef)">
-                            {{ $t('setting.loadCode') }}
+                <el-form-item :label="$t('setting.redirect_uri')">
+                    <el-input
+                        v-model.trim="oauthForm.redirectUri"
+                        clearable
+                        autocomplete="off"
+                        :placeholder="$t('setting.oauthRedirectPlaceholder')"
+                    />
+                    <span v-if="!oauthRequiresCredentials" class="input-help">
+                        {{ $t('setting.oauthRedirectKeepHelper') }}
+                    </span>
+                </el-form-item>
+                <el-form-item>
+                    <div class="flex flex-wrap gap-2">
+                        <el-button type="primary" :loading="oauthLoading" @click="onBeginOAuth">
+                            {{ $t(oauthAuthorizeKey) }}
+                        </el-button>
+                        <el-button
+                            v-if="canClearOAuth"
+                            v-permission
+                            plain
+                            type="danger"
+                            :disabled="oauthLoading"
+                            @click="onClearOAuth"
+                        >
+                            {{ $t('commons.button.clean') }}
                         </el-button>
                     </div>
                 </el-form-item>
+                <el-form-item v-if="oauthForm.flowId" :label="$t('setting.oauthAuthorizationResponse')">
+                    <div class="!w-full">
+                        <el-button class="mb-2" plain @click="onOpenOAuthAuthorization">
+                            {{ $t('setting.oauthOpenAuthorization') }}
+                        </el-button>
+                        <el-input
+                            :rows="3"
+                            type="textarea"
+                            clearable
+                            v-model.trim="oauthForm.authorizationResponse"
+                            :placeholder="$t('setting.oauthAuthorizationResponseHelper')"
+                        />
+                        <el-button class="mt-2" :loading="oauthLoading" @click="onCompleteOAuth">
+                            {{ $t('commons.button.confirm') }}
+                        </el-button>
+                        <span class="input-help">{{ $t('setting.oauthAuthorizationResponseHelper') }}</span>
+                    </div>
+                </el-form-item>
+                <el-alert
+                    v-if="oauthForm.sessionId"
+                    class="mb-4"
+                    :closable="false"
+                    :title="$t('setting.oauthAuthorizationCompleted')"
+                    type="success"
+                    show-icon
+                />
             </div>
             <el-form-item v-if="hasBackDir()" :label="$t('setting.backupDir')" prop="backupPath">
                 <el-input clearable v-model.trim="dialogData.rowData!.backupPath" placeholder="/1panel" />
@@ -396,13 +464,13 @@
             </el-form-item>
         </el-form>
         <template #footer>
-            <el-button :disabled="loading" @click="handleClose">
+            <el-button :disabled="loading || oauthLoading" @click="handleClose">
                 {{ $t('commons.button.cancel') }}
             </el-button>
-            <el-button v-permission :disabled="loading" @click="onCheck(formRef)">
+            <el-button v-permission :disabled="loading || oauthLoading" @click="onCheck(formRef)">
                 {{ $t('terminal.testConn') }}
             </el-button>
-            <el-button v-permission type="primary" :disabled="!isOK || loading" @click="onSubmit()">
+            <el-button v-permission type="primary" :disabled="!isOK || loading || oauthLoading" @click="onSubmit()">
                 {{ $t('commons.button.confirm') }}
             </el-button>
         </template>
@@ -414,10 +482,18 @@
 import { ref, watch, computed, onUnmounted } from 'vue';
 import { Rules } from '@/global/form-rules';
 import i18n from '@/lang';
-import { ElForm } from 'element-plus';
+import { ElForm, ElMessageBox } from 'element-plus';
 import { Backup } from '@/api/interface/backup';
 import FileList from '@/components/file-list/index.vue';
-import { addBackup, checkBackup, editBackup, getClientInfo, listBucket } from '@/api/modules/backup';
+import {
+    addBackup,
+    beginOAuth,
+    checkBackup,
+    clearOAuth,
+    completeOAuth,
+    editBackup,
+    listBucket,
+} from '@/api/modules/backup';
 import { cities } from './../helper';
 import { dateFormat } from '@/utils/date';
 import { deepCopy } from '@/utils/misc';
@@ -425,13 +501,26 @@ import { spliceHttp, splitHttp } from '@/utils/validate';
 import { MsgError, MsgSuccess } from '@/utils/message';
 import { Base64 } from 'js-base64';
 import { useGlobalStore } from '@/composables/useGlobalStore';
+import {
+    buildOAuthBeginRequest,
+    getOAuthStatusMeta,
+    isOAuthSessionExpired,
+    isOAuthProvider,
+    mergeOAuthCredentialInfo,
+    navigateOAuthAuthorization,
+    openOAuthAuthorization,
+    openOAuthAuthorizationPlaceholder,
+    requiresOAuthCredentialInput,
+    resolveOAuthStatus,
+    sanitizeOAuthVars,
+} from '../oauth';
 const { docsUrl, isFxplay, isProductPro } = useGlobalStore();
 
 const loading = ref(false);
+const oauthLoading = ref(false);
 type FormInstance = InstanceType<typeof ElForm>;
 const formRef = ref<FormInstance>();
 const buckets = ref();
-const clientInfo = ref();
 const fileRef = ref();
 
 const isOK = ref();
@@ -452,10 +541,81 @@ const dialogData = ref<DialogProps>({
     title: '',
 });
 
+interface OAuthFormState {
+    clientId: string;
+    clientSecret: string;
+    redirectUri: string;
+    authorizationUrl: string;
+    authorizationResponse: string;
+    flowId: string;
+    flowRedirectUri: string;
+    sessionId: string;
+    sessionAccountName: string;
+    sessionIsPublic: boolean | null;
+    expiresAt: string;
+    clientIdDisplay: string;
+}
+
+const emptyOAuthForm = (): OAuthFormState => ({
+    clientId: '',
+    clientSecret: '',
+    redirectUri: '',
+    authorizationUrl: '',
+    authorizationResponse: '',
+    flowId: '',
+    flowRedirectUri: '',
+    sessionId: '',
+    sessionAccountName: '',
+    sessionIsPublic: null,
+    expiresAt: '',
+    clientIdDisplay: '',
+});
+const oauthForm = ref<OAuthFormState>(emptyOAuthForm());
+const oauthCloudChanged = ref(false);
+
+const oauthVars = computed(() => dialogData.value.rowData?.varsJson || {});
+const oauthStatus = computed(() => resolveOAuthStatus(oauthVars.value));
+const oauthStatusMeta = computed(() => getOAuthStatusMeta(oauthVars.value));
+const oauthClientIdDisplay = computed(
+    () => oauthForm.value.clientIdDisplay || String(oauthVars.value.oauth_client_id_display || ''),
+);
+const oauthUpdatedAt = computed(() => String(oauthVars.value.oauth_updated_at || ''));
+const oauthRequiresCredentials = computed(() => {
+    return !dialogData.value.rowData?.id || oauthCloudChanged.value || requiresOAuthCredentialInput(oauthVars.value);
+});
+const oauthClientIdPlaceholder = computed(() => {
+    if (oauthClientIdDisplay.value && !oauthRequiresCredentials.value) {
+        return i18n.global.t('setting.oauthClientIdKeepPlaceholder', [oauthClientIdDisplay.value]);
+    }
+    return i18n.global.t('setting.oauthClientIdPlaceholder');
+});
+const oauthAuthorizeKey = computed(() => {
+    return oauthStatus.value === 'configured' || oauthStatus.value === 'reauthorization_required'
+        ? 'setting.oauthReauthorize'
+        : 'setting.oauthAuthorize';
+});
+const canClearOAuth = computed(() => {
+    return !!dialogData.value.rowData?.id && oauthStatus.value !== 'unconfigured';
+});
+
 const formWatcher = computed(() => {
-    const { type, isPublic, accessKey, bucket, credential, backupPath, bucketInput, varsJson } =
+    const { name, type, isPublic, accessKey, bucket, credential, backupPath, bucketInput, varsJson, oauthSession } =
         dialogData.value.rowData || {};
-    return { type, isPublic, accessKey, bucket, credential, backupPath, bucketInput, varsJson };
+    return {
+        name,
+        type,
+        isPublic,
+        accessKey,
+        bucket,
+        credential,
+        backupPath,
+        bucketInput,
+        varsJson,
+        oauthSession,
+        oauthClientId: oauthForm.value.clientId,
+        oauthClientSecret: oauthForm.value.clientSecret,
+        oauthRedirectUri: oauthForm.value.redirectUri,
+    };
 });
 const startWatcher = () => {
     if (stopWatch.value) {
@@ -477,11 +637,49 @@ const stopWatcher = () => {
     }
 };
 
+const resetOAuthForm = (vars: Record<string, any> = {}) => {
+    oauthForm.value = {
+        ...emptyOAuthForm(),
+        redirectUri: String(vars.redirect_uri || ''),
+        clientIdDisplay: String(vars.oauth_client_id_display || ''),
+    };
+    oauthCloudChanged.value = false;
+    if (dialogData.value.rowData) {
+        dialogData.value.rowData.oauthSession = undefined;
+    }
+};
+
+const clearOAuthBrowserState = () => {
+    oauthForm.value = emptyOAuthForm();
+    oauthCloudChanged.value = false;
+    if (dialogData.value.rowData) {
+        dialogData.value.rowData.oauthSession = undefined;
+    }
+};
+
+const clearOAuthPendingFlow = () => {
+    oauthForm.value.flowId = '';
+    oauthForm.value.flowRedirectUri = '';
+    oauthForm.value.authorizationUrl = '';
+    oauthForm.value.authorizationResponse = '';
+    oauthForm.value.expiresAt = '';
+};
+
 const acceptParams = (params: DialogProps): void => {
     dialogData.value = params;
     dialogData.value.rowData.varsJson = dialogData.value.rowData!.vars
         ? JSON.parse(dialogData.value.rowData!.vars)
         : {};
+    if (isOAuthProvider(dialogData.value.rowData!.type)) {
+        dialogData.value.rowData!.varsJson = mergeOAuthCredentialInfo(
+            dialogData.value.rowData!.varsJson,
+            dialogData.value.rowData!.oauth,
+        );
+        resetOAuthForm(dialogData.value.rowData!.varsJson);
+    } else {
+        clearOAuthBrowserState();
+    }
+    isOK.value = false;
     title.value = i18n.global.t('commons.button.' + dialogData.value.title);
     if (dialogData.value.title === 'create') {
         dialogData.value.rowData!.type = 'OSS';
@@ -529,31 +727,216 @@ const toDoc = (type: string) => {
     }
     window.open(docsUrl.value + '/user_manual/settings/' + uri, '_blank', 'noopener,noreferrer');
 };
-const jumpForCode = async (formEl: FormInstance | undefined) => {
-    if (!formEl) return;
-    const result = await formEl.validateField('varsJson.client_id', callback);
-    if (!result) {
+
+const hasPendingOAuthChanges = () => {
+    const storedRedirectUri = String(oauthVars.value.redirect_uri || '');
+    return (
+        oauthCloudChanged.value ||
+        !!oauthForm.value.clientId ||
+        !!oauthForm.value.clientSecret ||
+        (!!oauthForm.value.redirectUri && oauthForm.value.redirectUri !== storedRedirectUri)
+    );
+};
+
+const hasCurrentOAuthSession = () => {
+    const row = dialogData.value.rowData;
+    return (
+        !!row &&
+        !!oauthForm.value.sessionId &&
+        !isOAuthSessionExpired(oauthForm.value.expiresAt) &&
+        oauthForm.value.sessionAccountName === row.name.trim() &&
+        oauthForm.value.sessionIsPublic === row.isPublic &&
+        !hasPendingOAuthChanges()
+    );
+};
+
+const prepareOAuthVars = () => {
+    if (!dialogData.value.rowData || !hasClient()) return;
+    const vars = sanitizeOAuthVars(dialogData.value.rowData.varsJson);
+    vars.isCN = isOneDrive() && (vars.isCN === true || vars.isCN === 'true');
+    if (oauthForm.value.redirectUri.trim()) {
+        vars.redirect_uri = oauthForm.value.redirectUri.trim();
+    }
+    if (oauthClientIdDisplay.value) {
+        vars.oauth_client_id_display = oauthClientIdDisplay.value;
+    }
+    if (oauthForm.value.sessionId) {
+        vars.oauth_status = 'configured';
+        vars.oauth_configured = true;
+        vars.oauth_authorized = true;
+        dialogData.value.rowData.oauthSession = oauthForm.value.sessionId;
+    }
+    dialogData.value.rowData.varsJson = vars;
+};
+
+const requireOAuthAuthorization = () => {
+    if (!hasClient()) return true;
+    if (oauthForm.value.sessionId && isOAuthSessionExpired(oauthForm.value.expiresAt)) {
+        isOK.value = false;
+        MsgError(i18n.global.t('setting.oauthSessionExpired'));
+        return false;
+    }
+    const hasSession = hasCurrentOAuthSession();
+    if (
+        (oauthStatusMeta.value.requiresAuthorization || hasPendingOAuthChanges() || !!oauthForm.value.flowId) &&
+        !hasSession
+    ) {
+        MsgError(i18n.global.t('setting.oauthAuthorizationRequired'));
+        return false;
+    }
+    return true;
+};
+
+const onBeginOAuth = async () => {
+    const row = dialogData.value.rowData;
+    if (!row || !isOAuthProvider(row.type)) return;
+    const clientId = oauthForm.value.clientId.trim();
+    const clientSecret = oauthForm.value.clientSecret;
+    const redirectUri = oauthForm.value.redirectUri.trim();
+    if (!row.name?.trim()) {
+        MsgError(i18n.global.t('commons.rule.requiredInput'));
         return;
     }
-    const result1 = await formEl.validateField('varsJson.redirect_uri', callback);
-    if (!result1) {
-        return;
-    }
-    let client_id = dialogData.value.rowData.varsJson['client_id'];
-    let redirect_uri = dialogData.value.rowData.varsJson['redirect_uri'];
-    if (isOneDrive()) {
-        let commonUrl = `response_type=code&client_id=${client_id}&redirect_uri=${redirect_uri}&scope=offline_access+Files.ReadWrite.All+User.Read`;
-        if (!dialogData.value.rowData!.varsJson['isCN']) {
-            window.open('https://login.microsoftonline.com/common/oauth2/v2.0/authorize?' + commonUrl, '_blank');
-        } else {
-            window.open('https://login.chinacloudapi.cn/common/oauth2/v2.0/authorize?' + commonUrl, '_blank');
-        }
+    if (oauthRequiresCredentials.value && (!clientId || !clientSecret || !redirectUri)) {
+        MsgError(i18n.global.t('setting.oauthCredentialsRequired'));
         return;
     }
 
-    let url = `https://accounts.google.com/o/oauth2/auth/oauthchooseaccount?client_id=${client_id}&response_type=code&redirect_uri=${redirect_uri}&scope=openid%20profile%20https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fdrive%20https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fphotoslibrary&access_type=offline&prompt=consent&service=lso&o2v=1&ddm=1&flowName=GeneralOAuthFlow`;
-    window.open(url, '_blank');
+    const authorizationWindow = openOAuthAuthorizationPlaceholder();
+    oauthLoading.value = true;
+    try {
+        const res = await beginOAuth(
+            buildOAuthBeginRequest({
+                provider: row.type,
+                accountId: row.id || 0,
+                accountName: row.name,
+                isPublic: row.isPublic,
+                isCN: isOneDrive() && (row.varsJson['isCN'] === true || row.varsJson['isCN'] === 'true'),
+                clientId,
+                clientSecret,
+                redirectUri,
+            }),
+        );
+        oauthForm.value.flowId = res.data.flowId;
+        oauthForm.value.sessionId = '';
+        oauthForm.value.sessionAccountName = row.name.trim();
+        oauthForm.value.sessionIsPublic = row.isPublic;
+        oauthForm.value.authorizationUrl = res.data.authorizationUrl;
+        oauthForm.value.flowRedirectUri = redirectUri;
+        oauthForm.value.authorizationResponse = '';
+        oauthForm.value.expiresAt = res.data.expiresAt;
+        oauthForm.value.clientIdDisplay = res.data.clientIdDisplay;
+        oauthForm.value.clientId = '';
+        oauthForm.value.clientSecret = '';
+        row.oauthSession = undefined;
+        isOK.value = false;
+        if (!navigateOAuthAuthorization(authorizationWindow, res.data.authorizationUrl)) {
+            openOAuthAuthorization(res.data.authorizationUrl);
+        }
+    } catch {
+        authorizationWindow?.close();
+    } finally {
+        oauthForm.value.clientSecret = '';
+        oauthLoading.value = false;
+    }
 };
+
+const onOpenOAuthAuthorization = () => {
+    if (!oauthForm.value.authorizationUrl) return;
+    openOAuthAuthorization(oauthForm.value.authorizationUrl);
+};
+
+const onCompleteOAuth = async () => {
+    const row = dialogData.value.rowData;
+    const authorizationResponse = oauthForm.value.authorizationResponse.trim();
+    oauthForm.value.authorizationResponse = '';
+    if (!row || !oauthForm.value.flowId || !authorizationResponse) {
+        MsgError(i18n.global.t('setting.oauthAuthorizationResponseRequired'));
+        return;
+    }
+    if (
+        oauthForm.value.sessionAccountName !== row.name.trim() ||
+        oauthForm.value.sessionIsPublic !== row.isPublic ||
+        !!oauthForm.value.clientId.trim() ||
+        !!oauthForm.value.clientSecret ||
+        oauthForm.value.redirectUri.trim() !== oauthForm.value.flowRedirectUri
+    ) {
+        MsgError(i18n.global.t('setting.oauthAuthorizationRequired'));
+        return;
+    }
+    try {
+        const parsed = new URL(authorizationResponse);
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+            throw new Error('unsupported protocol');
+        }
+    } catch {
+        MsgError(i18n.global.t('setting.oauthInvalidAuthorizationResponse'));
+        return;
+    }
+
+    oauthLoading.value = true;
+    try {
+        const res = await completeOAuth({ flowId: oauthForm.value.flowId, authorizationResponse }, row.isPublic);
+        oauthForm.value.sessionId = res.data.sessionId;
+        oauthForm.value.clientIdDisplay = res.data.clientIdDisplay;
+        oauthForm.value.expiresAt = res.data.expiresAt;
+        oauthForm.value.flowId = '';
+        const authorizedRedirectUri = oauthForm.value.flowRedirectUri;
+        oauthForm.value.flowRedirectUri = '';
+        oauthForm.value.authorizationUrl = '';
+        row.oauthSession = res.data.sessionId;
+        row.varsJson = {
+            ...sanitizeOAuthVars(row.varsJson),
+            oauth_status: 'configured',
+            oauth_configured: true,
+            oauth_authorized: true,
+            oauth_client_id_display: res.data.clientIdDisplay,
+            redirect_uri: authorizedRedirectUri || row.varsJson.redirect_uri,
+        };
+        oauthCloudChanged.value = false;
+        isOK.value = true;
+        startWatcher();
+        MsgSuccess(i18n.global.t('setting.oauthAuthorizationCompleted'));
+    } catch {
+        // The HTTP client already presents a sanitized API error. Consuming the
+        // rejection here prevents Axios request data from reaching browser logs.
+        clearOAuthPendingFlow();
+    } finally {
+        oauthLoading.value = false;
+    }
+};
+
+const onClearOAuth = async () => {
+    const row = dialogData.value.rowData;
+    if (!row?.id) return;
+    try {
+        await ElMessageBox.confirm(i18n.global.t('setting.oauthClearConfirm'), i18n.global.t('commons.button.clean'), {
+            confirmButtonText: i18n.global.t('commons.button.confirm'),
+            cancelButtonText: i18n.global.t('commons.button.cancel'),
+            type: 'warning',
+        });
+    } catch {
+        return;
+    }
+
+    oauthLoading.value = true;
+    try {
+        await clearOAuth({ id: row.id, name: row.name, isPublic: row.isPublic });
+        row.varsJson = {
+            isCN: isOneDrive() && (row.varsJson['isCN'] === true || row.varsJson['isCN'] === 'true'),
+            oauth_status: 'unconfigured',
+            oauth_configured: false,
+            oauth_authorized: false,
+        };
+        resetOAuthForm(row.varsJson);
+        isOK.value = false;
+        emit('search');
+        MsgSuccess(i18n.global.t('commons.msg.operationSuccess'));
+    } finally {
+        oauthLoading.value = false;
+    }
+};
+
 function callback(error: any) {
     if (error) {
         return error.message;
@@ -577,7 +960,7 @@ const hasRemember = () => {
 };
 const hasClient = () => {
     let itemType = dialogData.value.rowData!.type;
-    return itemType === 'OneDrive' || itemType === 'GoogleDrive';
+    return isOAuthProvider(itemType);
 };
 const isOneDrive = () => {
     let itemType = dialogData.value.rowData!.type;
@@ -611,6 +994,7 @@ const loadDir = async (path: string) => {
 
 const changeType = async () => {
     buckets.value = [];
+    clearOAuthBrowserState();
     dialogData.value.rowData!.varsJson = {};
     dialogData.value.rowData!.rememberAuth = false;
     switch (dialogData.value.rowData!.type) {
@@ -626,17 +1010,21 @@ const changeType = async () => {
             dialogData.value.rowData!.varsJson['timeout'] = 1;
             break;
         case 'OneDrive':
-            dialogData.value.rowData.varsJson['isCN'] = false;
-            const res = await getClientInfo('Onedrive');
-            clientInfo.value = res.data;
-            if (!dialogData.value.rowData.id) {
-                dialogData.value.rowData.varsJson = {
-                    isCN: false,
-                    client_id: res.data.client_id,
-                    client_secret: res.data.client_secret,
-                    redirect_uri: res.data.redirect_uri,
-                };
-            }
+            dialogData.value.rowData.varsJson = {
+                isCN: false,
+                oauth_status: 'unconfigured',
+                oauth_configured: false,
+                oauth_authorized: false,
+            };
+            resetOAuthForm(dialogData.value.rowData.varsJson);
+            break;
+        case 'GoogleDrive':
+            dialogData.value.rowData.varsJson = {
+                oauth_status: 'unconfigured',
+                oauth_configured: false,
+                oauth_authorized: false,
+            };
+            resetOAuthForm(dialogData.value.rowData.varsJson);
             break;
         case 'SFTP':
             dialogData.value.rowData.varsJson['port'] = 22;
@@ -644,25 +1032,22 @@ const changeType = async () => {
             break;
     }
 };
-const changeClientFrom = () => {
-    if (dialogData.value.rowData.varsJson['isCN']) {
-        dialogData.value.rowData.varsJson = {
-            isCN: true,
-            client_id: '',
-            client_secret: '',
-            redirect_uri: '',
-        };
-    } else {
-        dialogData.value.rowData.varsJson = {
-            isCN: false,
-            client_id: clientInfo.value.client_id,
-            client_secret: clientInfo.value.client_secret,
-            redirect_uri: clientInfo.value.redirect_uri,
-        };
-    }
+const changeOAuthCloud = () => {
+    const isCN = dialogData.value.rowData.varsJson['isCN'] === true;
+    dialogData.value.rowData.varsJson = {
+        isCN,
+        oauth_status: 'unconfigured',
+        oauth_configured: false,
+        oauth_authorized: false,
+    };
+    resetOAuthForm(dialogData.value.rowData.varsJson);
+    oauthCloudChanged.value = true;
+    isOK.value = false;
 };
 
 const handleClose = () => {
+    stopWatcher();
+    clearOAuthBrowserState();
     emit('search');
     drawerVisible.value = false;
 };
@@ -716,6 +1101,14 @@ const onCheck = async (formEl: FormInstance | undefined) => {
     formEl.validate(async (valid) => {
         if (!valid) return;
         if (!dialogData.value.rowData) return;
+        if (!requireOAuthAuthorization()) return;
+        if (hasClient() && hasCurrentOAuthSession()) {
+            prepareOAuthVars();
+            isOK.value = true;
+            MsgSuccess(i18n.global.t('terminal.connTestOk'));
+            startWatcher();
+            return;
+        }
         if (hasAccessKey()) {
             let itemEndpoint = loadEndpoint();
             if (dialogData.value.rowData!.type === 'KODO') {
@@ -724,14 +1117,10 @@ const onCheck = async (formEl: FormInstance | undefined) => {
                 dialogData.value.rowData!.varsJson['endpoint'] = itemEndpoint;
             }
         }
-        if (isOneDrive()) {
-            dialogData.value.rowData!.varsJson['code'] = decodeURIComponent(
-                dialogData.value.rowData!.varsJson['code'] || '',
-            );
-        }
         if (isALIYUNYUN()) {
             dialogData.value.rowData!.varsJson['token'] = undefined;
         }
+        prepareOAuthVars();
         dialogData.value.rowData.vars = JSON.stringify(dialogData.value.rowData!.varsJson);
         loading.value = true;
         await checkBackup(dialogData.value.rowData)
@@ -740,11 +1129,6 @@ const onCheck = async (formEl: FormInstance | undefined) => {
                 if (res.data.isOk) {
                     isOK.value = true;
                     MsgSuccess(i18n.global.t('terminal.connTestOk'));
-                    if (hasClient()) {
-                        dialogData.value.rowData!.varsJson['refresh_token'] = Base64.decode(res.data.token);
-                        dialogData.value.rowData!.varsJson['refresh_status'] = 'Success';
-                        dialogData.value.rowData!.varsJson['refresh_time'] = dateFormat(null, null, new Date());
-                    }
                     if (isALIYUNYUN()) {
                         dialogData.value.rowData!.varsJson['refresh_status'] = 'Success';
                         dialogData.value.rowData!.varsJson['refresh_time'] = dateFormat(null, null, new Date());
@@ -753,7 +1137,11 @@ const onCheck = async (formEl: FormInstance | undefined) => {
                     return;
                 }
                 isOK.value = false;
-                MsgError(i18n.global.t('terminal.connTestFailed') + ':' + res.data.msg);
+                MsgError(
+                    hasClient()
+                        ? i18n.global.t('terminal.connTestFailed')
+                        : i18n.global.t('terminal.connTestFailed') + ':' + res.data.msg,
+                );
             })
             .catch(() => {
                 loading.value = false;
@@ -763,6 +1151,8 @@ const onCheck = async (formEl: FormInstance | undefined) => {
 };
 
 const onSubmit = async () => {
+    if (!requireOAuthAuthorization()) return;
+    prepareOAuthVars();
     dialogData.value.rowData.vars = JSON.stringify(dialogData.value.rowData!.varsJson);
     loading.value = true;
     if (dialogData.value.title === 'create') {
@@ -770,6 +1160,7 @@ const onSubmit = async () => {
             .then(() => {
                 loading.value = false;
                 MsgSuccess(i18n.global.t('commons.msg.operationSuccess'));
+                clearOAuthBrowserState();
                 drawerVisible.value = false;
             })
             .catch(() => {
@@ -781,6 +1172,7 @@ const onSubmit = async () => {
         .then(() => {
             loading.value = false;
             MsgSuccess(i18n.global.t('commons.msg.operationSuccess'));
+            clearOAuthBrowserState();
             drawerVisible.value = false;
         })
         .catch(() => {
@@ -790,6 +1182,7 @@ const onSubmit = async () => {
 
 onUnmounted(() => {
     if (stopWatch.value) stopWatcher();
+    clearOAuthBrowserState();
 });
 
 defineExpose({
@@ -803,5 +1196,12 @@ defineExpose({
     font-size: 12px;
     word-break: break-all;
     color: #8f959e;
+}
+
+.oauth-status-line {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
 }
 </style>

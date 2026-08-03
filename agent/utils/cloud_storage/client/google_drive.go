@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"strconv"
@@ -400,36 +401,32 @@ type googleTokenRes struct {
 }
 
 func RefreshGoogleToken(grantType string, tokenType string, varMap map[string]interface{}) (string, error) {
-	client := resty.New()
-	data := map[string]interface{}{
-		"client_id":     loadParamFromVars("client_id", varMap),
-		"client_secret": loadParamFromVars("client_secret", varMap),
-		"redirect_uri":  loadParamFromVars("redirect_uri", varMap),
-	}
+	data := url.Values{}
+	data.Set("client_id", loadParamFromVars("client_id", varMap))
+	data.Set("client_secret", loadParamFromVars("client_secret", varMap))
+	data.Set("redirect_uri", loadParamFromVars("redirect_uri", varMap))
 	if grantType == "refresh_token" {
-		data["grant_type"] = "refresh_token"
-		data["refresh_token"] = loadParamFromVars("refresh_token", varMap)
+		data.Set("grant_type", "refresh_token")
+		data.Set("refresh_token", loadParamFromVars("refresh_token", varMap))
 	} else {
-		data["grant_type"] = "authorization_code"
-		data["code"] = loadParamFromVars("code", varMap)
+		data.Set("grant_type", "authorization_code")
+		data.Set("code", loadParamFromVars("code", varMap))
 	}
-	urlItem := "https://www.googleapis.com/oauth2/v4/token"
-	resp, err := client.R().
-		SetBody(data).
-		Post(urlItem)
+	token, err := requestOAuthToken("https://oauth2.googleapis.com/token", data)
 	if err != nil {
-		return "", fmt.Errorf("load account token failed, err: %v", err)
-	}
-
-	if resp.StatusCode() != 200 {
-		return "", fmt.Errorf("load account token failed, code: %v", resp.StatusCode())
-	}
-	var respItem googleTokenRes
-	if err := json.Unmarshal(resp.Body(), &respItem); err != nil {
 		return "", err
 	}
 	if tokenType == "accessToken" {
-		return respItem.AccessToken, nil
+		return token.AccessToken, nil
 	}
-	return respItem.RefreshToken, nil
+	if token.RefreshToken != "" {
+		return token.RefreshToken, nil
+	}
+	if grantType == "refresh_token" {
+		refreshToken := loadParamFromVars("refresh_token", varMap)
+		if refreshToken != "" {
+			return refreshToken, nil
+		}
+	}
+	return "", errors.New("OAuth refresh token missing")
 }
