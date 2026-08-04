@@ -1,17 +1,20 @@
 package middleware
 
 import (
-	"fmt"
+	"crypto/subtle"
 	"net"
 	"net/http"
+	"os"
 	"strings"
-	"time"
 
-	"github.com/1Panel-dev/1Panel/agent/app/api/v2/helper"
 	"github.com/1Panel-dev/1Panel/agent/global"
-	"github.com/1Panel-dev/1Panel/agent/utils/cmd"
 	"github.com/1Panel-dev/1Panel/agent/utils/xpack"
 	"github.com/gin-gonic/gin"
+)
+
+var (
+	nodeProxyIDPath         = "/etc/1panel/.nodeProxyID"
+	validateNodeCertificate = func(c *gin.Context) bool { return xpack.MultiNodeProvider.ValidateCertificate(c) }
 )
 
 func Certificate() gin.HandlerFunc {
@@ -20,36 +23,55 @@ func Certificate() gin.HandlerFunc {
 			c.Next()
 			return
 		}
-		if !xpack.MultiNodeProvider.ValidateCertificate(c) {
+		if !validateNodeCertificate(c) {
 			CloseDirectly(c)
 			return
 		}
-		conn := c.Request.Header.Get("Connection")
-		if conn == "Upgrade" {
-			c.Next()
-			return
-		}
-		masterProxyID := c.Request.Header.Get("Proxy-Id")
-		proxyID, err := cmd.NewCommandMgr(cmd.WithTimeout(20*time.Second)).RunWithStdout("cat", "/etc/1panel/.nodeProxyID")
-		if err == nil && len(proxyID) != 0 && strings.TrimSpace(proxyID) != strings.TrimSpace(masterProxyID) {
-			helper.InternalServer(c, fmt.Errorf("err proxy id"))
+		if !validProxyID(c.Request.Header.Get("Proxy-Id")) {
+			CloseDirectly(c)
 			return
 		}
 		c.Next()
 	}
 }
 
+func validProxyID(requestProxyID string) bool {
+	requestProxyID = strings.TrimSpace(requestProxyID)
+	if requestProxyID == "" {
+		return false
+	}
+	stored, err := os.ReadFile(nodeProxyIDPath)
+	if err != nil {
+		return false
+	}
+	expectedProxyID := strings.TrimSpace(string(stored))
+	if expectedProxyID == "" || len(expectedProxyID) != len(requestProxyID) {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(expectedProxyID), []byte(requestProxyID)) == 1
+}
+
 func CloseDirectly(c *gin.Context) {
-	hijacker, ok := c.Writer.(http.Hijacker)
+	c.Abort()
+	c.Status(http.StatusForbidden)
+	defer func() {
+		_ = recover()
+	}()
+	hijacker, ok := http.Hijacker(c.Writer), true
+	if unwrapper, canUnwrap := c.Writer.(interface{ Unwrap() http.ResponseWriter }); canUnwrap {
+		hijacker, ok = unwrapper.Unwrap().(http.Hijacker)
+	}
 	if !ok {
-		c.AbortWithStatus(http.StatusForbidden)
+		c.Writer.WriteHeaderNow()
 		return
 	}
 	conn, _, err := hijacker.Hijack()
 	if err != nil {
-		c.AbortWithStatus(http.StatusForbidden)
+		c.Status(http.StatusForbidden)
 		return
 	}
-	_ = conn.(*net.TCPConn).SetLinger(0)
-	conn.Close()
+	if tcpConn, ok := conn.(*net.TCPConn); ok {
+		_ = tcpConn.SetLinger(0)
+	}
+	_ = conn.Close()
 }

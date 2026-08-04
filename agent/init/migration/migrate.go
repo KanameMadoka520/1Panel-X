@@ -90,6 +90,7 @@ func InitAgentDB() {
 		migrations.InitFirewallPortWhiteList,
 		migrations.EncryptWebhookAlertConfigURL,
 		migrations.MigrateBackupOAuthCredentials,
+		migrations.MigrateBackupSyncState,
 	})
 	if err := m.Migrate(); err != nil {
 		global.LOG.Error(err)

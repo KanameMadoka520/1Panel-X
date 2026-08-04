@@ -10,6 +10,25 @@ export interface OAuthStatusMeta {
     requiresAuthorization: boolean;
 }
 
+export interface BackupSyncStatusMeta {
+    labelKey: string;
+    descriptionKey: string;
+    tagType: Extract<OAuthTagType, 'warning' | 'danger'>;
+    succeeded: number;
+    pending: number;
+    total: number;
+}
+
+export type BackupSyncOperationFeedback =
+    | { kind: 'success' }
+    | { kind: 'degraded'; meta: BackupSyncStatusMeta }
+    | { kind: 'unconfirmed' };
+
+export interface BackupSyncStatusLoadResult {
+    statuses: Backup.BackupSyncStatus[];
+    unavailable: boolean;
+}
+
 export interface OAuthBeginForm {
     provider: Backup.OAuthProvider;
     accountId: number;
@@ -87,6 +106,37 @@ const sensitiveOAuthKeys = new Set([
 ]);
 
 const asBoolean = (value: unknown) => value === true || value === 'true';
+const asSafeCount = (value: unknown) =>
+    typeof value === 'number' && Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
+const asSafeSyncCount = (value: unknown) =>
+    typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.floor(value) : 0;
+const isRecord = (value: unknown): value is Record<string, unknown> => {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+};
+
+const sanitizeBackupSyncStatus = (
+    value: unknown,
+    unknownStatusFallback?: Backup.BackupSyncStatusValue,
+): Backup.BackupSyncStatus | undefined => {
+    if (!isRecord(value) || typeof value.accountName !== 'string' || !value.accountName.trim()) return undefined;
+
+    let status: Backup.BackupSyncStatusValue;
+    if (value.status === 'synced' || value.status === 'sync_pending' || value.status === 'partially_synced') {
+        status = value.status;
+    } else if (typeof value.status === 'string' && value.status.trim() && unknownStatusFallback) {
+        status = unknownStatusFallback;
+    } else {
+        return undefined;
+    }
+
+    return {
+        accountName: value.accountName.trim(),
+        status,
+        succeeded: asSafeSyncCount(value.succeeded),
+        pending: asSafeSyncCount(value.pending),
+        total: asSafeSyncCount(value.total),
+    };
+};
 
 export const isOAuthProvider = (provider: string): provider is Backup.OAuthProvider => {
     return provider === 'OneDrive' || provider === 'GoogleDrive';
@@ -108,6 +158,124 @@ export const resolveOAuthStatus = (vars: Record<string, any> = {}): Backup.OAuth
 
 export const getOAuthStatusMeta = (vars: Record<string, any> = {}): OAuthStatusMeta => {
     return statusMeta[resolveOAuthStatus(vars)];
+};
+
+export const getBackupSyncStatusMeta = (sync?: Backup.BackupSyncStatus): BackupSyncStatusMeta | undefined => {
+    if (!sync) return undefined;
+    const status = sync.status as string;
+    if (status === 'synced') return undefined;
+
+    const progress = {
+        succeeded: asSafeCount(sync.succeeded),
+        pending: asSafeCount(sync.pending),
+        total: asSafeCount(sync.total),
+    };
+    if (status === 'sync_pending') {
+        return {
+            labelKey: 'setting.backupSyncPending',
+            descriptionKey: 'setting.backupSyncPendingHelp',
+            tagType: 'warning',
+            ...progress,
+        };
+    }
+    if (status === 'partially_synced') {
+        return {
+            labelKey: 'setting.backupSyncPartiallySynced',
+            descriptionKey: 'setting.backupSyncPartiallySyncedHelp',
+            tagType: 'danger',
+            ...progress,
+        };
+    }
+    if (status.trim()) {
+        return {
+            labelKey: 'setting.backupSyncPending',
+            descriptionKey: 'setting.backupSyncStatusUnavailable',
+            tagType: 'warning',
+            ...progress,
+        };
+    }
+    return undefined;
+};
+
+export const sanitizeBackupSyncStatuses = (value: unknown): Backup.BackupSyncStatus[] => {
+    if (!Array.isArray(value)) return [];
+    return value
+        .map((status) => sanitizeBackupSyncStatus(status, 'sync_pending'))
+        .filter((status): status is Backup.BackupSyncStatus => !!status);
+};
+
+export const resolveBackupSyncStatusLoad = (value: unknown, requestSucceeded: boolean): BackupSyncStatusLoadResult => {
+    const available = requestSucceeded && Array.isArray(value);
+    return {
+        statuses: available ? sanitizeBackupSyncStatuses(value) : [],
+        unavailable: !available,
+    };
+};
+
+type BackupSyncAccount = Pick<Backup.BackupInfo, 'name' | 'isPublic' | 'oauth' | 'sync'>;
+type BackupSyncMergedAccount<T extends BackupSyncAccount> = T & { sync?: Backup.BackupSyncStatus };
+
+export const mergePublicBackupSyncStatuses = <T extends BackupSyncAccount>(
+    accounts: T[],
+    statuses: Backup.BackupSyncStatus[],
+): BackupSyncMergedAccount<T>[] => {
+    const syncByAccountName = new Map(
+        sanitizeBackupSyncStatuses(statuses).map((status) => [status.accountName, status]),
+    );
+    return accounts.map((account) => {
+        if (!account.isPublic) return { ...account, sync: undefined };
+        return {
+            ...account,
+            sync: syncByAccountName.get(account.name) || sanitizeBackupSyncStatus(account.oauth?.sync, 'sync_pending'),
+        };
+    });
+};
+
+export const getUnlistedPendingBackupSyncStatuses = (
+    accounts: Array<Pick<Backup.BackupInfo, 'name' | 'isPublic'>>,
+    statuses: Backup.BackupSyncStatus[],
+): Backup.BackupSyncStatus[] => {
+    const visiblePublicAccountNames = new Set(
+        accounts.filter((account) => account.isPublic).map((account) => account.name),
+    );
+    return statuses.filter(
+        (status) => !!getBackupSyncStatusMeta(status) && !visiblePublicAccountNames.has(status.accountName),
+    );
+};
+
+export const sanitizeBackupSyncOperationResult = (value: unknown): Backup.BackupSyncOperationResult | undefined => {
+    if (!isRecord(value) || typeof value.applied !== 'boolean' || !isRecord(value.sync)) return undefined;
+
+    const sync = sanitizeBackupSyncStatus(value.sync);
+    if (!sync) return undefined;
+
+    return {
+        applied: value.applied,
+        sync,
+    };
+};
+
+export const resolveBackupSyncOperationFeedback = (value: unknown): BackupSyncOperationFeedback => {
+    const result = sanitizeBackupSyncOperationResult(value);
+    if (!result?.applied) return { kind: 'unconfirmed' };
+
+    const meta = getBackupSyncStatusMeta(result.sync);
+    return meta ? { kind: 'degraded', meta } : { kind: 'success' };
+};
+
+const backupSyncSeverity: Record<Backup.BackupSyncStatusValue, number> = {
+    synced: 0,
+    sync_pending: 1,
+    partially_synced: 2,
+};
+
+export const selectMoreSevereBackupSyncResult = (
+    current: Backup.BackupSyncOperationResult | undefined,
+    candidate: Backup.BackupSyncOperationResult | undefined,
+): Backup.BackupSyncOperationResult | undefined => {
+    if (!candidate) return current;
+    if (!current) return candidate;
+    return backupSyncSeverity[candidate.sync.status] > backupSyncSeverity[current.sync.status] ? candidate : current;
 };
 
 export const requiresOAuthCredentialInput = (vars: Record<string, any> = {}): boolean => {

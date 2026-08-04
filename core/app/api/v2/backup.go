@@ -27,7 +27,12 @@ func (b *BaseApi) CreateBackup(c *gin.Context) {
 		helper.InternalServer(c, err)
 		return
 	}
-	helper.Success(c)
+	result, err := backupSyncOperationResult(req.Name)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, result)
 }
 
 // @Tags Backup Account
@@ -47,7 +52,12 @@ func (b *BaseApi) RefreshToken(c *gin.Context) {
 		helper.InternalServer(c, err)
 		return
 	}
-	helper.Success(c)
+	result, err := backupSyncOperationResult(req.Name)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, result)
 }
 
 // @Tags Backup Account
@@ -152,7 +162,69 @@ func (b *BaseApi) ClearBackupOAuthCredential(c *gin.Context) {
 		helper.InternalServer(c, err)
 		return
 	}
-	helper.Success(c)
+	result, err := backupSyncOperationResult(req.Name)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, result)
+}
+
+// @Tags Backup Account
+// @Summary List public backup synchronization status
+// @Success 200 {array} dto.BackupSyncStatus
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /core/backups/sync/status [get]
+func (b *BaseApi) ListBackupSyncStatus(c *gin.Context) {
+	data, err := backupService.ListSyncStatuses()
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, data)
+}
+
+// @Tags Backup Account
+// @Summary Load public backup synchronization status
+// @Success 200 {object} dto.BackupSyncStatus
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Param name path string true "backup account name"
+// @Router /core/backups/sync/status/{name} [get]
+func (b *BaseApi) GetBackupSyncStatus(c *gin.Context) {
+	name, ok := c.Params.Get("name")
+	if !ok || name == "" {
+		helper.BadRequest(c, fmt.Errorf("error %s in path", "name"))
+		return
+	}
+	data, err := backupService.GetSyncStatus(name)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, data)
+}
+
+// @Tags Backup Account
+// @Summary Retry public backup synchronization
+// @Accept json
+// @Param request body dto.BackupSyncRetry true "request"
+// @Success 200 {object} dto.BackupSyncOperationResult
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /core/backups/sync/retry [post]
+func (b *BaseApi) RetryBackupSync(c *gin.Context) {
+	var req dto.BackupSyncRetry
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	data, err := backupService.RetrySync(req.Name)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, dto.BackupSyncOperationResult{Applied: true, Sync: data})
 }
 
 // @Tags Backup Account
@@ -174,7 +246,12 @@ func (b *BaseApi) DeleteBackup(c *gin.Context) {
 		helper.InternalServer(c, err)
 		return
 	}
-	helper.Success(c)
+	result, err := backupSyncOperationResult(req.Name)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, result)
 }
 
 // @Tags Backup Account
@@ -196,5 +273,18 @@ func (b *BaseApi) UpdateBackup(c *gin.Context) {
 		helper.InternalServer(c, err)
 		return
 	}
-	helper.Success(c)
+	result, err := backupSyncOperationResult(req.Name)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, result)
+}
+
+func backupSyncOperationResult(name string) (dto.BackupSyncOperationResult, error) {
+	status, err := backupService.GetSyncStatus(name)
+	if err != nil {
+		return dto.BackupSyncOperationResult{}, err
+	}
+	return dto.BackupSyncOperationResult{Applied: true, Sync: status}, nil
 }

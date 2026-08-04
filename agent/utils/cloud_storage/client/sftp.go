@@ -1,6 +1,7 @@
 package client
 
 import (
+	"errors"
 	"io"
 	"net"
 	"os"
@@ -151,14 +152,17 @@ func (s sftpClient) Exist(filePath string) (bool, error) {
 
 	srcFile, err := client.Open(filePath)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if isSFTPObjectNotFound(err) {
 			return false, nil
-		} else {
-			return false, err
 		}
+		return false, err
 	}
 	defer srcFile.Close()
 	return true, err
+}
+
+func isSFTPObjectNotFound(err error) bool {
+	return errors.Is(err, os.ErrNotExist)
 }
 
 func (s sftpClient) Size(filePath string) (int64, error) {

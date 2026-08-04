@@ -68,4 +68,7 @@ type NodeEnrollResponse struct {
 	CACert                string `json:"caCert"`                // core CA cert (node uses as ClientCAs)
 	ProxyID               string `json:"proxyID"`               // write to /etc/1panel/.nodeProxyID
 	CoreClientFingerprint string `json:"coreClientFingerprint"` // node pins this to trust core (N6)
+	BackupSyncAuthority   string `json:"backupSyncAuthority"`   // binds the node to this core synchronization namespace
+	BackupSyncGeneration  string `json:"backupSyncGeneration"`  // rejects delayed snapshots from a prior enrollment
+	BackupSyncTargetEpoch string `json:"backupSyncTargetEpoch"` // rotates for every enrollment of this exact node
 }

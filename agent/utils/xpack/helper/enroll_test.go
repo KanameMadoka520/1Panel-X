@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -34,7 +35,7 @@ func setupAgentDB(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	if err := db.AutoMigrate(&model.Setting{}); err != nil {
+	if err := db.AutoMigrate(&model.Setting{}, &model.BackupPublicSyncState{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	global.DB = db
@@ -90,12 +91,31 @@ func TestIsProvisionedNode(t *testing.T) {
 
 func TestApplyEnrollmentPersists(t *testing.T) {
 	setupAgentDB(t)
+	if err := global.DB.Create(&model.BackupPublicSyncState{
+		ID:              model.BackupPublicSyncStateID,
+		Authority:       "old-authority",
+		Generation:      "old-generation",
+		TargetEpoch:     "old-target-epoch",
+		AppliedRevision: 42,
+		AppliedDigest:   "old-digest",
+	}).Error; err != nil {
+		t.Fatalf("seed old sync state: %v", err)
+	}
 	proxyFile := filepath.Join(t.TempDir(), ".nodeProxyID")
+	if err := os.WriteFile(proxyFile, []byte("old-proxy-id"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(proxyFile, 0o666); err != nil {
+		t.Fatal(err)
+	}
 	resp := helper.EnrollResponse{
 		ServerCert:            "-----SERVER CERT-----",
 		CACert:                "-----CA CERT-----",
 		ProxyID:               "proxy-xyz",
 		CoreClientFingerprint: "AABBCC",
+		BackupSyncAuthority:   strings.Repeat("a", 64),
+		BackupSyncGeneration:  strings.Repeat("b", 64),
+		BackupSyncTargetEpoch: strings.Repeat("c", 64),
 	}
 	if err := helper.ApplyEnrollment(resp, []byte("-----NODE KEY-----"), 9101, proxyFile); err != nil {
 		t.Fatalf("apply: %v", err)
@@ -122,11 +142,122 @@ func TestApplyEnrollmentPersists(t *testing.T) {
 	if data, err := os.ReadFile(proxyFile); err != nil || string(data) != "proxy-xyz" {
 		t.Fatalf("proxy id file = %q err %v", string(data), err)
 	}
+	info, err := os.Stat(proxyFile)
+	if err != nil {
+		t.Fatalf("stat proxy id file: %v", err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("proxy id file mode = %v", info.Mode().Perm())
+	}
+	var syncState model.BackupPublicSyncState
+	if err := global.DB.First(&syncState, model.BackupPublicSyncStateID).Error; err != nil {
+		t.Fatalf("load reset sync state: %v", err)
+	}
+	if syncState.Authority != resp.BackupSyncAuthority || syncState.Generation != resp.BackupSyncGeneration || syncState.TargetEpoch != resp.BackupSyncTargetEpoch || syncState.AppliedRevision != 0 || syncState.AppliedDigest != "" || syncState.AppliedAt != nil {
+		t.Fatalf("re-enrollment did not reset sync state: %#v", syncState)
+	}
 
 	// incomplete response must be rejected
 	if err := helper.ApplyEnrollment(helper.EnrollResponse{}, nil, 1, proxyFile); err == nil {
 		t.Fatal("incomplete enrollment response accepted")
 	}
+}
+
+func TestApplyEnrollmentFailurePreservesPreviousSyncGuard(t *testing.T) {
+	newResponse := func() helper.EnrollResponse {
+		return helper.EnrollResponse{
+			ServerCert:            "-----NEW SERVER CERT-----",
+			CACert:                "-----NEW CA CERT-----",
+			ProxyID:               "new-proxy-id",
+			CoreClientFingerprint: "DDEEFF",
+			BackupSyncAuthority:   strings.Repeat("c", 64),
+			BackupSyncGeneration:  strings.Repeat("d", 64),
+			BackupSyncTargetEpoch: strings.Repeat("e", 64),
+		}
+	}
+	seedState := func(t *testing.T) {
+		t.Helper()
+		if err := global.DB.Create(&model.BackupPublicSyncState{
+			ID:              model.BackupPublicSyncStateID,
+			Authority:       "old-authority",
+			Generation:      "old-generation",
+			TargetEpoch:     "old-target-epoch",
+			AppliedRevision: 42,
+			AppliedDigest:   "old-digest",
+		}).Error; err != nil {
+			t.Fatalf("seed previous synchronization guard: %v", err)
+		}
+	}
+	assertStatePreserved := func(t *testing.T) {
+		t.Helper()
+		var state model.BackupPublicSyncState
+		if err := global.DB.First(&state, model.BackupPublicSyncStateID).Error; err != nil {
+			t.Fatalf("load previous synchronization guard: %v", err)
+		}
+		if state.Authority != "old-authority" || state.Generation != "old-generation" || state.TargetEpoch != "old-target-epoch" || state.AppliedRevision != 42 || state.AppliedDigest != "old-digest" {
+			t.Fatalf("failed re-enrollment cleared previous synchronization guard: %#v", state)
+		}
+	}
+
+	t.Run("proxy id write failure", func(t *testing.T) {
+		setupAgentDB(t)
+		seedState(t)
+		proxyFile := filepath.Join(t.TempDir(), "missing", ".nodeProxyID")
+		if err := helper.ApplyEnrollment(newResponse(), []byte("-----NEW NODE KEY-----"), 9101, proxyFile); err == nil {
+			t.Fatal("re-enrollment unexpectedly succeeded when Proxy-Id could not be written")
+		}
+		assertStatePreserved(t)
+	})
+
+	t.Run("node scope persistence failure", func(t *testing.T) {
+		setupAgentDB(t)
+		seedState(t)
+		if err := global.DB.Exec(`
+			CREATE TRIGGER reject_node_scope_insert
+			BEFORE INSERT ON settings
+			WHEN NEW.key = 'NodeScope'
+			BEGIN
+				SELECT RAISE(ABORT, 'synthetic NodeScope failure');
+			END;
+		`).Error; err != nil {
+			t.Fatalf("install NodeScope failure trigger: %v", err)
+		}
+		proxyFile := filepath.Join(t.TempDir(), ".nodeProxyID")
+		if err := helper.ApplyEnrollment(newResponse(), []byte("-----NEW NODE KEY-----"), 9101, proxyFile); err == nil {
+			t.Fatal("re-enrollment unexpectedly succeeded when NodeScope could not be persisted")
+		}
+		assertStatePreserved(t)
+		var settingCount int64
+		if err := global.DB.Model(&model.Setting{}).Count(&settingCount).Error; err != nil {
+			t.Fatal(err)
+		}
+		if settingCount != 0 {
+			t.Fatalf("failed enrollment committed %d partial settings", settingCount)
+		}
+	})
+
+	t.Run("proxy id rename failure leaves new epoch fail closed", func(t *testing.T) {
+		setupAgentDB(t)
+		seedState(t)
+		proxyTarget := filepath.Join(t.TempDir(), "proxy-target")
+		if err := os.Mkdir(proxyTarget, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		response := newResponse()
+		if err := helper.ApplyEnrollment(response, []byte("-----NEW NODE KEY-----"), 9101, proxyTarget); err == nil {
+			t.Fatal("re-enrollment unexpectedly replaced a directory with the Proxy-Id file")
+		}
+		var state model.BackupPublicSyncState
+		if err := global.DB.First(&state, model.BackupPublicSyncStateID).Error; err != nil {
+			t.Fatal(err)
+		}
+		if state.Authority != response.BackupSyncAuthority || state.Generation != response.BackupSyncGeneration || state.TargetEpoch != response.BackupSyncTargetEpoch || state.AppliedRevision != 0 || state.AppliedDigest != "" || state.AppliedAt != nil {
+			t.Fatalf("rename failure left the previous synchronization lease usable: %#v", state)
+		}
+		if scope, err := repo.NewISettingRepo().GetValueByKey("NodeScope"); err != nil || scope != "node" {
+			t.Fatalf("committed enrollment settings were not retained for retry: scope=%q err=%v", scope, err)
+		}
+	})
 }
 
 func TestValidateCertificatePinsMaster(t *testing.T) {

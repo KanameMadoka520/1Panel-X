@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -21,7 +22,8 @@ import (
 )
 
 type oneDriveClient struct {
-	client odsdk.Client
+	client     odsdk.Client
+	httpClient *http.Client
 }
 
 func NewOneDriveClient(vars map[string]interface{}) (*oneDriveClient, error) {
@@ -40,7 +42,7 @@ func NewOneDriveClient(vars map[string]interface{}) (*oneDriveClient, error) {
 	if isCN == "true" {
 		client.BaseURL, _ = url.Parse("https://microsoftgraph.chinacloudapi.cn/v1.0/")
 	}
-	return &oneDriveClient{client: *client}, nil
+	return &oneDriveClient{client: *client, httpClient: tc}, nil
 }
 
 func (o oneDriveClient) ListBuckets() ([]interface{}, error) {
@@ -51,6 +53,9 @@ func (o oneDriveClient) Exist(path string) (bool, error) {
 	path = "/" + strings.TrimPrefix(path, "/")
 	fileID, err := o.loadIDByPath(path)
 	if err != nil {
+		if errors.Is(err, errCloudStorageObjectNotFound) {
+			return false, nil
+		}
 		return false, err
 	}
 
@@ -97,7 +102,7 @@ func (o oneDriveClient) Delete(path string) (bool, error) {
 func (o oneDriveClient) Upload(src, target string) (bool, error) {
 	target = "/" + strings.TrimPrefix(target, "/")
 	if _, err := o.loadIDByPath(path.Dir(target)); err != nil {
-		if !strings.Contains(err.Error(), "itemNotFound") {
+		if !errors.Is(err, errCloudStorageObjectNotFound) {
 			return false, err
 		}
 		if err := o.createFolder(path.Dir(target)); err != nil {
@@ -190,9 +195,34 @@ func (o *oneDriveClient) loadIDByPath(path string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("new request for file id failed, err: %v", err)
 	}
-	var driveItem *odsdk.DriveItem
-	if err := o.client.Do(context.Background(), req, false, &driveItem); err != nil {
-		return "", fmt.Errorf("do request for file id failed, err: %v", err)
+	if o.httpClient == nil {
+		return "", errors.New("OneDrive HTTP client is not configured")
+	}
+	resp, err := o.httpClient.Do(req.WithContext(context.Background()))
+	if err != nil {
+		return "", fmt.Errorf("do request for file id failed: %w", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return "", fmt.Errorf("read response for file id failed: %w", err)
+	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		var responseError odsdk.ErrorResponse
+		if json.Unmarshal(body, &responseError) == nil &&
+			resp.StatusCode == http.StatusNotFound &&
+			responseError.Error != nil &&
+			responseError.Error.Code == "itemNotFound" {
+			return "", errCloudStorageObjectNotFound
+		}
+		return "", fmt.Errorf("OneDrive file lookup failed with HTTP status %d", resp.StatusCode)
+	}
+	var driveItem odsdk.DriveItem
+	if err := json.Unmarshal(body, &driveItem); err != nil {
+		return "", fmt.Errorf("decode response for file id failed: %w", err)
+	}
+	if driveItem.Id == "" {
+		return "", errors.New("OneDrive file lookup returned an empty item ID")
 	}
 	return driveItem.Id, nil
 }
@@ -235,7 +265,7 @@ func RefreshToken(grantType string, tokenType string, varMap map[string]interfac
 
 func (o *oneDriveClient) createFolder(parent string) error {
 	if _, err := o.loadIDByPath(path.Dir(parent)); err != nil {
-		if !strings.Contains(err.Error(), "itemNotFound") {
+		if !errors.Is(err, errCloudStorageObjectNotFound) {
 			return err
 		}
 		_ = o.createFolder(path.Dir(parent))

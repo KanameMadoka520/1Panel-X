@@ -20,7 +20,13 @@ func (c localClient) ListBuckets() ([]interface{}, error) {
 
 func (c localClient) Exist(file string) (bool, error) {
 	_, err := os.Stat(file)
-	return err == nil, err
+	if err == nil {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return false, err
 }
 
 func (c localClient) Size(file string) (int64, error) {

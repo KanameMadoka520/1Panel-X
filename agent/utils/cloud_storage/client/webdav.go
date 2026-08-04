@@ -2,6 +2,7 @@ package client
 
 import (
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -89,9 +90,17 @@ func (s webDAVClient) Download(src, target string) (bool, error) {
 
 func (s webDAVClient) Exist(pathItem string) (bool, error) {
 	if _, err := s.client.Stat(path.Join(s.Bucket, pathItem)); err != nil {
+		if isWebDAVObjectNotFound(err) {
+			return false, nil
+		}
 		return false, err
 	}
 	return true, nil
+}
+
+func isWebDAVObjectNotFound(err error) bool {
+	var statusError webdav.StatusError
+	return errors.As(err, &statusError) && statusError.Status == http.StatusNotFound
 }
 
 func (s webDAVClient) Size(pathItem string) (int64, error) {

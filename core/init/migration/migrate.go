@@ -53,6 +53,7 @@ func Init() {
 		migrations.AddMenuAccordionSetting,
 		migrations.AddNodeTable,
 		migrations.MigrateBackupOAuthCredentials,
+		migrations.MigrateBackupSyncState,
 	})
 	if err := m.Migrate(); err != nil {
 		global.LOG.Error(err)

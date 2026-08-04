@@ -70,9 +70,7 @@ const acceptParams = (props: DialogProps): void => {
     form.api = props.api;
     form.params = props.params;
     successMsg.value = props.successMsg;
-    if (props.noMsg) {
-        noMsg.value = props.noMsg;
-    }
+    noMsg.value = !!props.noMsg;
     open.value = true;
 };
 

@@ -20,6 +20,7 @@ import (
 	"github.com/1Panel-dev/1Panel/agent/constant"
 	"github.com/1Panel-dev/1Panel/agent/global"
 	"github.com/1Panel-dev/1Panel/agent/i18n"
+	backupcoord "github.com/1Panel-dev/1Panel/agent/utils/backupsync"
 	"github.com/1Panel-dev/1Panel/agent/utils/cloud_storage"
 	"github.com/1Panel-dev/1Panel/agent/utils/cloud_storage/client"
 	"github.com/1Panel-dev/1Panel/agent/utils/encrypt"
@@ -40,7 +41,7 @@ type IBackupService interface {
 	CompleteOAuth(req dto.OAuthComplete) (dto.OAuthCompleteResponse, error)
 	GetOAuthCredential(id uint) (dto.OAuthCredentialInfo, error)
 	ClearOAuthCredential(id uint) error
-	SyncPublicAccounts(req dto.BackupPublicSync) error
+	SyncPublicAccounts(req dto.BackupPublicSync) (dto.BackupPublicSyncResult, error)
 	Create(backupDto dto.BackupOperate) error
 	CheckConn(req dto.BackupOperate) dto.BackupCheckRes
 	GetBuckets(backupDto dto.ForBuckets) ([]interface{}, error)
@@ -697,6 +698,32 @@ func uploadWithMap(taskItem task.Task, accountMap map[string]backupClientHelper,
 }
 
 func newClient(account *model.BackupAccount, isEncrypt bool) (cloud_storage.CloudStorageClient, error) {
+	if account == nil {
+		return nil, errors.New("backup account is unavailable")
+	}
+	workingAccount := *account
+	var publicLease *publicBackupSyncLease
+	if isEncrypt && workingAccount.IsPublic {
+		releaseExecution := backupcoord.AcquireExecution()
+		defer releaseExecution()
+		if workingAccount.ID == 0 {
+			return nil, errors.New("public backup account synchronization is unavailable; wait for reconciliation")
+		}
+		var current model.BackupAccount
+		if err := global.DB.Where("id = ? AND is_public = ?", workingAccount.ID, true).First(&current).Error; err != nil {
+			return nil, errors.New("public backup account changed during synchronization; retry after reconciliation")
+		}
+		if !samePublicBackupAccountSnapshot(workingAccount, current) {
+			return nil, errors.New("public backup account changed during synchronization; retry after reconciliation")
+		}
+		lease, err := currentPublicBackupSyncLease(time.Now())
+		if err != nil {
+			return nil, err
+		}
+		workingAccount = current
+		publicLease = &lease
+	}
+	account = &workingAccount
 	varMap := make(map[string]interface{})
 	if len(account.Vars) != 0 {
 		if err := json.Unmarshal([]byte(account.Vars), &varMap); err != nil {
@@ -709,8 +736,13 @@ func newClient(account *model.BackupAccount, isEncrypt bool) (cloud_storage.Clou
 	varMap["bucket"] = account.Bucket
 	varMap["backupPath"] = account.BackupPath
 	if isEncrypt {
-		account.AccessKey, _ = encrypt.StringDecrypt(account.AccessKey)
-		account.Credential, _ = encrypt.StringDecrypt(account.Credential)
+		accessKey, accessKeyErr := encrypt.StringDecrypt(account.AccessKey)
+		credential, credentialErr := encrypt.StringDecrypt(account.Credential)
+		if account.IsPublic && (accessKeyErr != nil || credentialErr != nil) {
+			return nil, errors.New("public backup account credential is unavailable; wait for reconciliation")
+		}
+		account.AccessKey = accessKey
+		account.Credential = credential
 	}
 	switch account.Type {
 	case constant.Sftp, constant.WebDAV:
@@ -728,7 +760,95 @@ func newClient(account *model.BackupAccount, isEncrypt bool) (cloud_storage.Clou
 	if err != nil {
 		return nil, err
 	}
+	if publicLease != nil {
+		return &publicBackupLeaseClient{client: client, lease: *publicLease}, nil
+	}
 	return client, nil
+}
+
+func samePublicBackupAccountSnapshot(left, right model.BackupAccount) bool {
+	return left.ID == right.ID && left.Name == right.Name && left.Type == right.Type &&
+		left.IsPublic == right.IsPublic && left.Bucket == right.Bucket &&
+		left.AccessKey == right.AccessKey && left.Credential == right.Credential &&
+		left.BackupPath == right.BackupPath && left.Vars == right.Vars &&
+		left.RememberAuth == right.RememberAuth
+}
+
+type publicBackupLeaseClient struct {
+	client cloud_storage.CloudStorageClient
+	lease  publicBackupSyncLease
+}
+
+func (c *publicBackupLeaseClient) acquire() (func(), error) {
+	releaseExecution := backupcoord.AcquireExecution()
+	if err := validatePublicBackupSyncLease(c.lease, time.Now()); err != nil {
+		releaseExecution()
+		return nil, err
+	}
+	return releaseExecution, nil
+}
+
+func (c *publicBackupLeaseClient) ListBuckets() ([]interface{}, error) {
+	release, err := c.acquire()
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+	return c.client.ListBuckets()
+}
+
+func (c *publicBackupLeaseClient) ListObjects(prefix string) ([]string, error) {
+	release, err := c.acquire()
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+	return c.client.ListObjects(prefix)
+}
+
+func (c *publicBackupLeaseClient) Exist(target string) (bool, error) {
+	release, err := c.acquire()
+	if err != nil {
+		return false, err
+	}
+	defer release()
+	return c.client.Exist(target)
+}
+
+func (c *publicBackupLeaseClient) Delete(target string) (bool, error) {
+	release, err := c.acquire()
+	if err != nil {
+		return false, err
+	}
+	defer release()
+	return c.client.Delete(target)
+}
+
+func (c *publicBackupLeaseClient) Upload(source, target string) (bool, error) {
+	release, err := c.acquire()
+	if err != nil {
+		return false, err
+	}
+	defer release()
+	return c.client.Upload(source, target)
+}
+
+func (c *publicBackupLeaseClient) Download(source, target string) (bool, error) {
+	release, err := c.acquire()
+	if err != nil {
+		return false, err
+	}
+	defer release()
+	return c.client.Download(source, target)
+}
+
+func (c *publicBackupLeaseClient) Size(target string) (int64, error) {
+	release, err := c.acquire()
+	if err != nil {
+		return 0, err
+	}
+	defer release()
+	return c.client.Size(target)
 }
 
 func loadBackupNamesByID(accountIDs string, downloadID uint) ([]string, string, error) {

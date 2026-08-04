@@ -34,6 +34,9 @@ func (g *googleDriveClient) ListBuckets() ([]interface{}, error) {
 func (g *googleDriveClient) Exist(pathItem string) (bool, error) {
 	pathItem = path.Join("root", pathItem)
 	if _, err := g.loadFileWithName(pathItem); err != nil {
+		if errors.Is(err, errCloudStorageObjectNotFound) {
+			return false, nil
+		}
 		return false, err
 	}
 	return true, nil
@@ -310,11 +313,11 @@ func (g *googleDriveClient) loadFileWithName(pathItem string) (googleFile, error
 			}
 		}
 		if !exist {
-			return googleFile{}, errors.New("no such file or dir")
+			return googleFile{}, errCloudStorageObjectNotFound
 		}
 
 	}
-	return googleFile{}, errors.New("no such file or dir")
+	return googleFile{}, errCloudStorageObjectNotFound
 }
 
 func (g *googleDriveClient) loadFileWithParentID(parentID string) ([]googleFile, error) {

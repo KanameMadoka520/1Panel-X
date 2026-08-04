@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -522,7 +523,15 @@ func (u *CronjobService) CleanRecord(req dto.CronjobClean) error {
 			}
 			cronjob.RetainCopies = 0
 			if len(accountMap) != 0 {
-				u.removeExpiredBackup(cronjob, accountMap, model.BackupRecord{})
+				selectedAccountIDs := make([]string, 0, len(accountMap))
+				for accountID := range accountMap {
+					selectedAccountIDs = append(selectedAccountIDs, accountID)
+				}
+				sort.Strings(selectedAccountIDs)
+				cronjob.SourceAccountIDs = strings.Join(selectedAccountIDs, ",")
+				if err := u.removeExpiredBackup(cronjob, accountMap, model.BackupRecord{}); err != nil {
+					return err
+				}
 			}
 		}
 	}

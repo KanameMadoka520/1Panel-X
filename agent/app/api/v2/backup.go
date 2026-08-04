@@ -140,11 +140,12 @@ func (b *BaseApi) SyncPublicBackupAccounts(c *gin.Context) {
 	if err := helper.CheckBindAndValidate(&req, c); err != nil {
 		return
 	}
-	if err := backupService.SyncPublicAccounts(req); err != nil {
+	result, err := backupService.SyncPublicAccounts(req)
+	if err != nil {
 		helper.InternalServer(c, err)
 		return
 	}
-	helper.Success(c)
+	helper.SuccessWithData(c, result)
 }
 
 // @Tags Backup Account

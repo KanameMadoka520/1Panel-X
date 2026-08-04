@@ -15,6 +15,7 @@ import (
 	"github.com/1Panel-dev/1Panel/core/app/model"
 	"github.com/1Panel-dev/1Panel/core/constant"
 	"github.com/1Panel-dev/1Panel/core/global"
+	"github.com/1Panel-dev/1Panel/core/utils/backupsync"
 	"github.com/1Panel-dev/1Panel/core/utils/encrypt"
 	"github.com/1Panel-dev/1Panel/core/utils/oauthflow"
 	"github.com/1Panel-dev/1Panel/core/utils/xpack"
@@ -169,8 +170,12 @@ func TestBackupOAuthSecretWriteOnlyPreserveAndClear(t *testing.T) {
 	if err := service.ClearOAuthCredential(account.Name); err != nil {
 		t.Fatalf("clear OAuth credential: %v", err)
 	}
+	if len(provider.calls) != 0 {
+		t.Fatalf("clear blocked on synchronous delivery: calls=%#v", provider.calls)
+	}
+	reconcilePublicBackupSync()
 	if len(provider.calls) != 1 || provider.calls[0] != constant.SyncBackupAccounts {
-		t.Fatalf("clear sync calls = %#v", provider.calls)
+		t.Fatalf("reconciliation calls = %#v", provider.calls)
 	}
 	var accountCount, credentialCount int64
 	_ = db.Model(&model.BackupAccount{}).Where("id = ?", account.ID).Count(&accountCount).Error
@@ -283,6 +288,74 @@ func TestPersistBackupOAuthRefreshResultRejectsStaleSnapshots(t *testing.T) {
 	})
 }
 
+func TestClearOAuthCredentialWaitsForDesiredStateExecution(t *testing.T) {
+	db := setupCoreBackupOAuthServiceTestDB(t)
+	account := model.BackupAccount{
+		Name:     "guarded-onedrive",
+		Type:     constant.OneDrive,
+		IsPublic: true,
+		Vars:     `{}`,
+	}
+	if err := db.Create(&account).Error; err != nil {
+		t.Fatalf("seed guarded account: %v", err)
+	}
+	if err := db.Create(&model.BackupOAuthCredential{
+		BackupAccountID: account.ID,
+		Provider:        model.BackupOAuthProviderMicrosoft,
+		ClientID:        "synthetic-client-id",
+		ClientSecret:    "synthetic-encrypted-client-secret",
+		RefreshToken:    "synthetic-encrypted-refresh-token",
+		Status:          model.BackupOAuthStatusConfigured,
+	}).Error; err != nil {
+		t.Fatalf("seed guarded credential: %v", err)
+	}
+
+	releaseExecution := backupsync.AcquireDesiredStateExecution()
+	result := make(chan error, 1)
+	go func() {
+		result <- (&BackupService{}).ClearOAuthCredential(account.Name)
+	}()
+
+	select {
+	case err := <-result:
+		releaseExecution()
+		t.Fatalf("credential mutation crossed active execution guard: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+	var credentialCount int64
+	if err := db.Model(&model.BackupOAuthCredential{}).Where("backup_account_id = ?", account.ID).Count(&credentialCount).Error; err != nil {
+		releaseExecution()
+		t.Fatalf("count guarded credential: %v", err)
+	}
+	if credentialCount != 1 {
+		releaseExecution()
+		t.Fatalf("credential changed while execution guard was active: count=%d", credentialCount)
+	}
+
+	releaseExecution()
+	select {
+	case err := <-result:
+		if err != nil {
+			t.Fatalf("clear credential after execution guard release: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("credential mutation did not resume after execution guard release")
+	}
+	if err := db.Model(&model.BackupOAuthCredential{}).Where("backup_account_id = ?", account.ID).Count(&credentialCount).Error; err != nil {
+		t.Fatalf("count cleared credential: %v", err)
+	}
+	if credentialCount != 0 {
+		t.Fatalf("credential remained after guarded clear: count=%d", credentialCount)
+	}
+	sequence, err := backupsync.CurrentSequence()
+	if err != nil {
+		t.Fatalf("load sequence after guarded clear: %v", err)
+	}
+	if sequence.Revision != 2 {
+		t.Fatalf("guarded clear revision = %d, want 2", sequence.Revision)
+	}
+}
+
 func TestSanitizeBackupOAuthVarsNormalizesSensitiveKeysAndNull(t *testing.T) {
 	vars, encoded, err := sanitizeBackupOAuthVars("null")
 	if err != nil {
@@ -312,12 +385,23 @@ func setupCoreBackupOAuthServiceTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("open test database: %v", err)
 	}
-	if err := db.AutoMigrate(&model.BackupAccount{}, &model.BackupOAuthCredential{}); err != nil {
+	if err := db.AutoMigrate(
+		&model.BackupAccount{},
+		&model.BackupOAuthCredential{},
+		&model.Node{},
+		&model.BackupSyncSequence{},
+		&model.BackupSyncOutbox{},
+		&model.BackupSyncTarget{},
+		&model.BackupSyncTombstone{},
+	); err != nil {
 		t.Fatalf("migrate test database: %v", err)
 	}
 	global.DB = db
 	global.CONF.Base.EncryptKey = coreBackupOAuthServiceTestKey
 	backupOAuthFlowManager = oauthflow.NewManager(oauthflow.Options{})
+	if err := db.Transaction(backupsync.InitializeTx); err != nil {
+		t.Fatalf("initialize backup synchronization state: %v", err)
+	}
 	t.Cleanup(func() {
 		global.DB = oldDB
 		global.CONF.Base.EncryptKey = oldKey

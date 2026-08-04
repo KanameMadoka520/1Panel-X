@@ -77,14 +77,15 @@ type OAuthCompleteResponse struct {
 }
 
 type OAuthCredentialInfo struct {
-	Provider                string `json:"provider"`
-	Configured              bool   `json:"configured"`
-	Authorized              bool   `json:"authorized"`
-	ClientIDDisplay         string `json:"clientIdDisplay"`
-	RedirectURI             string `json:"redirectUri"`
-	Status                  string `json:"status"`
-	RequiresReauthorization bool   `json:"requiresReauthorization"`
-	UpdatedAt               string `json:"updatedAt"`
+	Provider                string            `json:"provider"`
+	Configured              bool              `json:"configured"`
+	Authorized              bool              `json:"authorized"`
+	ClientIDDisplay         string            `json:"clientIdDisplay"`
+	RedirectURI             string            `json:"redirectUri"`
+	Status                  string            `json:"status"`
+	RequiresReauthorization bool              `json:"requiresReauthorization"`
+	UpdatedAt               string            `json:"updatedAt"`
+	Sync                    *BackupSyncStatus `json:"sync,omitempty"`
 }
 
 type OAuthClear struct {
@@ -95,7 +96,18 @@ type OAuthClear struct {
 // BackupPublicSync is an internal core-to-agent payload. Secret fields are
 // accepted only by the agent sync endpoint and are never returned by an API.
 type BackupPublicSync struct {
-	Accounts []BackupPublicSyncAccount `json:"accounts"`
+	Authority      string                      `json:"authority"`
+	Generation     string                      `json:"generation"`
+	TargetEpoch    string                      `json:"targetEpoch"`
+	Revision       uint64                      `json:"revision"`
+	SnapshotDigest string                      `json:"snapshotDigest"`
+	Accounts       []BackupPublicSyncAccount   `json:"accounts"`
+	Tombstones     []BackupPublicSyncTombstone `json:"tombstones"`
+}
+
+type BackupPublicSyncTombstone struct {
+	Name     string `json:"name"`
+	Revision uint64 `json:"revision"`
 }
 
 type BackupPublicSyncAccount struct {
@@ -120,6 +132,47 @@ type BackupOAuthSecretSync struct {
 	IsCN         bool       `json:"isCN"`
 	Status       string     `json:"status"`
 	AuthorizedAt *time.Time `json:"authorizedAt,omitempty"`
+}
+
+type BackupPublicSyncResult struct {
+	Authority       string `json:"authority"`
+	Generation      string `json:"generation"`
+	TargetEpoch     string `json:"targetEpoch"`
+	AppliedRevision uint64 `json:"appliedRevision"`
+	SnapshotDigest  string `json:"snapshotDigest"`
+	Result          string `json:"result"`
+}
+
+type BackupSyncTargetStatus struct {
+	TargetKey       string `json:"targetKey"`
+	NodeID          uint   `json:"nodeId"`
+	NodeName        string `json:"nodeName"`
+	Status          string `json:"status"`
+	DesiredRevision uint64 `json:"desiredRevision"`
+	AppliedRevision uint64 `json:"appliedRevision"`
+	Attempts        uint   `json:"attempts"`
+	NextRetryAt     string `json:"nextRetryAt"`
+	LastSuccessAt   string `json:"lastSuccessAt"`
+	LastError       string `json:"-"`
+}
+
+type BackupSyncStatus struct {
+	AccountName string                   `json:"accountName"`
+	Revision    uint64                   `json:"-"`
+	Status      string                   `json:"status"`
+	Succeeded   int                      `json:"succeeded"`
+	Pending     int                      `json:"pending"`
+	Total       int                      `json:"total"`
+	Targets     []BackupSyncTargetStatus `json:"-"`
+}
+
+type BackupSyncOperationResult struct {
+	Applied bool             `json:"applied"`
+	Sync    BackupSyncStatus `json:"sync"`
+}
+
+type BackupSyncRetry struct {
+	Name string `json:"name" validate:"required"`
 }
 
 type ForBuckets struct {

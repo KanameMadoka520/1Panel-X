@@ -18,8 +18,10 @@ import (
 	"github.com/1Panel-dev/1Panel/core/buserr"
 	"github.com/1Panel-dev/1Panel/core/constant"
 	"github.com/1Panel-dev/1Panel/core/global"
+	"github.com/1Panel-dev/1Panel/core/utils/backupsync"
 	"github.com/1Panel-dev/1Panel/core/utils/encrypt"
 	"github.com/1Panel-dev/1Panel/core/utils/nodepki"
+	"gorm.io/gorm"
 )
 
 type NodeService struct{}
@@ -149,7 +151,14 @@ func (s *NodeService) Delete(id uint) error {
 	if _, err := nodeRepo.Get(repo.WithByID(id)); err != nil {
 		return buserr.New("ErrRecordNotFound")
 	}
-	return nodeRepo.Delete(repo.WithByID(id))
+	releaseDeliveryBarrier := backupsync.AcquireDeliveryBarrier()
+	defer releaseDeliveryBarrier()
+	return global.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("id = ?", id).Delete(&model.Node{}).Error; err != nil {
+			return err
+		}
+		return backupsync.DeactivateNodeTargetTx(tx, id)
+	})
 }
 
 // Revoke marks a node revoked without deleting its registry row (N10). A revoked
@@ -159,7 +168,14 @@ func (s *NodeService) Revoke(id uint) error {
 	if _, err := nodeRepo.Get(repo.WithByID(id)); err != nil {
 		return buserr.New("ErrRecordNotFound")
 	}
-	return nodeRepo.Update(id, map[string]interface{}{"status": constant.NodeStatusRevoked})
+	releaseDeliveryBarrier := backupsync.AcquireDeliveryBarrier()
+	defer releaseDeliveryBarrier()
+	return global.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&model.Node{}).Where("id = ?", id).Update("status", constant.NodeStatusRevoked).Error; err != nil {
+			return err
+		}
+		return backupsync.DeactivateNodeTargetTx(tx, id)
+	})
 }
 
 // Enroll is called BY a joining node (token-gated, no session). It verifies the
@@ -195,23 +211,22 @@ func (s *NodeService) Enroll(req dto.NodeEnrollRequest) (*dto.NodeEnrollResponse
 		return nil, err
 	}
 
-	// Atomic single-use burn (N1): only the winner proceeds; a replay loses.
-	won, err := nodeRepo.BurnEnrollment(node.ID, claims.Nonce)
-	if err != nil {
-		return nil, err
-	}
-	if !won {
-		return nil, fmt.Errorf("enrollment token already used")
-	}
-
 	fp, err := nodepki.FingerprintPEM(leaf)
 	if err != nil {
 		return nil, err
 	}
-	if err := nodeRepo.Update(node.ID, map[string]interface{}{
-		"server_fingerprint": fp,
-		"status":             constant.NodeStatusOnline,
+	releaseDesiredState := backupsync.AcquireDesiredStateMutation()
+	defer releaseDesiredState()
+	var targetEpoch string
+	if err := global.DB.Transaction(func(tx *gorm.DB) error {
+		var finalizeErr error
+		targetEpoch, finalizeErr = finalizeNodeEnrollmentTx(tx, node.ID, claims.Nonce, fp)
+		return finalizeErr
 	}); err != nil {
+		return nil, err
+	}
+	sequence, err := backupsync.CurrentSequence()
+	if err != nil {
 		return nil, err
 	}
 	// N13: audit the highest-value security event — a node was signed and bound.
@@ -221,7 +236,36 @@ func (s *NodeService) Enroll(req dto.NodeEnrollRequest) (*dto.NodeEnrollResponse
 		CACert:                string(pki.ca.CertPEM),
 		ProxyID:               node.ProxyID,
 		CoreClientFingerprint: pki.coreClientFP,
+		BackupSyncAuthority:   sequence.Authority,
+		BackupSyncGeneration:  sequence.Generation,
+		BackupSyncTargetEpoch: targetEpoch,
 	}, nil
+}
+
+func finalizeNodeEnrollmentTx(tx *gorm.DB, nodeID uint, nonce, fingerprint string) (string, error) {
+	result := tx.Model(&model.Node{}).
+		Where(
+			"id = ? AND enroll_nonce = ? AND enrolled = ? AND status <> ?",
+			nodeID,
+			nonce,
+			false,
+			constant.NodeStatusRevoked,
+		).
+		Updates(map[string]interface{}{
+			"enrolled":           true,
+			"server_fingerprint": fingerprint,
+			"status":             constant.NodeStatusOnline,
+		})
+	if result.Error != nil {
+		return "", result.Error
+	}
+	if result.RowsAffected != 1 {
+		return "", fmt.Errorf("enrollment token already used or node revoked")
+	}
+	if err := backupsync.EnsureNodeTargetTx(tx, nodeID); err != nil {
+		return "", err
+	}
+	return backupsync.RotateNodeTargetEpochTx(tx, nodeID)
 }
 
 // ensurePKI loads the core-owned node PKI, generating it once on first use.

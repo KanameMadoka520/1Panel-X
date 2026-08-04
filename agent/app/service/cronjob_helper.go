@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -382,7 +383,9 @@ func (u *CronjobService) handleCutWebsiteLog(cronjob *model.Cronjob, startTime t
 				_ = fileOp.WriteFile(srcErrorLogPath, strings.NewReader(""), constant.DirPerm)
 			}
 			taskItem.Log(i18n.GetMsgWithMap("CutWebsiteLogSuccess", map[string]interface{}{"name": website.PrimaryDomain, "path": dstFilePath}))
-			u.removeExpiredBackup(*cronjob, clientMap, record)
+			if err := u.removeExpiredBackup(*cronjob, clientMap, record); err != nil {
+				return task.MarkNonRetryable(err)
+			}
 		}
 		return nil
 	}, nil, int(cronjob.RetryTimes), time.Duration(cronjob.Timeout)*time.Second)
@@ -414,7 +417,7 @@ func (u *CronjobService) handleSystemClean(cronjob model.Cronjob, taskItem *task
 	taskItem.AddSubTaskWithOps(i18n.GetMsgByKey("HandleSystemClean"), cleanTask, nil, int(cronjob.RetryTimes), time.Duration(cronjob.Timeout)*time.Second)
 }
 
-func (u *CronjobService) removeExpiredBackup(cronjob model.Cronjob, accountMap map[string]backupClientHelper, record model.BackupRecord) {
+func (u *CronjobService) removeExpiredBackup(cronjob model.Cronjob, accountMap map[string]backupClientHelper, record model.BackupRecord) error {
 	var opts []repo.DBOption
 	opts = append(opts, repo.WithByFrom("cronjob"))
 	opts = append(opts, backupRepo.WithByCronID(cronjob.ID))
@@ -424,40 +427,35 @@ func (u *CronjobService) removeExpiredBackup(cronjob model.Cronjob, accountMap m
 		opts = append(opts, repo.WithByName(record.Name))
 		opts = append(opts, repo.WithByDetailName(record.DetailName))
 	}
-	records, _ := backupRepo.ListRecord(opts...)
-	if len(records) <= int(cronjob.RetainCopies) {
-		return
+	records, err := backupRepo.ListRecord(opts...)
+	if err != nil {
+		return errors.New("load expired backup records failed")
 	}
+	if len(records) <= int(cronjob.RetainCopies) {
+		return nil
+	}
+	var cleanupErrors []error
 	for i := int(cronjob.RetainCopies); i < len(records); i++ {
 		accounts := strings.Split(cronjob.SourceAccountIDs, ",")
+		relativePath := pathUtils.Join(records[i].FileDir, records[i].FileName)
 		if cronjob.Type == "snapshot" {
-			for _, account := range accounts {
-				if len(account) != 0 {
-					if _, ok := accountMap[account]; !ok {
-						continue
-					}
-					if !accountMap[account].isOk {
-						continue
-					}
-					_, _ = accountMap[account].client.Delete(pathUtils.Join(accountMap[account].backupPath, "system_snapshot", records[i].FileName))
-				}
-			}
-			_ = snapshotRepo.Delete(repo.WithByName(strings.TrimSuffix(records[i].FileName, ".tar.gz")))
-		} else {
-			for _, account := range accounts {
-				if len(account) != 0 {
-					if _, ok := accountMap[account]; !ok {
-						continue
-					}
-					if !accountMap[account].isOk {
-						continue
-					}
-					_, _ = accountMap[account].client.Delete(pathUtils.Join(accountMap[account].backupPath, records[i].FileDir, records[i].FileName))
-				}
+			relativePath = pathUtils.Join("system_snapshot", records[i].FileName)
+		}
+		if err := deleteBackupFilesFromAccounts(records[i].ID, accounts, relativePath, accountMap); err != nil {
+			cleanupErrors = append(cleanupErrors, err)
+			continue
+		}
+		if cronjob.Type == "snapshot" {
+			if err := snapshotRepo.Delete(repo.WithByName(strings.TrimSuffix(records[i].FileName, ".tar.gz"))); err != nil {
+				cleanupErrors = append(cleanupErrors, backupMetadataCleanupError("snapshot", records[i].ID))
+				continue
 			}
 		}
-		_ = backupRepo.DeleteRecord(context.Background(), repo.WithByID(records[i].ID))
+		if err := backupRepo.DeleteRecord(context.Background(), repo.WithByID(records[i].ID)); err != nil {
+			cleanupErrors = append(cleanupErrors, backupMetadataCleanupError("backup record", records[i].ID))
+		}
 	}
+	return errors.Join(cleanupErrors...)
 }
 
 func (u *CronjobService) removeExpiredLog(cronjob model.Cronjob) {

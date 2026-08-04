@@ -14,9 +14,9 @@ import (
 	"github.com/1Panel-dev/1Panel/core/buserr"
 	"github.com/1Panel-dev/1Panel/core/constant"
 	"github.com/1Panel-dev/1Panel/core/global"
+	"github.com/1Panel-dev/1Panel/core/utils/backupsync"
 	"github.com/1Panel-dev/1Panel/core/utils/encrypt"
 	"github.com/1Panel-dev/1Panel/core/utils/oauthflow"
-	"github.com/1Panel-dev/1Panel/core/utils/xpack"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -130,7 +130,13 @@ func (u *BackupService) GetOAuthCredential(name string) (dto.OAuthCredentialInfo
 		return dto.OAuthCredentialInfo{}, errors.New("backup account does not use OAuth")
 	}
 	credential, _ := backupOAuthRepo.GetByBackupAccountID(account.ID)
-	return buildOAuthCredentialInfo(account.Type, credential), nil
+	info := buildOAuthCredentialInfo(account.Type, credential)
+	syncStatus, err := backupsync.GetStatus(account.Name)
+	if err != nil {
+		return dto.OAuthCredentialInfo{}, err
+	}
+	info.Sync = &syncStatus
+	return info, nil
 }
 
 func (u *BackupService) ClearOAuthCredential(name string) error {
@@ -141,6 +147,8 @@ func (u *BackupService) ClearOAuthCredential(name string) error {
 	if !account.IsPublic {
 		return buserr.New("ErrBackupPublic")
 	}
+	releaseDesiredState := backupsync.AcquireDesiredStateMutation()
+	defer releaseDesiredState()
 	if err := global.DB.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Where("backup_account_id = ?", account.ID).Delete(&model.BackupOAuthCredential{}).Error; err != nil {
 			return err
@@ -154,13 +162,15 @@ func (u *BackupService) ClearOAuthCredential(name string) error {
 		if err != nil {
 			return err
 		}
-		return tx.Model(&model.BackupAccount{}).Where("id = ?", account.ID).Update("vars", string(encoded)).Error
+		if err := tx.Model(&model.BackupAccount{}).Where("id = ?", account.ID).Update("vars", string(encoded)).Error; err != nil {
+			return err
+		}
+		_, err = backupsync.EnqueueTx(tx, account.Name, model.BackupSyncOperationClear)
+		return err
 	}); err != nil {
 		return err
 	}
-	if err := xpack.MultiNodeProvider.Sync(constant.SyncBackupAccounts); err != nil {
-		return fmt.Errorf("OAuth credential was cleared in core but could not be cleared from the execution agent: %w", err)
-	}
+	triggerPublicBackupSync()
 	return nil
 }
 
@@ -374,6 +384,8 @@ func persistBackupOAuthRefreshResult(
 	refreshToken, status, vars string,
 ) error {
 	now := time.Now()
+	releaseDesiredState := backupsync.AcquireDesiredStateMutation()
+	defer releaseDesiredState()
 	return global.DB.Transaction(func(tx *gorm.DB) error {
 		credentialUpdate := tx.Model(&model.BackupOAuthCredential{}).
 			Where("id = ? AND backup_account_id = ? AND updated_at = ?", credential.ID, account.ID, credential.UpdatedAt).
@@ -401,6 +413,7 @@ func persistBackupOAuthRefreshResult(
 		if accountUpdate.RowsAffected != 1 {
 			return errOAuthCredentialChanged
 		}
-		return nil
+		_, err := backupsync.EnqueueTx(tx, account.Name, model.BackupSyncOperationRefresh)
+		return err
 	})
 }

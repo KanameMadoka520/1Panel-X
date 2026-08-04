@@ -79,7 +79,13 @@ export const refreshToken = (params: { id: number; name: string; isPublic: boole
     if (!params.isPublic) {
         return http.post('/backups/refresh/token', { id: params.id });
     }
-    return http.post('/core/backups/refresh/token', { name: params.name });
+    return http.post<Backup.BackupSyncOperationResult>('/core/backups/refresh/token', { name: params.name });
+};
+export const listBackupSyncStatuses = () => {
+    return http.get<Array<Backup.BackupSyncStatus>>('/core/backups/sync/status');
+};
+export const retryBackupSync = (name: string) => {
+    return http.post<Backup.BackupSyncOperationResult>('/core/backups/sync/retry', { name });
 };
 export const beginOAuth = (params: Backup.OAuthBegin) => {
     const url = params.isPublic ? '/core/backups/oauth/begin' : '/backups/oauth/begin';
@@ -91,31 +97,31 @@ export const completeOAuth = (params: Backup.OAuthComplete, isPublic: boolean) =
 };
 export const clearOAuth = (params: { id: number; name: string; isPublic: boolean }) => {
     if (params.isPublic) {
-        return http.post('/core/backups/oauth/credential/clear', { name: params.name });
+        return http.post<Backup.BackupSyncOperationResult>('/core/backups/oauth/credential/clear', {
+            name: params.name,
+        });
     }
     return http.post('/backups/oauth/credential/clear', { id: params.id });
 };
 export const addBackup = (params: Backup.BackupOperate) => {
     let request = deepCopy(params) as Backup.BackupOperate;
     encodeBase64Fields(request, ['accessKey', 'credential']);
-    let urlItem = '/core/backups';
     if (!params.isPublic) {
-        urlItem = '/backups';
+        return http.post('/backups', request, TimeoutEnum.T_60S);
     }
-    return http.post(urlItem, request, TimeoutEnum.T_60S);
+    return http.post<Backup.BackupSyncOperationResult>('/core/backups', request, TimeoutEnum.T_60S);
 };
 export const editBackup = (params: Backup.BackupOperate) => {
     let request = deepCopy(params) as Backup.BackupOperate;
     encodeBase64Fields(request, ['accessKey', 'credential']);
-    let urlItem = '/core/backups/update';
     if (!params.isPublic) {
-        urlItem = '/backups/update';
+        return http.post('/backups/update', request, TimeoutEnum.T_60S);
     }
-    return http.post(urlItem, request, TimeoutEnum.T_60S);
+    return http.post<Backup.BackupSyncOperationResult>('/core/backups/update', request, TimeoutEnum.T_60S);
 };
 export const deleteBackup = (params: { id: number; name: string; isPublic: boolean }) => {
     if (!params.isPublic) {
         return http.post('/backups/del', { id: params.id });
     }
-    return http.post('/core/backups/del', { name: params.name });
+    return http.post<Backup.BackupSyncOperationResult>('/core/backups/del', { name: params.name });
 };

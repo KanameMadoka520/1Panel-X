@@ -2600,6 +2600,17 @@ const message = {
         oauthAuthorizationRequired: '请先完成 OAuth 授权',
         oauthSessionExpired: 'OAuth 授权会话已过期，请重新授权后再测试或保存此备份账号',
         oauthClearConfirm: '清除 OAuth 凭据后，此备份账号将停止工作，直到重新配置并授权。备份记录和计划任务会保留。',
+        backupSyncPending: '等待节点同步',
+        backupSyncPendingHelp:
+            '变更已在控制节点保存，但尚未有执行节点确认当前版本。已同步 {0}/{1} 个节点，{2} 个待同步。',
+        backupSyncPartiallySynced: '部分节点未同步',
+        backupSyncPartiallySyncedHelp:
+            '变更已在控制节点保存，部分执行节点尚未确认当前版本。已同步 {0}/{1} 个节点，{2} 个待同步。',
+        backupSyncRetry: '重试同步',
+        backupSyncUnlistedWarning: '有 {0} 项未显示在当前列表中的公有备份变更正在等待节点同步',
+        backupSyncUnlistedHelp: '其中可能包含已删除账号的节点清理状态。',
+        backupSyncStatusUnavailable: '变更请求已完成，但暂时无法确认节点同步状态，请刷新后重试。',
+        backupSyncStatusLoadUnavailable: '节点同步状态暂时不可用，请刷新后重试。',
         clickToRefresh: '单击可手动刷新',
         refreshTime: '令牌刷新时间',
         refreshStatus: '令牌刷新状态',

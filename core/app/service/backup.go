@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/1Panel-dev/1Panel/core/app/dto"
@@ -15,6 +16,7 @@ import (
 	"github.com/1Panel-dev/1Panel/core/buserr"
 	"github.com/1Panel-dev/1Panel/core/constant"
 	"github.com/1Panel-dev/1Panel/core/global"
+	"github.com/1Panel-dev/1Panel/core/utils/backupsync"
 	"github.com/1Panel-dev/1Panel/core/utils/cloud_storage"
 	"github.com/1Panel-dev/1Panel/core/utils/encrypt"
 	"github.com/1Panel-dev/1Panel/core/utils/oauthflow"
@@ -24,7 +26,14 @@ import (
 	"gorm.io/gorm"
 )
 
-type BackupService struct{}
+type BackupService struct {
+	localBackupUsageChecker func(string) error
+}
+
+var (
+	publicBackupSyncWake       = make(chan struct{}, 1)
+	publicBackupSyncWorkerOnce sync.Once
+)
 
 type IBackupService interface {
 	LoadBackupClientInfo(clientType string) (dto.BackupClientInfo, error)
@@ -32,6 +41,9 @@ type IBackupService interface {
 	CompleteOAuth(req dto.OAuthComplete) (dto.OAuthCompleteResponse, error)
 	GetOAuthCredential(name string) (dto.OAuthCredentialInfo, error)
 	ClearOAuthCredential(name string) error
+	GetSyncStatus(name string) (dto.BackupSyncStatus, error)
+	ListSyncStatuses() ([]dto.BackupSyncStatus, error)
+	RetrySync(name string) (dto.BackupSyncStatus, error)
 	Create(backupDto dto.BackupOperate) error
 	Update(req dto.BackupOperate) error
 	Delete(name string) error
@@ -113,24 +125,27 @@ func (u *BackupService) Create(req dto.BackupOperate) error {
 	if err != nil {
 		return err
 	}
-	if isBackupOAuthType(req.Type) {
-		if err := global.DB.Transaction(func(tx *gorm.DB) error {
-			if err := tx.Create(&backup).Error; err != nil {
-				return err
-			}
-			if req.Type == constant.ALIYUN {
-				return saveAliyunCredentialTx(tx, backup.ID, aliyunRefreshToken, false)
-			}
-			return saveBackupOAuthCredentialTx(tx, backup.ID, storedOAuth)
-		}); err != nil {
+	releaseDesiredState := backupsync.AcquireDesiredStateMutation()
+	defer releaseDesiredState()
+	if err := global.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&backup).Error; err != nil {
 			return err
 		}
-	} else if err := backupRepo.Create(&backup); err != nil {
+		if isBackupOAuthType(req.Type) {
+			if req.Type == constant.ALIYUN {
+				if err := saveAliyunCredentialTx(tx, backup.ID, aliyunRefreshToken, false); err != nil {
+					return err
+				}
+			} else if err := saveBackupOAuthCredentialTx(tx, backup.ID, storedOAuth); err != nil {
+				return err
+			}
+		}
+		_, err := backupsync.EnqueueTx(tx, backup.Name, model.BackupSyncOperationCreate)
+		return err
+	}); err != nil {
 		return err
 	}
-	if err := xpack.MultiNodeProvider.Sync(constant.SyncBackupAccounts); err != nil {
-		return fmt.Errorf("backup account was saved but could not be synchronized to the execution agent: %w", err)
-	}
+	triggerPublicBackupSync()
 	return nil
 }
 
@@ -145,7 +160,14 @@ func (u *BackupService) Delete(name string) error {
 	if backup.Type == constant.Local {
 		return buserr.New("ErrBackupLocal")
 	}
-	if _, err := proxy_local.NewLocalClient(fmt.Sprintf("/api/v2/backups/check/%s", name), http.MethodGet, nil, nil); err != nil {
+	checkLocalBackupUsed := u.localBackupUsageChecker
+	if checkLocalBackupUsed == nil {
+		checkLocalBackupUsed = func(name string) error {
+			_, err := proxy_local.NewLocalClient(fmt.Sprintf("/api/v2/backups/check/%s", name), http.MethodGet, nil, nil)
+			return err
+		}
+	}
+	if err := checkLocalBackupUsed(name); err != nil {
 		global.LOG.Errorf("check used of local cronjob failed, err: %v", err)
 		return buserr.New("ErrBackupInUsed")
 	}
@@ -154,21 +176,23 @@ func (u *BackupService) Delete(name string) error {
 		return buserr.New("ErrBackupInUsed")
 	}
 
-	if isBackupOAuthType(backup.Type) {
-		if err := global.DB.Transaction(func(tx *gorm.DB) error {
+	releaseDesiredState := backupsync.AcquireDesiredStateMutation()
+	defer releaseDesiredState()
+	if err := global.DB.Transaction(func(tx *gorm.DB) error {
+		if isBackupOAuthType(backup.Type) {
 			if err := tx.Where("backup_account_id = ?", backup.ID).Delete(&model.BackupOAuthCredential{}).Error; err != nil {
 				return err
 			}
-			return tx.Where("id = ?", backup.ID).Delete(&model.BackupAccount{}).Error
-		}); err != nil {
+		}
+		if err := tx.Where("id = ?", backup.ID).Delete(&model.BackupAccount{}).Error; err != nil {
 			return err
 		}
-	} else if err := backupRepo.Delete(repo.WithByName(name)); err != nil {
+		_, err := backupsync.EnqueueTx(tx, backup.Name, model.BackupSyncOperationDelete)
+		return err
+	}); err != nil {
 		return err
 	}
-	if err := xpack.MultiNodeProvider.Sync(constant.SyncBackupAccounts); err != nil {
-		return fmt.Errorf("backup account was deleted in core but could not be removed from the execution agent: %w", err)
-	}
+	triggerPublicBackupSync()
 	return nil
 }
 
@@ -246,31 +270,36 @@ func (u *BackupService) Update(req dto.BackupOperate) error {
 	newBackup.ID = backup.ID
 	newBackup.CreatedAt = backup.CreatedAt
 	newBackup.UpdatedAt = backup.UpdatedAt
-	if isBackupOAuthType(backup.Type) || isBackupOAuthType(req.Type) {
-		if err := global.DB.Transaction(func(tx *gorm.DB) error {
-			if err := tx.Save(&newBackup).Error; err != nil {
-				return err
-			}
+	releaseDesiredState := backupsync.AcquireDesiredStateMutation()
+	defer releaseDesiredState()
+	if err := global.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Save(&newBackup).Error; err != nil {
+			return err
+		}
+		if isBackupOAuthType(backup.Type) || isBackupOAuthType(req.Type) {
 			switch req.Type {
 			case constant.OneDrive, constant.GoogleDrive:
 				if hasOAuthSession {
-					return saveBackupOAuthCredentialTx(tx, backup.ID, storedOAuth)
+					if err := saveBackupOAuthCredentialTx(tx, backup.ID, storedOAuth); err != nil {
+						return err
+					}
 				}
-				return nil
 			case constant.ALIYUN:
-				return saveAliyunCredentialTx(tx, backup.ID, aliyunRefreshToken, true)
+				if err := saveAliyunCredentialTx(tx, backup.ID, aliyunRefreshToken, true); err != nil {
+					return err
+				}
 			default:
-				return tx.Where("backup_account_id = ?", backup.ID).Delete(&model.BackupOAuthCredential{}).Error
+				if err := tx.Where("backup_account_id = ?", backup.ID).Delete(&model.BackupOAuthCredential{}).Error; err != nil {
+					return err
+				}
 			}
-		}); err != nil {
-			return err
 		}
-	} else if err := backupRepo.Save(&newBackup); err != nil {
+		_, err := backupsync.EnqueueTx(tx, newBackup.Name, model.BackupSyncOperationUpdate)
+		return err
+	}); err != nil {
 		return err
 	}
-	if err := xpack.MultiNodeProvider.Sync(constant.SyncBackupAccounts); err != nil {
-		return fmt.Errorf("backup account was updated in core but could not be synchronized to the execution agent: %w", err)
-	}
+	triggerPublicBackupSync()
 	return nil
 }
 
@@ -342,9 +371,7 @@ func (u *BackupService) RefreshToken(req dto.OperateByName) error {
 		); persistErr != nil {
 			return persistErr
 		}
-		if syncErr := xpack.MultiNodeProvider.Sync(constant.SyncBackupAccounts); syncErr != nil {
-			return errors.New("OAuth refresh failed and the reauthorization status could not be synchronized to the execution agent")
-		}
+		triggerPublicBackupSync()
 		return errors.New("OAuth token refresh failed; authorize the backup account again")
 	}
 	varMap["refresh_status"] = constant.StatusSuccess
@@ -367,8 +394,36 @@ func (u *BackupService) RefreshToken(req dto.OperateByName) error {
 	); err != nil {
 		return err
 	}
-	if err := xpack.MultiNodeProvider.Sync(constant.SyncBackupAccounts); err != nil {
-		return fmt.Errorf("OAuth token was refreshed in core but could not be synchronized to the execution agent: %w", err)
-	}
+	triggerPublicBackupSync()
 	return nil
+}
+
+func triggerPublicBackupSync() {
+	select {
+	case publicBackupSyncWake <- struct{}{}:
+	default:
+	}
+}
+
+// StartPublicBackupSyncWorker starts one coalescing process-local wake loop.
+// Durable retry state remains in the database; the channel is only a prompt to
+// attempt delivery without holding the administrator's request open.
+func StartPublicBackupSyncWorker() {
+	publicBackupSyncWorkerOnce.Do(func() {
+		if err := backupsync.EnqueueStartupReconciliation(); err != nil {
+			global.LOG.Warn("public backup account startup reconciliation could not be queued")
+		}
+		go func() {
+			for range publicBackupSyncWake {
+				reconcilePublicBackupSync()
+			}
+		}()
+	})
+	triggerPublicBackupSync()
+}
+
+func reconcilePublicBackupSync() {
+	if err := xpack.MultiNodeProvider.Sync(constant.SyncBackupAccounts); err != nil {
+		global.LOG.Warn("public backup account synchronization remains pending")
+	}
 }

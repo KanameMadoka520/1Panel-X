@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -142,25 +143,35 @@ type SnapshotJson struct {
 }
 
 func (u *SnapshotService) Delete(req dto.SnapshotBatchDelete) error {
-	snaps, _ := snapshotRepo.GetList(repo.WithByIDs(req.Ids))
+	snaps, err := snapshotRepo.GetList(repo.WithByIDs(req.Ids))
+	if err != nil {
+		return errors.New("load snapshots for cleanup failed")
+	}
+	var cleanupErrors []error
 	for _, snap := range snaps {
+		var accounts map[string]backupClientHelper
 		if req.DeleteWithFile {
-			accounts := NewBackupClientMap(strings.Split(snap.SourceAccountIDs, ","))
-			for _, item := range accounts {
-				global.LOG.Debugf("remove snapshot file %s.tar.gz from %s", snap.Name, item.name)
-				if !item.isOk {
-					global.LOG.Errorf("remove snapshot file %s.tar.gz from %s failed, err: %s", snap.Name, item.name, item.message)
-					continue
-				}
-				_, _ = item.client.Delete(path.Join(item.backupPath, "system_snapshot", snap.Name+".tar.gz"))
-			}
-			_ = backupRepo.DeleteRecord(context.Background(), repo.WithByType("snapshot"), backupRepo.WithByFileName(snap.Name+".tar.gz"))
+			accounts = NewBackupClientMap(strings.Split(snap.SourceAccountIDs, ","))
 		}
-		_ = os.Remove(path.Join(global.Dir.LocalBackupDir, "tmp/system", snap.Name+".tar.gz"))
+		if err := deleteSnapshotWithClients(snap, req.DeleteWithFile, accounts); err != nil {
+			cleanupErrors = append(cleanupErrors, err)
+		}
+	}
+	return errors.Join(cleanupErrors...)
+}
 
-		if err := snapshotRepo.Delete(repo.WithByID(snap.ID)); err != nil {
+func deleteSnapshotWithClients(snap model.Snapshot, deleteWithFile bool, accounts map[string]backupClientHelper) error {
+	if deleteWithFile {
+		if err := deleteBackupFilesFromAccounts(snap.ID, strings.Split(snap.SourceAccountIDs, ","), path.Join("system_snapshot", snap.Name+".tar.gz"), accounts); err != nil {
 			return err
 		}
+		if err := backupRepo.DeleteRecord(context.Background(), repo.WithByType("snapshot"), backupRepo.WithByFileName(snap.Name+".tar.gz")); err != nil {
+			return backupMetadataCleanupError("snapshot backup record", snap.ID)
+		}
+	}
+	_ = os.Remove(path.Join(global.Dir.LocalBackupDir, "tmp/system", snap.Name+".tar.gz"))
+	if err := snapshotRepo.Delete(repo.WithByID(snap.ID)); err != nil {
+		return backupMetadataCleanupError("snapshot", snap.ID)
 	}
 	return nil
 }

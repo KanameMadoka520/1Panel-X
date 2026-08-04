@@ -89,7 +89,18 @@ type OAuthClear struct {
 // Its secret fields are encrypted with the receiving agent's key before the
 // transaction commits and are never serialized in a response.
 type BackupPublicSync struct {
-	Accounts []BackupPublicSyncAccount `json:"accounts"`
+	Authority      string                      `json:"authority"`
+	Generation     string                      `json:"generation"`
+	TargetEpoch    string                      `json:"targetEpoch"`
+	Revision       uint64                      `json:"revision"`
+	SnapshotDigest string                      `json:"snapshotDigest"`
+	Accounts       []BackupPublicSyncAccount   `json:"accounts"`
+	Tombstones     []BackupPublicSyncTombstone `json:"tombstones"`
+}
+
+type BackupPublicSyncTombstone struct {
+	Name     string `json:"name"`
+	Revision uint64 `json:"revision"`
 }
 
 type BackupPublicSyncAccount struct {
@@ -114,6 +125,15 @@ type BackupOAuthSecretSync struct {
 	IsCN         bool       `json:"isCN"`
 	Status       string     `json:"status"`
 	AuthorizedAt *time.Time `json:"authorizedAt,omitempty"`
+}
+
+type BackupPublicSyncResult struct {
+	Authority       string `json:"authority"`
+	Generation      string `json:"generation"`
+	TargetEpoch     string `json:"targetEpoch"`
+	AppliedRevision uint64 `json:"appliedRevision"`
+	SnapshotDigest  string `json:"snapshotDigest"`
+	Result          string `json:"result"`
 }
 
 type ForBuckets struct {

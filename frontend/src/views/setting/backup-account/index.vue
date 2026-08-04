@@ -27,6 +27,39 @@
                         </span>
                     </template>
                 </el-alert>
+                <el-alert
+                    v-if="syncStatusUnavailable"
+                    type="warning"
+                    :closable="false"
+                    class="common-div"
+                    show-icon
+                    :title="$t('setting.backupSyncStatusLoadUnavailable')"
+                />
+                <el-alert
+                    v-if="unlistedPendingSyncStatuses.length"
+                    type="warning"
+                    :closable="false"
+                    class="common-div"
+                    show-icon
+                >
+                    <template #title>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <span>
+                                {{ $t('setting.backupSyncUnlistedWarning', [unlistedPendingSyncStatuses.length]) }}
+                            </span>
+                            <el-button
+                                v-permission
+                                type="warning"
+                                link
+                                :loading="syncRetryingName === unlistedRetryKey"
+                                @click="retryUnlistedSync"
+                            >
+                                {{ $t('setting.backupSyncRetry') }}
+                            </el-button>
+                        </div>
+                    </template>
+                    {{ $t('setting.backupSyncUnlistedHelp') }}
+                </el-alert>
                 <ComplexTable :pagination-config="paginationConfig" @sort-change="search" @search="search" :data="data">
                     <el-table-column
                         :label="$t('commons.table.name')"
@@ -57,6 +90,28 @@
                             >
                                 {{ $t(getOAuthStatusMeta(row.varsJson).labelKey) }}
                             </el-tag>
+                            <el-tooltip
+                                v-if="getBackupSyncStatusMeta(row.sync)"
+                                :content="backupSyncDescription(row.sync)"
+                            >
+                                <el-tag class="ml-1" :type="backupSyncTagType(row.sync)">
+                                    {{ backupSyncLabel(row.sync) }}
+                                </el-tag>
+                            </el-tooltip>
+                            <el-tooltip
+                                v-if="getBackupSyncStatusMeta(row.sync)"
+                                :content="$t('setting.backupSyncRetry')"
+                            >
+                                <el-button
+                                    v-permission
+                                    type="warning"
+                                    link
+                                    icon="Refresh"
+                                    class="ml-1"
+                                    :loading="syncRetryingName === row.sync.accountName"
+                                    @click="retryItemSync(row.sync.accountName)"
+                                />
+                            </el-tooltip>
                             <el-tooltip v-if="hasTokenRefresh(row)">
                                 <template #content>
                                     {{ $t('setting.clickToRefresh') }}
@@ -122,20 +177,41 @@
 </template>
 <script setup lang="ts">
 import { dateFormat } from '@/utils/date';
-import { onMounted, ref } from 'vue';
-import { searchBackup, deleteBackup, refreshToken } from '@/api/modules/backup';
+import { computed, onMounted, ref } from 'vue';
+import {
+    deleteBackup,
+    listBackupSyncStatuses,
+    refreshToken,
+    retryBackupSync,
+    searchBackup,
+} from '@/api/modules/backup';
 import Operate from '@/views/setting/backup-account/operate/index.vue';
 import DetailShow from '@/components/detail-show/index.vue';
 import { Backup } from '@/api/interface/backup';
 import i18n from '@/lang';
-import { MsgSuccess } from '@/utils/message';
+import { MsgSuccess, MsgWarning } from '@/utils/message';
 import { Base64 } from 'js-base64';
 import { useGlobalStore } from '@/composables/useGlobalStore';
-import { getOAuthStatusMeta, isOAuthProvider, mergeOAuthCredentialInfo } from './oauth';
+import {
+    getBackupSyncStatusMeta,
+    getUnlistedPendingBackupSyncStatuses,
+    getOAuthStatusMeta,
+    isOAuthProvider,
+    mergePublicBackupSyncStatuses,
+    mergeOAuthCredentialInfo,
+    resolveBackupSyncOperationFeedback,
+    resolveBackupSyncStatusLoad,
+    sanitizeBackupSyncOperationResult,
+    selectMoreSevereBackupSyncResult,
+} from './oauth';
 
 const { isProductPro, isFxplay, docsUrl } = useGlobalStore();
 const loading = ref();
-const data = ref();
+const data = ref<Backup.BackupInfo[]>([]);
+const syncStatuses = ref<Backup.BackupSyncStatus[]>([]);
+const syncStatusUnavailable = ref(false);
+const syncRetryingName = ref('');
+const unlistedRetryKey = '__unlisted_backup_sync__';
 const paginationConfig = reactive({
     cacheSizeKey: 'backup-account-size',
     currentPage: 1,
@@ -148,6 +224,10 @@ const opRef = ref();
 const dialogRef = ref();
 const detailRef = ref();
 
+const unlistedPendingSyncStatuses = computed(() => {
+    return getUnlistedPendingBackupSyncStatuses(data.value, syncStatuses.value);
+});
+
 const search = async () => {
     let params = {
         page: paginationConfig.currentPage,
@@ -156,26 +236,113 @@ const search = async () => {
         name: paginationConfig.name,
     };
     loading.value = true;
-    await searchBackup(params)
-        .then((res) => {
-            loading.value = false;
-            data.value = res.data.items || [];
-            for (const bac of data.value) {
-                bac.varsJson = bac.vars ? JSON.parse(bac.vars) : {};
-                if (isOAuthProvider(bac.type)) {
-                    bac.varsJson = mergeOAuthCredentialInfo(bac.varsJson, bac.oauth);
-                }
+    try {
+        const [backupResult, syncResult] = await Promise.all([
+            searchBackup(params),
+            listBackupSyncStatuses()
+                .then((response) => ({ succeeded: true, value: response.data }))
+                .catch(() => ({ succeeded: false, value: undefined })),
+        ]);
+        const resolvedSync = resolveBackupSyncStatusLoad(syncResult.value, syncResult.succeeded);
+        syncStatuses.value = resolvedSync.statuses;
+        syncStatusUnavailable.value = resolvedSync.unavailable;
+        data.value = mergePublicBackupSyncStatuses(backupResult.data.items || [], syncStatuses.value);
+        for (const bac of data.value) {
+            bac.varsJson = bac.vars ? JSON.parse(bac.vars) : {};
+            if (isOAuthProvider(bac.type)) {
+                bac.varsJson = mergeOAuthCredentialInfo(bac.varsJson, bac.oauth);
             }
-            data.value.sort((a, b) => {
-                if (a.name === 'localhost') return -1;
-                if (b.name === 'localhost') return 1;
-                return 0;
-            });
-            paginationConfig.total = res.data.total;
-        })
-        .catch(() => {
-            loading.value = false;
+        }
+        data.value.sort((a, b) => {
+            if (a.name === 'localhost') return -1;
+            if (b.name === 'localhost') return 1;
+            return 0;
         });
+        paginationConfig.total = backupResult.data.total;
+    } catch {
+        syncStatuses.value = [];
+        syncStatusUnavailable.value = true;
+    } finally {
+        loading.value = false;
+    }
+};
+
+const backupSyncLabel = (sync?: Backup.BackupSyncStatus) => {
+    const meta = getBackupSyncStatusMeta(sync);
+    return meta ? i18n.global.t(meta.labelKey) : '';
+};
+
+const backupSyncTagType = (sync?: Backup.BackupSyncStatus) => {
+    return getBackupSyncStatusMeta(sync)?.tagType || 'warning';
+};
+
+const backupSyncDescription = (sync?: Backup.BackupSyncStatus) => {
+    const meta = getBackupSyncStatusMeta(sync);
+    if (!meta) return '';
+    return i18n.global.t(meta.descriptionKey, [meta.succeeded, meta.total, meta.pending]);
+};
+
+const showBackupSyncOperationFeedback = (value?: unknown) => {
+    const feedback = resolveBackupSyncOperationFeedback(value);
+    if (feedback.kind === 'unconfirmed') {
+        MsgWarning(i18n.global.t('setting.backupSyncStatusUnavailable'));
+        return;
+    }
+    if (feedback.kind === 'degraded') {
+        MsgWarning(
+            i18n.global.t(feedback.meta.descriptionKey, [
+                feedback.meta.succeeded,
+                feedback.meta.total,
+                feedback.meta.pending,
+            ]),
+        );
+        return;
+    }
+    MsgSuccess(i18n.global.t('commons.msg.operationSuccess'));
+};
+
+const retryItemSync = async (accountName: string) => {
+    if (!accountName || syncRetryingName.value) return;
+    syncRetryingName.value = accountName;
+    try {
+        const response = await retryBackupSync(accountName);
+        showBackupSyncOperationFeedback(response.data);
+        await search();
+    } catch {
+        // The shared HTTP client already presents the sanitized server error.
+    } finally {
+        syncRetryingName.value = '';
+    }
+};
+
+const retryUnlistedSync = async () => {
+    if (syncRetryingName.value) return;
+    const accountNames = unlistedPendingSyncStatuses.value.map((status) => status.accountName);
+    if (!accountNames.length) return;
+
+    syncRetryingName.value = unlistedRetryKey;
+    let completed = 0;
+    let feedbackResult: Backup.BackupSyncOperationResult | undefined;
+    let hasUnconfirmedResult = false;
+    for (const accountName of accountNames) {
+        try {
+            const response = await retryBackupSync(accountName);
+            const result = sanitizeBackupSyncOperationResult(response.data);
+            if (!result?.applied) {
+                hasUnconfirmedResult = true;
+            } else {
+                feedbackResult = selectMoreSevereBackupSyncResult(feedbackResult, result);
+            }
+            completed += 1;
+        } catch {
+            // Continue so one unavailable node does not block retrying other accounts.
+        }
+    }
+    if (completed === accountNames.length) {
+        showBackupSyncOperationFeedback(hasUnconfirmedResult ? undefined : feedbackResult);
+    }
+    syncRetryingName.value = '';
+    await search();
 };
 
 const loadEndpoint = (row: any) => {
@@ -200,8 +367,15 @@ const onDelete = async (row: Backup.BackupInfo) => {
             i18n.global.t('setting.backupAccount'),
             i18n.global.t('commons.button.delete'),
         ]),
-        api: deleteBackup,
+        api: async (params: { id: number; name: string; isPublic: boolean }) => {
+            const response = await deleteBackup(params);
+            if (params.isPublic) {
+                showBackupSyncOperationFeedback(response.data);
+            }
+            return response;
+        },
         params: { id: row.id, name: row.name, isPublic: row.isPublic },
+        noMsg: row.isPublic,
     });
 };
 
@@ -285,9 +459,13 @@ const onInspect = (row: any) => {
 const refreshItemToken = async (row: any) => {
     loading.value = true;
     await refreshToken({ id: row.id, name: row.name, isPublic: row.isPublic })
-        .then(() => {
+        .then((res) => {
             loading.value = false;
-            MsgSuccess(i18n.global.t('commons.msg.operationSuccess'));
+            if (row.isPublic) {
+                showBackupSyncOperationFeedback(res.data);
+            } else {
+                MsgSuccess(i18n.global.t('commons.msg.operationSuccess'));
+            }
             search();
         })
         .catch(() => {

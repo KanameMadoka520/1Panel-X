@@ -62,10 +62,17 @@ func (m minIoClient) ListBuckets() ([]interface{}, error) {
 }
 
 func (m minIoClient) Exist(path string) (bool, error) {
-	if _, err := m.client.GetObject(context.Background(), m.bucket, path, minio.GetObjectOptions{}); err != nil {
+	if _, err := m.client.StatObject(context.Background(), m.bucket, path, minio.StatObjectOptions{}); err != nil {
+		if isMinIOObjectNotFound(err) {
+			return false, nil
+		}
 		return false, err
 	}
 	return true, nil
+}
+
+func isMinIOObjectNotFound(err error) bool {
+	return minio.ToErrorResponse(err).Code == minio.NoSuchKey
 }
 
 func (m minIoClient) Size(path string) (int64, error) {

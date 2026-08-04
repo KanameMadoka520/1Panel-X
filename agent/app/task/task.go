@@ -24,6 +24,30 @@ import (
 type ActionFunc func(*Task) error
 type RollbackFunc func(*Task)
 
+type NonRetryableError struct {
+	Err error
+}
+
+func (e *NonRetryableError) Error() string {
+	return e.Err.Error()
+}
+
+func (e *NonRetryableError) Unwrap() error {
+	return e.Err
+}
+
+func MarkNonRetryable(err error) error {
+	if err == nil || IsNonRetryable(err) {
+		return err
+	}
+	return &NonRetryableError{Err: err}
+}
+
+func IsNonRetryable(err error) bool {
+	var target *NonRetryableError
+	return errors.As(err, &target)
+}
+
 type Task struct {
 	TaskCtx context.Context
 
@@ -259,6 +283,12 @@ func (s *SubTask) Execute() error {
 		case err = <-done:
 			if err != nil {
 				s.RootTask.Log(i18n.GetWithNameAndErr("SubTaskFailed", subTaskName, err))
+				if IsNonRetryable(err) {
+					if s.Rollback != nil {
+						s.Rollback(s.RootTask)
+					}
+					return err
+				}
 				if err.Error() == i18n.GetMsgByKey("ErrShutDown") {
 					return err
 				}

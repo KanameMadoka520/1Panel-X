@@ -74,9 +74,9 @@ func (u *CronjobService) handleApp(cronjob model.Cronjob, startTime time.Time, t
 				global.LOG.Errorf("save backup record failed, err: %v", err)
 				return err
 			}
-			u.removeExpiredBackup(cronjob, accountMap, record)
+			cleanupErr := u.removeExpiredBackup(cronjob, accountMap, record)
 			cleanAccountMap(accountMap)
-			return nil
+			return markRetentionCleanupNonRetryable(cleanupErr)
 		}, nil, int(cronjob.RetryTimes), time.Duration(cronjob.Timeout)*time.Second)
 	}
 	return nil
@@ -133,9 +133,9 @@ func (u *CronjobService) handleWebsite(cronjob model.Cronjob, startTime time.Tim
 				global.LOG.Errorf("save backup record failed, err: %v", err)
 				return err
 			}
-			u.removeExpiredBackup(cronjob, accountMap, record)
+			cleanupErr := u.removeExpiredBackup(cronjob, accountMap, record)
 			cleanAccountMap(accountMap)
-			return nil
+			return markRetentionCleanupNonRetryable(cleanupErr)
 		}, nil, int(cronjob.RetryTimes), time.Duration(cronjob.Timeout)*time.Second)
 	}
 	return nil
@@ -230,9 +230,9 @@ func (u *CronjobService) handleDatabase(cronjob model.Cronjob, startTime time.Ti
 				global.LOG.Errorf("save backup record failed, err: %v", err)
 				return err
 			}
-			u.removeExpiredBackup(cronjob, accountMap, record)
+			cleanupErr := u.removeExpiredBackup(cronjob, accountMap, record)
 			cleanAccountMap(accountMap)
-			return nil
+			return markRetentionCleanupNonRetryable(cleanupErr)
 		}, nil, int(cronjob.RetryTimes), time.Duration(cronjob.Timeout)*time.Second)
 	}
 	return nil
@@ -282,8 +282,7 @@ func (u *CronjobService) handleDirectory(cronjob model.Cronjob, startTime time.T
 		if err := backupRepo.CreateRecord(&record); err != nil {
 			return err
 		}
-		u.removeExpiredBackup(cronjob, accountMap, record)
-		return nil
+		return markRetentionCleanupNonRetryable(u.removeExpiredBackup(cronjob, accountMap, record))
 	}, nil, int(cronjob.RetryTimes), time.Duration(cronjob.Timeout)*time.Second)
 	return nil
 }
@@ -318,8 +317,7 @@ func (u *CronjobService) handleSystemLog(cronjob model.Cronjob, startTime time.T
 		if err := backupRepo.CreateRecord(&record); err != nil {
 			return err
 		}
-		u.removeExpiredBackup(cronjob, accountMap, record)
-		return nil
+		return markRetentionCleanupNonRetryable(u.removeExpiredBackup(cronjob, accountMap, record))
 	}, nil, int(cronjob.RetryTimes), time.Duration(cronjob.Timeout)*time.Second)
 	return nil
 }
@@ -377,8 +375,11 @@ func (u *CronjobService) handleSnapshot(cronjob model.Cronjob, jobRecord model.J
 		global.LOG.Errorf("save backup record failed, err: %v", err)
 		return err
 	}
-	u.removeExpiredBackup(cronjob, accountMap, record)
-	return nil
+	return task.MarkNonRetryable(u.removeExpiredBackup(cronjob, accountMap, record))
+}
+
+func markRetentionCleanupNonRetryable(err error) error {
+	return task.MarkNonRetryable(err)
 }
 
 func loadAppsForJob(cronjob model.Cronjob) []model.AppInstall {

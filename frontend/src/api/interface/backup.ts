@@ -25,6 +25,7 @@ export namespace Backup {
         varsJson: Record<string, any>;
         oauthSession?: string;
         oauth?: OAuthCredentialInfo;
+        sync?: BackupSyncStatus;
         createdAt: Date;
     }
     export interface CheckResult {
@@ -84,6 +85,19 @@ export namespace Backup {
         status: OAuthStatus;
         requiresReauthorization: boolean;
         updatedAt: string;
+        sync?: BackupSyncStatus;
+    }
+    export type BackupSyncStatusValue = 'synced' | 'sync_pending' | 'partially_synced';
+    export interface BackupSyncStatus {
+        accountName: string;
+        status: BackupSyncStatusValue;
+        succeeded: number;
+        pending: number;
+        total: number;
+    }
+    export interface BackupSyncOperationResult {
+        applied: boolean;
+        sync: BackupSyncStatus;
     }
     export interface RecordDownload {
         downloadAccountID: number;

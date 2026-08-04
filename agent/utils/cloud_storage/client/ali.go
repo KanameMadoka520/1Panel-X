@@ -43,6 +43,9 @@ func (a aliClient) ListBuckets() ([]interface{}, error) {
 func (a aliClient) Exist(pathItem string) (bool, error) {
 	pathItem = path.Join("root", pathItem)
 	if _, err := a.loadFileWithName(pathItem); err != nil {
+		if errors.Is(err, errCloudStorageObjectNotFound) {
+			return false, nil
+		}
 		return false, err
 	}
 	return true, nil
@@ -221,11 +224,11 @@ func (a aliClient) loadFileWithName(pathItem string) (fileInfo, error) {
 			}
 		}
 		if !exist {
-			return fileInfo{}, errors.New("no such file or dir")
+			return fileInfo{}, errCloudStorageObjectNotFound
 		}
 
 	}
-	return fileInfo{}, errors.New("no such file or dir")
+	return fileInfo{}, errCloudStorageObjectNotFound
 }
 
 func (a aliClient) loadDirWithPath(path string) ([]fileInfo, error) {

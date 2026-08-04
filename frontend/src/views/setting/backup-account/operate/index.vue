@@ -363,6 +363,15 @@
                     :type="oauthStatusMeta.tagType === 'danger' ? 'error' : oauthStatusMeta.tagType"
                     show-icon
                 />
+                <el-alert
+                    v-if="dialogData.rowData!.isPublic && oauthBackupSyncMeta"
+                    class="mb-4"
+                    :closable="false"
+                    :title="$t(oauthBackupSyncMeta.labelKey)"
+                    :description="oauthBackupSyncDescription"
+                    :type="oauthBackupSyncMeta.tagType === 'danger' ? 'error' : oauthBackupSyncMeta.tagType"
+                    show-icon
+                />
                 <el-form-item :label="$t('setting.client_id')">
                     <el-input
                         v-model.trim="oauthForm.clientId"
@@ -498,11 +507,12 @@ import { cities } from './../helper';
 import { dateFormat } from '@/utils/date';
 import { deepCopy } from '@/utils/misc';
 import { spliceHttp, splitHttp } from '@/utils/validate';
-import { MsgError, MsgSuccess } from '@/utils/message';
+import { MsgError, MsgSuccess, MsgWarning } from '@/utils/message';
 import { Base64 } from 'js-base64';
 import { useGlobalStore } from '@/composables/useGlobalStore';
 import {
     buildOAuthBeginRequest,
+    getBackupSyncStatusMeta,
     getOAuthStatusMeta,
     isOAuthSessionExpired,
     isOAuthProvider,
@@ -511,7 +521,9 @@ import {
     openOAuthAuthorization,
     openOAuthAuthorizationPlaceholder,
     requiresOAuthCredentialInput,
+    resolveBackupSyncOperationFeedback,
     resolveOAuthStatus,
+    sanitizeBackupSyncOperationResult,
     sanitizeOAuthVars,
 } from '../oauth';
 const { docsUrl, isFxplay, isProductPro } = useGlobalStore();
@@ -580,6 +592,31 @@ const oauthClientIdDisplay = computed(
     () => oauthForm.value.clientIdDisplay || String(oauthVars.value.oauth_client_id_display || ''),
 );
 const oauthUpdatedAt = computed(() => String(oauthVars.value.oauth_updated_at || ''));
+const oauthBackupSync = computed(() => dialogData.value.rowData?.sync || dialogData.value.rowData?.oauth?.sync);
+const oauthBackupSyncMeta = computed(() => getBackupSyncStatusMeta(oauthBackupSync.value));
+const oauthBackupSyncDescription = computed(() => {
+    const meta = oauthBackupSyncMeta.value;
+    if (!meta) return '';
+    return i18n.global.t(meta.descriptionKey, [meta.succeeded, meta.total, meta.pending]);
+});
+const showBackupSyncOperationFeedback = (value?: unknown) => {
+    const feedback = resolveBackupSyncOperationFeedback(value);
+    if (feedback.kind === 'unconfirmed') {
+        MsgWarning(i18n.global.t('setting.backupSyncStatusUnavailable'));
+        return;
+    }
+    if (feedback.kind === 'degraded') {
+        MsgWarning(
+            i18n.global.t(feedback.meta.descriptionKey, [
+                feedback.meta.succeeded,
+                feedback.meta.total,
+                feedback.meta.pending,
+            ]),
+        );
+        return;
+    }
+    MsgSuccess(i18n.global.t('commons.msg.operationSuccess'));
+};
 const oauthRequiresCredentials = computed(() => {
     return !dialogData.value.rowData?.id || oauthCloudChanged.value || requiresOAuthCredentialInput(oauthVars.value);
 });
@@ -921,7 +958,11 @@ const onClearOAuth = async () => {
 
     oauthLoading.value = true;
     try {
-        await clearOAuth({ id: row.id, name: row.name, isPublic: row.isPublic });
+        const response = await clearOAuth({ id: row.id, name: row.name, isPublic: row.isPublic });
+        const syncResult = sanitizeBackupSyncOperationResult(response.data);
+        if (row.isPublic && syncResult) {
+            row.sync = syncResult.sync;
+        }
         row.varsJson = {
             isCN: isOneDrive() && (row.varsJson['isCN'] === true || row.varsJson['isCN'] === 'true'),
             oauth_status: 'unconfigured',
@@ -931,7 +972,11 @@ const onClearOAuth = async () => {
         resetOAuthForm(row.varsJson);
         isOK.value = false;
         emit('search');
-        MsgSuccess(i18n.global.t('commons.msg.operationSuccess'));
+        if (row.isPublic) {
+            showBackupSyncOperationFeedback(syncResult);
+        } else {
+            MsgSuccess(i18n.global.t('commons.msg.operationSuccess'));
+        }
     } finally {
         oauthLoading.value = false;
     }
@@ -1157,11 +1202,16 @@ const onSubmit = async () => {
     loading.value = true;
     if (dialogData.value.title === 'create') {
         await addBackup(dialogData.value.rowData)
-            .then(() => {
+            .then((res) => {
                 loading.value = false;
-                MsgSuccess(i18n.global.t('commons.msg.operationSuccess'));
+                if (dialogData.value.rowData!.isPublic) {
+                    showBackupSyncOperationFeedback(res.data);
+                } else {
+                    MsgSuccess(i18n.global.t('commons.msg.operationSuccess'));
+                }
                 clearOAuthBrowserState();
                 drawerVisible.value = false;
+                emit('search');
             })
             .catch(() => {
                 loading.value = false;
@@ -1169,11 +1219,16 @@ const onSubmit = async () => {
         return;
     }
     await editBackup(dialogData.value.rowData)
-        .then(() => {
+        .then((res) => {
             loading.value = false;
-            MsgSuccess(i18n.global.t('commons.msg.operationSuccess'));
+            if (dialogData.value.rowData!.isPublic) {
+                showBackupSyncOperationFeedback(res.data);
+            } else {
+                MsgSuccess(i18n.global.t('commons.msg.operationSuccess'));
+            }
             clearOAuthBrowserState();
             drawerVisible.value = false;
+            emit('search');
         })
         .catch(() => {
             loading.value = false;

@@ -2,15 +2,23 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
     buildOAuthBeginRequest,
+    getBackupSyncStatusMeta,
+    getUnlistedPendingBackupSyncStatuses,
     getOAuthStatusMeta,
     isOAuthSessionExpired,
+    mergePublicBackupSyncStatuses,
     mergeOAuthCredentialInfo,
     navigateOAuthAuthorization,
     openOAuthAuthorization,
     openOAuthAuthorizationPlaceholder,
     requiresOAuthCredentialInput,
     resolveOAuthStatus,
+    resolveBackupSyncOperationFeedback,
+    resolveBackupSyncStatusLoad,
+    sanitizeBackupSyncOperationResult,
+    sanitizeBackupSyncStatuses,
     sanitizeOAuthVars,
+    selectMoreSevereBackupSyncResult,
 } from './oauth';
 
 describe('backup account OAuth helpers', () => {
@@ -131,6 +139,284 @@ describe('backup account OAuth helpers', () => {
                 oauth_configured: true,
             }),
         ).toBe(false);
+    });
+
+    it('hides missing and fully synchronized backup status', () => {
+        expect(getBackupSyncStatusMeta()).toBeUndefined();
+        expect(
+            getBackupSyncStatusMeta({
+                accountName: 'shared-drive',
+                status: 'synced',
+                succeeded: 2,
+                pending: 0,
+                total: 2,
+            }),
+        ).toBeUndefined();
+    });
+
+    it('maps pending and partial backup synchronization to safe progress metadata', () => {
+        expect(
+            getBackupSyncStatusMeta({
+                accountName: 'shared-drive',
+                status: 'sync_pending',
+                succeeded: 0,
+                pending: 3,
+                total: 3,
+            }),
+        ).toEqual({
+            labelKey: 'setting.backupSyncPending',
+            descriptionKey: 'setting.backupSyncPendingHelp',
+            tagType: 'warning',
+            succeeded: 0,
+            pending: 3,
+            total: 3,
+        });
+
+        const partial = getBackupSyncStatusMeta({
+            accountName: 'shared-drive',
+            status: 'partially_synced',
+            succeeded: 2,
+            pending: 1,
+            total: 3,
+        });
+
+        expect(partial).toEqual({
+            labelKey: 'setting.backupSyncPartiallySynced',
+            descriptionKey: 'setting.backupSyncPartiallySyncedHelp',
+            tagType: 'danger',
+            succeeded: 2,
+            pending: 1,
+            total: 3,
+        });
+        expect(JSON.stringify(partial)).not.toContain('internal-target-key');
+        expect(partial).not.toHaveProperty('revision');
+        expect(partial).not.toHaveProperty('targets');
+    });
+
+    it('fails closed with a visible warning for an unknown backup synchronization status', () => {
+        expect(
+            getBackupSyncStatusMeta({
+                accountName: 'shared-drive',
+                status: 'unexpected' as never,
+                succeeded: 2,
+                pending: 1,
+                total: 3,
+            }),
+        ).toEqual({
+            labelKey: 'setting.backupSyncPending',
+            descriptionKey: 'setting.backupSyncStatusUnavailable',
+            tagType: 'warning',
+            succeeded: 2,
+            pending: 1,
+            total: 3,
+        });
+    });
+
+    it('sanitizes list synchronization responses and degrades unknown non-empty states to pending', () => {
+        const statuses = sanitizeBackupSyncStatuses([
+            {
+                accountName: 'shared-drive',
+                status: 'partially_synced',
+                succeeded: 2.8,
+                pending: 1,
+                total: 3,
+                revision: 9,
+                targets: [{ nodeId: 7 }],
+                clientSecret: 'browser-must-discard-secret',
+            },
+            {
+                accountName: 'future-drive',
+                status: 'future_status',
+                succeeded: 1,
+                pending: 2,
+                total: 3,
+                refreshToken: 'browser-must-discard-token',
+            },
+            { accountName: 'missing-status' },
+            { status: 'sync_pending' },
+            null,
+        ]);
+
+        expect(statuses).toEqual([
+            {
+                accountName: 'shared-drive',
+                status: 'partially_synced',
+                succeeded: 2,
+                pending: 1,
+                total: 3,
+            },
+            {
+                accountName: 'future-drive',
+                status: 'sync_pending',
+                succeeded: 1,
+                pending: 2,
+                total: 3,
+            },
+        ]);
+        expect(JSON.stringify(statuses)).not.toContain('revision');
+        expect(JSON.stringify(statuses)).not.toContain('targets');
+        expect(JSON.stringify(statuses)).not.toContain('browser-must-discard');
+        expect(sanitizeBackupSyncStatuses({ statuses: [] })).toEqual([]);
+    });
+
+    it('keeps synchronization status load failures visibly fail closed', () => {
+        expect(resolveBackupSyncStatusLoad(undefined, false)).toEqual({
+            statuses: [],
+            unavailable: true,
+        });
+        expect(resolveBackupSyncStatusLoad({ statuses: [] }, true)).toEqual({
+            statuses: [],
+            unavailable: true,
+        });
+        expect(
+            resolveBackupSyncStatusLoad(
+                [
+                    {
+                        accountName: 'shared-drive',
+                        status: 'sync_pending',
+                        pending: 1,
+                        total: 1,
+                        clientSecret: 'browser-must-discard-secret',
+                    },
+                ],
+                true,
+            ),
+        ).toEqual({
+            statuses: [
+                {
+                    accountName: 'shared-drive',
+                    status: 'sync_pending',
+                    succeeded: 0,
+                    pending: 1,
+                    total: 1,
+                },
+            ],
+            unavailable: false,
+        });
+    });
+
+    it('attaches named synchronization state only to public accounts and keeps private names out of visibility', () => {
+        const statuses = sanitizeBackupSyncStatuses([
+            {
+                accountName: 'shared-drive',
+                status: 'sync_pending',
+                succeeded: 0,
+                pending: 2,
+                total: 2,
+            },
+            {
+                accountName: 'private-shadow',
+                status: 'partially_synced',
+                succeeded: 1,
+                pending: 1,
+                total: 2,
+            },
+        ]);
+        const publicAccount = { name: 'shared-drive', isPublic: true };
+        const privateAccount = { name: 'shared-drive', isPublic: false, sync: statuses[0] };
+        const privateOnlyAccount = { name: 'private-shadow', isPublic: false, sync: statuses[1] };
+
+        const merged = mergePublicBackupSyncStatuses([publicAccount, privateAccount, privateOnlyAccount], statuses);
+
+        expect(merged[0].sync).toEqual(statuses[0]);
+        expect(merged[1].sync).toBeUndefined();
+        expect(merged[2].sync).toBeUndefined();
+        expect(getUnlistedPendingBackupSyncStatuses(merged, statuses)).toEqual([statuses[1]]);
+    });
+
+    it('sanitizes operation feedback and rejects malformed synchronization responses', () => {
+        expect(
+            sanitizeBackupSyncOperationResult({
+                applied: true,
+                sync: {
+                    accountName: 'shared-drive',
+                    revision: 5,
+                    status: 'partially_synced',
+                    succeeded: 2,
+                    pending: 1,
+                    total: 3,
+                    targets: [
+                        {
+                            targetKey: 'internal-target-key',
+                            nodeId: 8,
+                            nodeName: 'node-b',
+                            desiredRevision: 5,
+                            appliedRevision: 4,
+                            attempts: 2,
+                            nextRetryAt: '2026-08-04T12:10:00Z',
+                            lastSuccessAt: '2026-08-04T11:00:00Z',
+                            lastError: 'sanitized transport diagnostic',
+                        },
+                    ],
+                    clientSecret: 'browser-must-discard-secret',
+                    refreshToken: 'browser-must-discard-token',
+                    snapshotDigest: 'browser-must-discard-digest',
+                },
+            }),
+        ).toEqual({
+            applied: true,
+            sync: {
+                accountName: 'shared-drive',
+                status: 'partially_synced',
+                succeeded: 2,
+                pending: 1,
+                total: 3,
+            },
+        });
+        expect(sanitizeBackupSyncOperationResult({ applied: true, sync: { status: 'unexpected' } })).toBeUndefined();
+        expect(sanitizeBackupSyncOperationResult({ applied: true })).toBeUndefined();
+        expect(sanitizeBackupSyncOperationResult('invalid')).toBeUndefined();
+    });
+
+    it('classifies operation feedback fail closed and preserves the most severe batch result', () => {
+        const synced = sanitizeBackupSyncOperationResult({
+            applied: true,
+            sync: {
+                accountName: 'synced-drive',
+                revision: 5,
+                status: 'synced',
+                succeeded: 3,
+                pending: 0,
+                total: 3,
+            },
+        });
+        const pending = sanitizeBackupSyncOperationResult({
+            applied: true,
+            sync: {
+                accountName: 'pending-drive',
+                revision: 5,
+                status: 'sync_pending',
+                succeeded: 0,
+                pending: 3,
+                total: 3,
+            },
+        });
+        const partial = sanitizeBackupSyncOperationResult({
+            applied: true,
+            sync: {
+                accountName: 'partial-drive',
+                revision: 5,
+                status: 'partially_synced',
+                succeeded: 2,
+                pending: 1,
+                total: 3,
+            },
+        });
+
+        expect(resolveBackupSyncOperationFeedback(synced)).toEqual({ kind: 'success' });
+        expect(resolveBackupSyncOperationFeedback(pending)).toMatchObject({
+            kind: 'degraded',
+            meta: { tagType: 'warning', succeeded: 0, pending: 3, total: 3 },
+        });
+        expect(resolveBackupSyncOperationFeedback({ applied: false, sync: partial?.sync })).toEqual({
+            kind: 'unconfirmed',
+        });
+        expect(resolveBackupSyncOperationFeedback({ applied: true, sync: { status: 'unexpected' } })).toEqual({
+            kind: 'unconfirmed',
+        });
+        expect(selectMoreSevereBackupSyncResult(synced, pending)).toEqual(pending);
+        expect(selectMoreSevereBackupSyncResult(pending, partial)).toEqual(partial);
+        expect(selectMoreSevereBackupSyncResult(partial, pending)).toEqual(partial);
     });
 
     it('merges only safe credential status fields into account vars', () => {

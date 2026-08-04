@@ -17,7 +17,12 @@ func Init() {
 	if _, err := global.Cron.AddJob("0 3 */31 * *", job.NewBackupJob()); err != nil {
 		global.LOG.Errorf("[core] can not add backup token refresh corn job: %s", err.Error())
 	}
+	backupSyncJob := job.NewBackupSyncJob()
+	if _, err := global.Cron.AddJob("@every 1m", backupSyncJob); err != nil {
+		global.LOG.Errorf("[core] can not add public backup reconciliation job: %s", err.Error())
+	}
 
 	service.StartSync()
 	global.Cron.Start()
+	service.StartPublicBackupSyncWorker()
 }

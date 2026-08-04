@@ -760,7 +760,9 @@ func (w WebsiteService) DeleteWebsite(req request.WebsiteDelete) error {
 	defer tx.Rollback()
 
 	go func() {
-		_ = NewIBackupRecordService().DeleteRecordByName("website", website.PrimaryDomain, website.Alias, req.DeleteBackup)
+		if err := NewIBackupRecordService().DeleteRecordByName("website", website.PrimaryDomain, website.Alias, req.DeleteBackup); err != nil {
+			global.LOG.Errorf("delete website backup records failed: %v", err)
+		}
 	}()
 
 	if err := websiteRepo.DeleteBy(ctx, repo.WithByID(req.ID)); err != nil {

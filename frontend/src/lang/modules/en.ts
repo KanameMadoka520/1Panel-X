@@ -2791,6 +2791,20 @@ const message = {
             'This OAuth authorization session has expired. Authorize again before testing or saving this backup account.',
         oauthClearConfirm:
             'After clearing OAuth credentials, this backup account will stop working until it is configured and authorized again. Backup records and scheduled tasks will be retained.',
+        backupSyncPending: 'Waiting for node sync',
+        backupSyncPendingHelp:
+            'The change is saved on the control node, but no execution node has confirmed the current version. {0}/{1} nodes synchronized; {2} pending.',
+        backupSyncPartiallySynced: 'Some nodes are not synchronized',
+        backupSyncPartiallySyncedHelp:
+            'The change is saved on the control node, but some execution nodes have not confirmed the current version. {0}/{1} nodes synchronized; {2} pending.',
+        backupSyncRetry: 'Retry synchronization',
+        backupSyncUnlistedWarning:
+            '{0} public backup changes outside the current list are waiting for node synchronization',
+        backupSyncUnlistedHelp: 'This can include node cleanup state for deleted accounts.',
+        backupSyncStatusUnavailable:
+            'The change request completed, but node synchronization cannot be confirmed yet. Refresh and try again.',
+        backupSyncStatusLoadUnavailable:
+            'Node synchronization status is temporarily unavailable. Refresh and try again.',
         clickToRefresh: 'Click to refresh',
         refreshTime: 'Token Refresh Time',
         refreshStatus: 'Token Refresh Status',

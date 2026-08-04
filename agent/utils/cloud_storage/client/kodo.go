@@ -2,11 +2,13 @@ package client
 
 import (
 	"context"
+	"errors"
 	"strconv"
 	"time"
 
 	"github.com/1Panel-dev/1Panel/agent/utils/files"
 	"github.com/qiniu/go-sdk/v7/auth"
+	qiniuClient "github.com/qiniu/go-sdk/v7/client"
 	"github.com/qiniu/go-sdk/v7/storage"
 )
 
@@ -50,9 +52,17 @@ func (k kodoClient) ListBuckets() ([]interface{}, error) {
 
 func (k kodoClient) Exist(path string) (bool, error) {
 	if _, err := k.client.Stat(k.bucket, path); err != nil {
+		if isKodoObjectNotFound(err) {
+			return false, nil
+		}
 		return false, err
 	}
 	return true, nil
+}
+
+func isKodoObjectNotFound(err error) bool {
+	var errorInfo *qiniuClient.ErrorInfo
+	return errors.As(err, &errorInfo) && errorInfo.Code == 612
 }
 
 func (k kodoClient) Size(path string) (int64, error) {

@@ -2,9 +2,12 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -13,6 +16,7 @@ import (
 	"github.com/1Panel-dev/1Panel/agent/app/repo"
 	"github.com/1Panel-dev/1Panel/agent/constant"
 	"github.com/1Panel-dev/1Panel/agent/global"
+	"github.com/1Panel-dev/1Panel/agent/utils/cloud_storage"
 	"github.com/jinzhu/copier"
 )
 
@@ -131,19 +135,7 @@ func (u *BackupRecordService) DeleteRecordByName(backupType, name, detailName st
 	if err != nil {
 		return err
 	}
-
-	for _, record := range records {
-		backup, client, err := NewBackupClientWithID(record.DownloadAccountID)
-		if err != nil {
-			global.LOG.Errorf("new client for backup account failed, err: %v", err)
-			continue
-		}
-		if _, err = client.Delete(path.Join(backup.BackupPath, record.FileDir, record.FileName)); err != nil {
-			global.LOG.Errorf("remove file %s failed, err: %v", path.Join(record.FileDir, record.FileName), err)
-		}
-		_ = backupRepo.DeleteRecord(context.Background(), repo.WithByID(record.ID))
-	}
-	return nil
+	return deleteBackupRecordsWithFiles(records, NewBackupClientWithID)
 }
 
 func (u *BackupRecordService) BatchDeleteRecord(ids []uint) error {
@@ -151,17 +143,78 @@ func (u *BackupRecordService) BatchDeleteRecord(ids []uint) error {
 	if err != nil {
 		return err
 	}
+	return deleteBackupRecordsWithFiles(records, NewBackupClientWithID)
+}
+
+type backupClientLoader func(uint) (*model.BackupAccount, cloud_storage.CloudStorageClient, error)
+
+func deleteBackupRecordsWithFiles(records []model.BackupRecord, loadClient backupClientLoader) error {
+	var cleanupErrors []error
 	for _, record := range records {
-		backup, client, err := NewBackupClientWithID(record.DownloadAccountID)
-		if err != nil {
-			global.LOG.Errorf("new client for backup account failed, err: %v", err)
+		backup, client, err := loadClient(record.DownloadAccountID)
+		if err != nil || backup == nil || client == nil {
+			cleanupErrors = append(cleanupErrors, backupCleanupError(record.ID, record.DownloadAccountID, "backup account is unavailable"))
 			continue
 		}
-		if _, err = client.Delete(path.Join(backup.BackupPath, record.FileDir, record.FileName)); err != nil {
-			global.LOG.Errorf("remove file %s failed, err: %v", path.Join(record.FileDir, record.FileName), err)
+		if !deleteBackupFileConfirmed(client, path.Join(backup.BackupPath, record.FileDir, record.FileName)) {
+			cleanupErrors = append(cleanupErrors, backupCleanupError(record.ID, record.DownloadAccountID, "remote delete was not confirmed"))
+			continue
+		}
+		if err := backupRepo.DeleteRecord(context.Background(), repo.WithByID(record.ID)); err != nil {
+			cleanupErrors = append(cleanupErrors, backupMetadataCleanupError("backup record", record.ID))
 		}
 	}
-	return backupRepo.DeleteRecord(context.Background(), repo.WithByIDs(ids))
+	return errors.Join(cleanupErrors...)
+}
+
+func deleteBackupFilesFromAccounts(itemID uint, accountIDs []string, relativePath string, accountMap map[string]backupClientHelper) error {
+	var cleanupErrors []error
+	hasAccount := false
+	for _, accountRef := range accountIDs {
+		accountRef = strings.TrimSpace(accountRef)
+		if accountRef == "" {
+			continue
+		}
+		hasAccount = true
+		item, ok := accountMap[accountRef]
+		accountID := item.id
+		if accountID == 0 {
+			if parsed, err := strconv.ParseUint(accountRef, 10, 64); err == nil {
+				accountID = uint(parsed)
+			}
+		}
+		if !ok || !item.isOk || item.client == nil {
+			cleanupErrors = append(cleanupErrors, backupCleanupError(itemID, accountID, "backup account is unavailable"))
+			continue
+		}
+		if !deleteBackupFileConfirmed(item.client, path.Join(item.backupPath, relativePath)) {
+			cleanupErrors = append(cleanupErrors, backupCleanupError(itemID, accountID, "remote delete was not confirmed"))
+		}
+	}
+	if !hasAccount {
+		cleanupErrors = append(cleanupErrors, backupCleanupError(itemID, 0, "no backup account is available"))
+	}
+	return errors.Join(cleanupErrors...)
+}
+
+func deleteBackupFileConfirmed(client cloud_storage.CloudStorageClient, target string) bool {
+	deleted, err := client.Delete(target)
+	if err == nil && deleted {
+		return true
+	}
+	exists, existErr := client.Exist(target)
+	return existErr == nil && !exists
+}
+
+func backupCleanupError(itemID, accountID uint, reason string) error {
+	if accountID == 0 {
+		return fmt.Errorf("backup cleanup for item %d failed: %s", itemID, reason)
+	}
+	return fmt.Errorf("backup cleanup for item %d on account %d failed: %s", itemID, accountID, reason)
+}
+
+func backupMetadataCleanupError(kind string, id uint) error {
+	return fmt.Errorf("%s metadata cleanup failed for item %d", kind, id)
 }
 
 func (u *BackupRecordService) ListAppRecords(name, detailName, fileName string) ([]model.BackupRecord, error) {

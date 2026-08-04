@@ -763,7 +763,9 @@ func upgradeInstall(req request.AppInstallUpgrade) error {
 				for _, backup := range backupsToDelete {
 					deleteIDs = append(deleteIDs, backup.ID)
 				}
-				_ = backupRecordService.BatchDeleteRecord(deleteIDs)
+				if err := backupRecordService.BatchDeleteRecord(deleteIDs); err != nil {
+					return err
+				}
 			}
 			backupFile = path.Join(global.Dir.LocalBackupDir, backupRecord.FileDir, backupRecord.FileName)
 		} else {

@@ -250,6 +250,13 @@ func handleDownloadSnapshot(itemHelper *snapRecoverHelper, snap model.Snapshot, 
 	itemHelper.Task.LogStart(i18n.GetMsgByKey("RecoverDownload"))
 
 	account, client, err := NewBackupClientWithID(snap.DownloadAccountID)
+	if err != nil {
+		itemHelper.Task.LogWithStatus(
+			i18n.GetWithName("RecoverDownloadAccount", fmt.Sprintf("account-%d", snap.DownloadAccountID)),
+			err,
+		)
+		return err
+	}
 	itemHelper.Task.LogWithStatus(i18n.GetWithName("RecoverDownloadAccount", fmt.Sprintf("%s - %s", account.Type, account.Name)), err)
 	targetPath := ""
 	if len(account.BackupPath) != 0 {

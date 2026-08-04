@@ -12,6 +12,7 @@ type MultiNodeProvider interface {
 	ProxyDocker(proxyURL string) error
 	UpdateGroup(name string, group, newGroup uint) error
 	CheckBackupUsed(name string) error
+	EnsureBackupSyncReady(currentNode string) error
 	LoadNodeInfo(currentNode string) (*ssh.ConnInfo, string, error)
 	Sync(dataType string) error
 	AutoUpgradeWithMaster()
