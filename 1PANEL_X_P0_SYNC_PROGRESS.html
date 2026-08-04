@@ -1,0 +1,1180 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <link rel="icon" href="data:," />
+    <title>1Panel-X P0.1 公共备份同步可靠性报告</title>
+    <style>
+        :root {
+            color-scheme: light;
+            --page: #f3f5f7;
+            --paper: #ffffff;
+            --ink: #17212b;
+            --muted: #5b6874;
+            --line: #d5dce2;
+            --line-strong: #aeb8c1;
+            --green: #12664f;
+            --green-soft: #e5f2ed;
+            --blue: #235e96;
+            --blue-soft: #eaf2fa;
+            --amber: #815500;
+            --amber-soft: #fff2d4;
+            --red: #962f37;
+            --red-soft: #fcebed;
+            --charcoal: #17212b;
+            --shadow: 0 12px 30px rgba(23, 33, 43, 0.08);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            margin: 0;
+            background: var(--page);
+            color: var(--ink);
+            font-family: Inter, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+            font-size: 15px;
+            line-height: 1.68;
+            letter-spacing: 0;
+        }
+
+        button,
+        textarea,
+        input {
+            font: inherit;
+            letter-spacing: 0;
+        }
+
+        a {
+            color: var(--blue);
+        }
+
+        code {
+            padding: 1px 5px;
+            border: 1px solid #dce3e8;
+            border-radius: 4px;
+            background: #f6f8fa;
+            color: #243545;
+            font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+            font-size: 0.92em;
+            overflow-wrap: anywhere;
+        }
+
+        .shell {
+            width: min(1180px, calc(100% - 32px));
+            margin: 0 auto;
+        }
+
+        .masthead {
+            background: var(--charcoal);
+            color: #ffffff;
+            border-bottom: 4px solid #2aa17b;
+        }
+
+        .masthead-inner {
+            min-height: 250px;
+            padding: 42px 0 34px;
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) 230px;
+            gap: 42px;
+            align-items: end;
+        }
+
+        .eyebrow {
+            margin: 0 0 10px;
+            color: #8dd6bf;
+            font-size: 13px;
+            font-weight: 800;
+            text-transform: uppercase;
+        }
+
+        h1,
+        h2,
+        h3,
+        p {
+            margin-top: 0;
+        }
+
+        h1 {
+            max-width: 850px;
+            margin-bottom: 14px;
+            font-size: clamp(32px, 5vw, 56px);
+            line-height: 1.12;
+            font-weight: 760;
+        }
+
+        .subtitle {
+            max-width: 820px;
+            margin-bottom: 0;
+            color: #cbd5dd;
+            font-size: 17px;
+        }
+
+        .release-mark {
+            padding-left: 22px;
+            border-left: 1px solid #53616d;
+        }
+
+        .release-mark strong,
+        .release-mark span {
+            display: block;
+            overflow-wrap: anywhere;
+        }
+
+        .release-mark strong {
+            margin-bottom: 5px;
+            font-size: 18px;
+        }
+
+        .release-mark span {
+            color: #b8c3cc;
+            font-size: 13px;
+        }
+
+        .status-strip {
+            background: var(--paper);
+            border-bottom: 1px solid var(--line);
+        }
+
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
+
+        .status-item {
+            min-width: 0;
+            padding: 18px 22px;
+            border-right: 1px solid var(--line);
+        }
+
+        .status-item:first-child {
+            padding-left: 0;
+        }
+
+        .status-item:last-child {
+            border-right: 0;
+        }
+
+        .status-item span,
+        .status-item strong {
+            display: block;
+            overflow-wrap: anywhere;
+        }
+
+        .status-item span {
+            margin-bottom: 3px;
+            color: var(--muted);
+            font-size: 12px;
+            font-weight: 800;
+            text-transform: uppercase;
+        }
+
+        .content {
+            padding: 36px 0 72px;
+        }
+
+        .jump-nav {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px 20px;
+            margin-bottom: 34px;
+            padding-bottom: 18px;
+            border-bottom: 1px solid var(--line-strong);
+        }
+
+        .jump-nav a {
+            color: var(--ink);
+            font-size: 14px;
+            font-weight: 750;
+            text-decoration: none;
+        }
+
+        section {
+            padding: 34px 0;
+            border-bottom: 1px solid var(--line);
+        }
+
+        section:last-of-type {
+            border-bottom: 0;
+        }
+
+        .section-head {
+            display: grid;
+            grid-template-columns: 220px minmax(0, 1fr);
+            gap: 34px;
+            margin-bottom: 24px;
+        }
+
+        .section-index {
+            color: var(--green);
+            font-size: 13px;
+            font-weight: 800;
+            text-transform: uppercase;
+        }
+
+        h2 {
+            margin-bottom: 8px;
+            font-size: 27px;
+            line-height: 1.24;
+        }
+
+        h3 {
+            margin-bottom: 8px;
+            font-size: 17px;
+            line-height: 1.35;
+        }
+
+        .lead,
+        .muted {
+            color: var(--muted);
+        }
+
+        .lead {
+            max-width: 830px;
+            margin-bottom: 0;
+        }
+
+        .summary-grid,
+        .capability-grid,
+        .risk-grid,
+        .privacy-grid {
+            display: grid;
+            gap: 14px;
+        }
+
+        .summary-grid {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+
+        .capability-grid,
+        .risk-grid {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+
+        .privacy-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .panel {
+            min-width: 0;
+            padding: 20px;
+            border: 1px solid var(--line);
+            border-radius: 7px;
+            background: var(--paper);
+            box-shadow: var(--shadow);
+        }
+
+        .panel p:last-child,
+        .panel ul:last-child {
+            margin-bottom: 0;
+        }
+
+        .panel ul {
+            margin: 10px 0 0;
+            padding-left: 20px;
+        }
+
+        .panel li + li {
+            margin-top: 5px;
+        }
+
+        .summary-grid .panel {
+            border-top-width: 4px;
+        }
+
+        .summary-grid .progress {
+            border-top-color: var(--green);
+        }
+
+        .summary-grid .plan {
+            border-top-color: var(--blue);
+        }
+
+        .summary-grid .problem {
+            border-top-color: var(--amber);
+        }
+
+        .badge {
+            display: inline-block;
+            margin-bottom: 10px;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 800;
+        }
+
+        .badge.done {
+            background: var(--green-soft);
+            color: var(--green);
+        }
+
+        .badge.pending {
+            background: var(--amber-soft);
+            color: var(--amber);
+        }
+
+        .badge.risk {
+            background: var(--red-soft);
+            color: var(--red);
+        }
+
+        .flow {
+            display: grid;
+            grid-template-columns: repeat(5, minmax(0, 1fr));
+            border-top: 1px solid var(--line-strong);
+            border-bottom: 1px solid var(--line-strong);
+        }
+
+        .flow-step {
+            min-width: 0;
+            padding: 20px 18px;
+            border-right: 1px solid var(--line);
+            background: var(--paper);
+        }
+
+        .flow-step:last-child {
+            border-right: 0;
+        }
+
+        .flow-step span,
+        .flow-step strong {
+            display: block;
+        }
+
+        .flow-step span {
+            margin-bottom: 7px;
+            color: var(--green);
+            font-size: 11px;
+            font-weight: 800;
+        }
+
+        .flow-step strong {
+            min-height: 48px;
+            font-size: 16px;
+        }
+
+        .flow-step p {
+            margin-bottom: 0;
+            color: var(--muted);
+            font-size: 13px;
+        }
+
+        .table-wrap {
+            overflow-x: auto;
+            border: 1px solid var(--line);
+            background: var(--paper);
+        }
+
+        table {
+            width: 100%;
+            min-width: 800px;
+            border-collapse: collapse;
+        }
+
+        th,
+        td {
+            padding: 13px 14px;
+            border-bottom: 1px solid var(--line);
+            text-align: left;
+            vertical-align: top;
+        }
+
+        th {
+            background: #edf1f4;
+            font-size: 12px;
+            text-transform: uppercase;
+        }
+
+        tbody tr:last-child td {
+            border-bottom: 0;
+        }
+
+        .result-pass {
+            color: var(--green);
+            font-weight: 800;
+        }
+
+        .result-known {
+            color: var(--amber);
+            font-weight: 800;
+        }
+
+        .decision-box {
+            border: 1px solid var(--line-strong);
+            border-radius: 7px;
+            background: var(--paper);
+            box-shadow: var(--shadow);
+        }
+
+        .decision-head,
+        .decision-body {
+            padding: 24px;
+        }
+
+        .decision-head {
+            border-bottom: 1px solid var(--line);
+        }
+
+        .decision-head p,
+        .decision-head h3 {
+            margin-bottom: 0;
+        }
+
+        fieldset {
+            margin: 0 0 24px;
+            padding: 0;
+            border: 0;
+        }
+
+        legend {
+            margin-bottom: 12px;
+            font-size: 15px;
+            font-weight: 800;
+        }
+
+        .option-list {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+        }
+
+        .option {
+            min-width: 0;
+            padding: 14px;
+            display: flex;
+            gap: 10px;
+            align-items: flex-start;
+            border: 1px solid var(--line);
+            border-radius: 6px;
+            cursor: pointer;
+        }
+
+        .option:hover,
+        .option:focus-within {
+            border-color: var(--green);
+            background: #f8fbfa;
+        }
+
+        .option input {
+            margin-top: 5px;
+            accent-color: var(--green);
+        }
+
+        .option strong,
+        .option small {
+            display: block;
+        }
+
+        .option small {
+            margin-top: 3px;
+            color: var(--muted);
+            line-height: 1.45;
+        }
+
+        textarea {
+            width: 100%;
+            min-height: 120px;
+            padding: 12px;
+            resize: vertical;
+            border: 1px solid var(--line-strong);
+            border-radius: 6px;
+            background: #ffffff;
+            color: var(--ink);
+        }
+
+        textarea:focus {
+            outline: 2px solid rgba(18, 102, 79, 0.2);
+            border-color: var(--green);
+        }
+
+        .feedback-preview {
+            min-height: 180px;
+            margin-top: 14px;
+            background: #f6f8fa;
+            font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+            font-size: 13px;
+        }
+
+        .actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .button {
+            min-height: 42px;
+            padding: 9px 16px;
+            border-radius: 6px;
+            border: 1px solid transparent;
+            cursor: pointer;
+            font-weight: 800;
+        }
+
+        .button.primary {
+            background: var(--green);
+            color: #ffffff;
+        }
+
+        .button.secondary {
+            border-color: var(--line-strong);
+            background: #ffffff;
+            color: var(--ink);
+        }
+
+        .button:hover {
+            filter: brightness(0.96);
+        }
+
+        .button:focus-visible {
+            outline: 3px solid rgba(35, 94, 150, 0.28);
+            outline-offset: 2px;
+        }
+
+        .copy-status {
+            min-height: 25px;
+            margin: 10px 0 0;
+            color: var(--green);
+            font-weight: 700;
+        }
+
+        .footer-note {
+            margin: 28px 0 0;
+            padding-top: 18px;
+            border-top: 1px solid var(--line-strong);
+            color: var(--muted);
+            font-size: 13px;
+        }
+
+        @media (max-width: 980px) {
+            .masthead-inner {
+                grid-template-columns: 1fr;
+                gap: 24px;
+            }
+
+            .release-mark {
+                padding: 16px 0 0;
+                border-left: 0;
+                border-top: 1px solid #53616d;
+            }
+
+            .status-grid,
+            .capability-grid,
+            .risk-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .status-item:nth-child(2) {
+                border-right: 0;
+            }
+
+            .flow {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .flow-step:nth-child(2n) {
+                border-right: 0;
+            }
+        }
+
+        @media (max-width: 720px) {
+            .shell {
+                width: min(100% - 22px, 1180px);
+            }
+
+            .masthead-inner {
+                min-height: 0;
+                padding: 30px 0 26px;
+            }
+
+            h1 {
+                font-size: 34px;
+            }
+
+            .status-grid,
+            .summary-grid,
+            .capability-grid,
+            .risk-grid,
+            .privacy-grid,
+            .option-list,
+            .flow {
+                grid-template-columns: 1fr;
+            }
+
+            .status-item,
+            .status-item:first-child {
+                padding: 14px 0;
+                border-right: 0;
+                border-bottom: 1px solid var(--line);
+            }
+
+            .status-item:last-child {
+                border-bottom: 0;
+            }
+
+            .section-head {
+                grid-template-columns: 1fr;
+                gap: 8px;
+            }
+
+            .flow-step,
+            .flow-step:nth-child(2n) {
+                border-right: 0;
+                border-bottom: 1px solid var(--line);
+            }
+
+            .flow-step:last-child {
+                border-bottom: 0;
+            }
+
+            .flow-step strong {
+                min-height: 0;
+                margin-bottom: 7px;
+            }
+
+            .decision-head,
+            .decision-body {
+                padding: 18px;
+            }
+
+            .actions .button {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header class="masthead">
+        <div class="shell masthead-inner">
+            <div>
+                <p class="eyebrow">1Panel-X / P0.1 Reliability Delivery</p>
+                <h1>公共备份账号持久化同步与离线协调</h1>
+                <p class="subtitle">
+                    本轮完成持久化 outbox、单调 revision、Agent 幂等应用、删除 tombstone、离线节点 reconciliation、
+                    聚合同步状态 API 与界面，以及故障、重启和 race 自动化验证。
+                </p>
+            </div>
+            <div class="release-mark" aria-label="报告版本">
+                <strong>P0.1 同步可靠性</strong>
+                <span>报告日期：2026-08-04</span>
+                <span>开发基线：d715111</span>
+                <span>实现提交：32fafd35a</span>
+                <span>目标：origin/main</span>
+                <span>报告 QA：桌面/移动与复制交互通过</span>
+            </div>
+        </div>
+    </header>
+
+    <div class="status-strip">
+        <div class="shell status-grid">
+            <div class="status-item">
+                <span>代码状态</span>
+                <strong>实现与自动验证完成</strong>
+            </div>
+            <div class="status-item">
+                <span>同步协议</span>
+                <strong>持久化 revision + 精确 ACK</strong>
+            </div>
+            <div class="status-item">
+                <span>管理界面</span>
+                <strong>pending / partially synced</strong>
+            </div>
+            <div class="status-item">
+                <span>剩余验收</span>
+                <strong>真实多节点与 provider UAT</strong>
+            </div>
+        </div>
+    </div>
+
+    <main class="shell content">
+        <nav class="jump-nav" aria-label="报告目录">
+            <a href="#executive">执行摘要</a>
+            <a href="#architecture">工作机制</a>
+            <a href="#delivery">交付能力</a>
+            <a href="#verification">验证矩阵</a>
+            <a href="#security">安全边界</a>
+            <a href="#risks">风险与回滚</a>
+            <a href="#feedback">提交意见</a>
+        </nav>
+
+        <section id="executive">
+            <div class="section-head">
+                <div class="section-index">01 / Executive Summary</div>
+                <div>
+                    <h2>执行摘要</h2>
+                    <p class="lead">30-60 秒结论：本轮目标已达到代码级交付标准，但没有把自动测试等同于真实生产环境 UAT。</p>
+                </div>
+            </div>
+            <div class="summary-grid">
+                <article class="panel progress">
+                    <h3>Progress</h3>
+                    <p>
+                        Core 以数据库 outbox 和单调 revision 管理公共备份账号期望状态；每个 Agent 持久化最近应用的
+                        authority、generation、target epoch、revision 和 digest，重复、乱序与重启后仍可收敛。
+                    </p>
+                </article>
+                <article class="panel plan">
+                    <h3>Plans</h3>
+                    <p>
+                        下一步应在可回滚 Linux 环境中演练真实 Core + 多 Agent 断网、重启、删除与恢复，并使用隔离的
+                        Microsoft Entra 和 Google Cloud 测试应用确认 OAuth 备份实际执行链路。
+                    </p>
+                </article>
+                <article class="panel problem">
+                    <h3>Problems</h3>
+                    <p>
+                        当前没有可登录的完整多节点部署，因此尚无浏览器网络面板与真实节点级证据。全仓
+                        <code>vue-tsc</code> 仍被本轮范围外的既有错误阻断；snapshot digest 目前是内部 unkeyed SHA-256，
+                        不是 HMAC。
+                    </p>
+                </article>
+            </div>
+        </section>
+
+        <section id="architecture">
+            <div class="section-head">
+                <div class="section-index">02 / State Flow</div>
+                <div>
+                    <h2>同步机制</h2>
+                    <p class="lead">敏感凭据不写入 outbox。Core 在投递时从加密源表构建完整快照，经 Unix socket 或固定证书 mTLS 发送。</p>
+                </div>
+            </div>
+            <div class="flow" aria-label="公共备份同步流程">
+                <div class="flow-step">
+                    <span>STEP 1</span>
+                    <strong>业务事务提交</strong>
+                    <p>创建、更新、删除、OAuth 清除或刷新与 revision 在同一事务提交；outbox 失败则业务回滚。</p>
+                </div>
+                <div class="flow-step">
+                    <span>STEP 2</span>
+                    <strong>持久化协调状态</strong>
+                    <p>outbox 只含 generation、revision、账号名、操作和状态；每个 target 保留 desired/applied 元组。</p>
+                </div>
+                <div class="flow-step">
+                    <span>STEP 3</span>
+                    <strong>有界并行投递</strong>
+                    <p>最多四个不同目标并发，同一目标串行；内存 wake 仅加速，数据库状态负责重试和重启恢复。</p>
+                </div>
+                <div class="flow-step">
+                    <span>STEP 4</span>
+                    <strong>Agent 原子应用</strong>
+                    <p>校验 authority、generation、target epoch、revision 和 digest 后，在单事务替换公共账号快照。</p>
+                </div>
+                <div class="flow-step">
+                    <span>STEP 5</span>
+                    <strong>精确 ACK 与完成</strong>
+                    <p>Core 只接受精确元组 ACK；全部活动目标确认后才完成 outbox 并关闭删除 tombstone。</p>
+                </div>
+            </div>
+        </section>
+
+        <section id="delivery">
+            <div class="section-head">
+                <div class="section-index">03 / Delivered</div>
+                <div>
+                    <h2>已交付能力</h2>
+                    <p class="lead">以下是本轮真实实现的行为，不表示已经完成完整 1Panel Pro 或 Enterprise 功能对齐。</p>
+                </div>
+            </div>
+            <div class="capability-grid">
+                <article class="panel">
+                    <span class="badge done">已完成</span>
+                    <h3>持久化 outbox 与 revision</h3>
+                    <ul>
+                        <li>安装级 authority、generation 和 uint64 revision。</li>
+                        <li>并发入队保持 revision 唯一、单调，事务回滚不遗留事件。</li>
+                        <li>启动 bootstrap reconciliation，待同步状态可跨进程重启。</li>
+                    </ul>
+                </article>
+                <article class="panel">
+                    <span class="badge done">已完成</span>
+                    <h3>Agent 幂等与乱序保护</h3>
+                    <ul>
+                        <li>相同元组可重复应用并返回 <code>already_applied</code>。</li>
+                        <li>旧 revision 不覆盖新状态，相同 revision 不同 digest 被拒绝。</li>
+                        <li>authority、generation 或 target epoch 冲突时 fail-closed。</li>
+                    </ul>
+                </article>
+                <article class="panel">
+                    <span class="badge done">已完成</span>
+                    <h3>删除 tombstone</h3>
+                    <ul>
+                        <li>删除元数据保留到所有活动目标确认删除 revision。</li>
+                        <li>离线节点重新上线后仍会收到删除快照。</li>
+                        <li>被 revoke 或删除的节点停用 target，不会永久阻塞完成条件。</li>
+                    </ul>
+                </article>
+                <article class="panel">
+                    <span class="badge done">已完成</span>
+                    <h3>离线 reconciliation</h3>
+                    <ul>
+                        <li>每分钟扫描到期 target，并允许探测标记 offline 的已登记节点。</li>
+                        <li>同步成功后仅在节点仍是 offline 且已登记时标记 online。</li>
+                        <li>明确 offline 不阻止 tombstone；online 但不可达继续 fail-closed。</li>
+                    </ul>
+                </article>
+                <article class="panel">
+                    <span class="badge done">已完成</span>
+                    <h3>聚合 API 与界面</h3>
+                    <ul>
+                        <li>浏览器只收到账号名、状态与 succeeded/pending/total。</li>
+                        <li>显示 <code>sync_pending</code>、<code>partially_synced</code> 与单账号/批量重试。</li>
+                        <li>未知状态或接口异常不伪装为成功。</li>
+                    </ul>
+                </article>
+                <article class="panel">
+                    <span class="badge done">已完成</span>
+                    <h3>执行与清理 fail-closed</h3>
+                    <ul>
+                        <li>公共账号必须持有新鲜五分钟同步租约。</li>
+                        <li>同步 apply 与实际存储操作通过读写锁串行。</li>
+                        <li>远端删除未确认时保留记录/快照元数据，不重跑已完成备份。</li>
+                    </ul>
+                </article>
+            </div>
+        </section>
+
+        <section id="verification">
+            <div class="section-head">
+                <div class="section-index">04 / Verification</div>
+                <div>
+                    <h2>自动验证矩阵</h2>
+                    <p class="lead">结果来自当前工作树。没有使用真实泄露凭据，也没有调用真实 Google 或 Microsoft 账号。</p>
+                </div>
+            </div>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>范围</th>
+                            <th>实际执行</th>
+                            <th>结果</th>
+                            <th>说明</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Core Go 测试</td>
+                            <td>backupsync、multi-node helper、service、API、router、migration、cron</td>
+                            <td class="result-pass">通过</td>
+                            <td>覆盖 outbox、revision、ACK、tombstone、离线恢复、撤销竞态与 API 脱敏。</td>
+                        </tr>
+                        <tr>
+                            <td>Agent Go 测试</td>
+                            <td>task、service、enrollment、middleware、provider client、API、migration、router</td>
+                            <td class="result-pass">通过</td>
+                            <td>覆盖幂等、乱序、重启、target epoch、租约、清理失败与 enrollment。</td>
+                        </tr>
+                        <tr>
+                            <td>Go 静态检查</td>
+                            <td>Core 与 Agent 相关包 <code>go vet</code></td>
+                            <td class="result-pass">通过</td>
+                            <td>相关包无新增 vet 问题。</td>
+                        </tr>
+                        <tr>
+                            <td>并发检测</td>
+                            <td>Docker Go 1.26.1，只读挂载；相关包 <code>go test -race</code></td>
+                            <td class="result-pass">通过</td>
+                            <td>覆盖并发 revision、目标 ACK、Agent apply/operation 串行与清理任务。</td>
+                        </tr>
+                        <tr>
+                            <td>Linux AMD64 构建</td>
+                            <td>Core + Agent，<code>CGO_ENABLED=0</code></td>
+                            <td class="result-pass">通过</td>
+                            <td>均验证为静态链接 ELF；只在受控 <code>/tmp</code> 目录生成并已清理。</td>
+                        </tr>
+                        <tr>
+                            <td>前端单元测试</td>
+                            <td>Vitest：API 与同步/OAuth 状态逻辑，共 18 个用例</td>
+                            <td class="result-pass">通过</td>
+                            <td>覆盖字段清洗、未知状态 fail-closed、操作反馈和敏感字段过滤。</td>
+                        </tr>
+                        <tr>
+                            <td>前端质量</td>
+                            <td>本轮文件 ESLint + Prettier check</td>
+                            <td class="result-pass">通过</td>
+                            <td>未执行会改写全仓的自动修复。</td>
+                        </tr>
+                        <tr>
+                            <td>前端生产构建</td>
+                            <td><code>npm run build:pro</code></td>
+                            <td class="result-pass">通过</td>
+                            <td>Vite 构建完成，生成物未进入 git diff。</td>
+                        </tr>
+                        <tr>
+                            <td>全仓类型检查</td>
+                            <td><code>npm run type-check</code></td>
+                            <td class="result-known">既有基线阻断</td>
+                            <td>错误位于 AppMain、Monaco diff、network、process、WAF、domain 等本轮外文件；本轮文件未出现错误。</td>
+                        </tr>
+                        <tr>
+                            <td>敏感信息与卫生</td>
+                            <td>gitleaks 脱敏扫描、关键字复核、<code>git diff --check</code>、定向 <code>gofmt -l</code></td>
+                            <td class="result-pass">人工分类通过</td>
+                            <td>19 个扫描命中均为 SHA-256 指纹、ACME 枚举或合成测试密钥；未发现可用 OAuth 凭据、workflow、二进制或构建产物。</td>
+                        </tr>
+                        <tr>
+                            <td>真实浏览器/多节点 UAT</td>
+                            <td>完整 Core + Agent + 登录会话 + 网络面板</td>
+                            <td class="result-known">尚未执行</td>
+                            <td>这是发布前环境级验收，不用 mock 冒充。</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section id="security">
+            <div class="section-head">
+                <div class="section-index">05 / Security</div>
+                <div>
+                    <h2>浏览器与内部通道边界</h2>
+                    <p class="lead">内部快照含执行所需凭据，但浏览器读取 API 和 UI 状态不含 secret、token、内部节点信息或 revision。</p>
+                </div>
+            </div>
+            <div class="privacy-grid">
+                <article class="panel">
+                    <h3>浏览器允许字段</h3>
+                    <ul>
+                        <li><code>accountName</code></li>
+                        <li><code>status</code></li>
+                        <li><code>succeeded</code></li>
+                        <li><code>pending</code></li>
+                        <li><code>total</code></li>
+                    </ul>
+                </article>
+                <article class="panel">
+                    <h3>浏览器禁止字段</h3>
+                    <ul>
+                        <li>client secret、refresh token、ciphertext</li>
+                        <li>authority、generation、target epoch、snapshot digest</li>
+                        <li>target key、节点 ID/名称、desired/applied revision</li>
+                        <li>attempts、内部错误、重试时间和成功时间</li>
+                    </ul>
+                </article>
+            </div>
+        </section>
+
+        <section id="risks">
+            <div class="section-head">
+                <div class="section-index">06 / Risks & Rollback</div>
+                <div>
+                    <h2>风险、迁移与回滚</h2>
+                    <p class="lead">迁移新增协调状态表，不删除既有备份账号、任务、记录或历史；但旧二进制不理解新协议。</p>
+                </div>
+            </div>
+            <div class="risk-grid">
+                <article class="panel">
+                    <span class="badge pending">环境缺口</span>
+                    <h3>真实多节点 UAT</h3>
+                    <p>仍需演练节点断网、Core/Agent 重启、删除账号、节点恢复、revoke、重注册和滚动升级。</p>
+                </article>
+                <article class="panel">
+                    <span class="badge pending">Provider 缺口</span>
+                    <h3>真实 OAuth 备份</h3>
+                    <p>仍需隔离 Microsoft Entra 与 Google Cloud 测试应用验证授权、刷新、上传、下载和撤销。</p>
+                </article>
+                <article class="panel">
+                    <span class="badge risk">回滚注意</span>
+                    <h3>旧版本不消费新状态</h3>
+                    <p>降级前应停止公共账号变更并备份 Core/Agent 数据库；旧版本不会消费 outbox、target epoch 或租约。</p>
+                </article>
+                <article class="panel">
+                    <span class="badge pending">维护项</span>
+                    <h3>outbox 长期保留</h3>
+                    <p>完成事件当前保留用于审计；未来可增加按 revision 或时间窗口的安全压缩，避免无限增长。</p>
+                </article>
+                <article class="panel">
+                    <span class="badge pending">安全债务</span>
+                    <h3>digest 不是消息认证码</h3>
+                    <p>它不返回浏览器，通道由 Unix socket/mTLS 保护。若要抵抗内部摘要泄露后的低熵猜测，需先设计密钥轮换再升级 HMAC。</p>
+                </article>
+                <article class="panel">
+                    <span class="badge pending">仓库基线</span>
+                    <h3>全仓 TypeScript 债务</h3>
+                    <p>生产构建可通过，但全仓 type-check 非绿色；建议单独清理，使未来类型检查能成为硬门禁。</p>
+                </article>
+                <article class="panel">
+                    <span class="badge done">不在本轮</span>
+                    <h3>完整 Pro parity</h3>
+                    <p>本轮只完成公共备份账号一致性层 P0.1，不应表述为完整复刻专业版。</p>
+                </article>
+            </div>
+        </section>
+
+        <section id="feedback">
+            <div class="section-head">
+                <div class="section-index">07 / Feedback</div>
+                <div>
+                    <h2>选择意见并复制给开发会话</h2>
+                    <p class="lead">选择后生成并复制。页面完全本地运行，不上传、保存或发送任何内容。</p>
+                </div>
+            </div>
+
+            <div class="decision-box">
+                <div class="decision-head">
+                    <h3>本轮验收与下一步优先级</h3>
+                    <p class="muted">推荐接受代码级实现，再在隔离环境补真实多节点与 provider UAT。</p>
+                </div>
+                <div class="decision-body">
+                    <fieldset>
+                        <legend>1. 对本轮实现的决定</legend>
+                        <div class="option-list">
+                            <label class="option">
+                                <input type="radio" name="decision" value="接受本轮 P0.1 代码级实现，进入真实环境 UAT（推荐）" checked />
+                                <span>
+                                    <strong>接受并进入 UAT（推荐）</strong>
+                                    <small>保留已知环境缺口，不把 UAT 缺失误报成代码未完成。</small>
+                                </span>
+                            </label>
+                            <label class="option">
+                                <input type="radio" name="decision" value="有条件接受，先补指定自动化或界面调整" />
+                                <span>
+                                    <strong>有条件接受</strong>
+                                    <small>在补充意见里写明需要增加的测试或界面调整。</small>
+                                </span>
+                            </label>
+                            <label class="option">
+                                <input type="radio" name="decision" value="暂不接受，必须先完成真实多节点和 OAuth provider UAT" />
+                                <span>
+                                    <strong>先做真实环境验收</strong>
+                                    <small>形成 UAT 证据后再进入下一开发目标。</small>
+                                </span>
+                            </label>
+                            <label class="option">
+                                <input type="radio" name="decision" value="暂不接受，需要重新设计本轮同步协议" />
+                                <span>
+                                    <strong>要求重新设计</strong>
+                                    <small>请在补充意见中指出不可接受的安全或一致性边界。</small>
+                                </span>
+                            </label>
+                        </div>
+                    </fieldset>
+
+                    <fieldset>
+                        <legend>2. 下一轮优先事项（可多选）</legend>
+                        <div class="option-list">
+                            <label class="option">
+                                <input type="checkbox" name="priority" value="真实 Linux Core + 多 Agent 故障与恢复 UAT" checked />
+                                <span>
+                                    <strong>多节点故障与恢复 UAT</strong>
+                                    <small>断网、重启、删除、恢复、revoke、重注册和滚动升级。</small>
+                                </span>
+                            </label>
+                            <label class="option">
+                                <input type="checkbox" name="priority" value="隔离 Microsoft Entra / Google Cloud OAuth 端到端 UAT" checked />
+                                <span>
+                                    <strong>OAuth provider 端到端 UAT</strong>
+                                    <small>授权、刷新、上传、下载、撤销和重新授权。</small>
+                                </span>
+                            </label>
+                            <label class="option">
+                                <input type="checkbox" name="priority" value="outbox 压缩、指标与管理员诊断能力" />
+                                <span>
+                                    <strong>outbox 运维能力</strong>
+                                    <small>完成事件压缩、指标、诊断和安全运维入口。</small>
+                                </span>
+                            </label>
+                            <label class="option">
+                                <input type="checkbox" name="priority" value="清理全仓 TypeScript 类型检查基线" />
+                                <span>
+                                    <strong>清理 TypeScript 基线</strong>
+                                    <small>让全仓 type-check 恢复为可靠硬门禁。</small>
+                                </span>
+                            </label>
+                        </div>
+                    </fieldset>
+
+                    <fieldset>
+                        <legend for="notes">3. 其他意见或修改要求</legend>
+                        <textarea id="notes" data-testid="notes" placeholder="例如：希望先补哪种故障场景、界面状态是否需要更明显、是否接受当前五分钟租约。"></textarea>
+                    </fieldset>
+
+                    <div class="actions">
+                        <button class="button primary" type="button" id="generate" data-testid="generate">生成反馈</button>
+                        <button class="button secondary" type="button" id="copy" data-testid="copy">复制反馈</button>
+                        <button class="button secondary" type="button" id="reset" data-testid="reset">恢复推荐选项</button>
+                    </div>
+                    <p class="copy-status" id="copy-status" role="status" aria-live="polite"></p>
+                    <textarea class="feedback-preview" id="feedback-output" data-testid="feedback-output" readonly aria-label="可复制的反馈内容"></textarea>
+                </div>
+            </div>
+        </section>
+
+        <p class="footer-note">
+            报告文件：<code>1PANEL_X_P0_SYNC_PROGRESS.html</code>。本文件不含真实 OAuth 凭据、token、内部 target 详情或历史泄露值。
+        </p>
+    </main>
+
+    <script>
+        const reportName = '1PANEL_X_P0_SYNC_PROGRESS.html';
+        const decisionInputs = () => Array.from(document.querySelectorAll('input[name="decision"]'));
+        const priorityInputs = () => Array.from(document.querySelectorAll('input[name="priority"]'));
+        const output = document.getElementById('feedback-output');
+        const notes = document.getElementById('notes');
+        const copyStatus = document.getElementById('copy-status');
+
+        function selectedDecision() {
+            const selected = decisionInputs().find((input) => input.checked);
+            return selected ? selected.value : '未选择';
+        }
+
+        function selectedPriorities() {
+            return priorityInputs().filter((input) => input.checked).map((input) => input.value);
+        }
+
+        function buildFeedback() {
+            const priorities = selectedPriorities();
+            const noteText = notes.value.trim() || '无补充意见';
+            output.value = [
+                '1Panel-X P0.1 公共备份同步可靠性评审反馈',
+                `报告：${reportName}`,
+                '',
+                `本轮决定：${selectedDecision()}`,
+                `下一轮优先事项：${priorities.length ? priorities.join('；') : '未选择'}`,
+                `补充意见：${noteText}`,
+            ].join('\n');
+            copyStatus.textContent = '反馈已生成，可直接复制。';
+        }
+
+        async function copyFeedback() {
+            if (!output.value) buildFeedback();
+            try {
+                await navigator.clipboard.writeText(output.value);
+                copyStatus.textContent = '反馈已复制到剪贴板。';
+            } catch {
+                output.focus();
+                output.select();
+                const copied = document.execCommand('copy');
+                copyStatus.textContent = copied ? '反馈已复制到剪贴板。' : '自动复制失败，请手动复制下方文本。';
+            }
+        }
+
+        function resetFeedback() {
+            decisionInputs().forEach((input, index) => {
+                input.checked = index === 0;
+            });
+            priorityInputs().forEach((input, index) => {
+                input.checked = index < 2;
+            });
+            notes.value = '';
+            buildFeedback();
+            copyStatus.textContent = '已恢复推荐选项。';
+        }
+
+        document.getElementById('generate').addEventListener('click', buildFeedback);
+        document.getElementById('copy').addEventListener('click', copyFeedback);
+        document.getElementById('reset').addEventListener('click', resetFeedback);
+        decisionInputs().forEach((input) => input.addEventListener('change', buildFeedback));
+        priorityInputs().forEach((input) => input.addEventListener('change', buildFeedback));
+        notes.addEventListener('input', buildFeedback);
+        buildFeedback();
+    </script>
+</body>
+</html>
