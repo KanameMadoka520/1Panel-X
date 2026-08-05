@@ -166,6 +166,12 @@ func (u *FirewallService) OperateFirewall(req dto.FirewallOperation) error {
 	if err != nil {
 		return err
 	}
+	fail2BanState := newFirewallFail2BanState()
+	if client.Name() == "firewalld" && req.Operation == "stop" {
+		if err := fail2BanState.rememberBeforeFirewallStop(); err != nil {
+			return err
+		}
+	}
 	needRestartDocker := false
 	switch req.Operation {
 	case "start":
@@ -208,6 +214,11 @@ func (u *FirewallService) OperateFirewall(req dto.FirewallOperation) error {
 	if needRestartDocker && req.WithDockerRestart {
 		if err := controller.HandleRestart("docker"); err != nil {
 			return fmt.Errorf("failed to restart Docker: %v", err)
+		}
+	}
+	if client.Name() == "firewalld" && req.Operation == "start" {
+		if err := fail2BanState.restoreAfterFirewallStart(); err != nil {
+			return err
 		}
 	}
 	return nil

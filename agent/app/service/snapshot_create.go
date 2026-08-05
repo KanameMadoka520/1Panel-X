@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -193,21 +194,52 @@ func handleSnapshot(req dto.SnapshotCreate, taskItem *task.Task, jobID, retry, t
 		req.InterruptStep = ""
 	}
 	if len(req.InterruptStep) == 0 || req.InterruptStep == "SnapUpload" {
+		uploadTimeout := time.Duration(timeout) * time.Second
 		taskItem.AddSubTaskWithAliasAndOps(
 			"SnapUpload",
 			func(t *task.Task) error {
-				return snapUpload(itemHelper, req.SourceAccountIDs, req.DownloadAccountID, retry, fmt.Sprintf("%s.tar.gz", rootDir))
-			}, nil, int(retry), time.Duration(timeout)*time.Second,
+				uploadHelper := itemHelper
+				uploadHelper.Task = *t
+				return snapUpload(uploadHelper, req.SourceAccountIDs, req.DownloadAccountID, retry, fmt.Sprintf("%s.tar.gz", rootDir), uploadTimeout)
+			}, nil, 0, uploadTimeout,
 		)
 		req.InterruptStep = ""
 	}
-	if err := taskItem.Execute(); err != nil {
+	if err := taskItem.ExecuteToCompletion(); err != nil {
 		_ = snapshotRepo.Update(req.ID, map[string]interface{}{"status": constant.StatusFailed, "message": err.Error(), "interrupt_step": taskItem.Task.CurrentStep})
+		if jobID != 0 {
+			cleanupFailedCronjobSnapshot(req, rootDir)
+		}
 		return err
 	}
 	_ = snapshotRepo.Update(req.ID, map[string]interface{}{"status": constant.StatusSuccess, "interrupt_step": ""})
 	_ = os.RemoveAll(rootDir)
 	return nil
+}
+
+func cleanupFailedCronjobSnapshot(req dto.SnapshotCreate, rootDir string) {
+	if err := os.RemoveAll(rootDir); err != nil {
+		global.LOG.Errorf("remove failed cronjob snapshot directory %s failed, err: %v", rootDir, err)
+	}
+
+	fileName := path.Base(rootDir) + ".tar.gz"
+	filePath := path.Join("system_snapshot", fileName)
+	if err := os.Remove(path.Join(global.Dir.LocalBackupDir, "tmp/system", fileName)); err != nil && !os.IsNotExist(err) {
+		global.LOG.Errorf("remove failed cronjob snapshot file %s failed, err: %v", filePath, err)
+	}
+
+	accounts := NewBackupClientMap(strings.Split(req.SourceAccountIDs, ","))
+	for _, account := range accounts {
+		if !account.isOk {
+			global.LOG.Errorf("cronjob snapshot cleanup client is unavailable for account %d", account.id)
+			continue
+		}
+		target := path.Join(account.backupPath, filePath)
+		_, _ = account.client.Delete(target)
+		if exists, err := account.client.Exist(target); err != nil || exists {
+			global.LOG.Errorf("cronjob snapshot artifact cleanup could not be confirmed for account %d", account.id)
+		}
+	}
 }
 
 type snapHelper struct {
@@ -561,15 +593,75 @@ func snapCompress(snap snapHelper, rootDir string, secret string) error {
 	return nil
 }
 
-func snapUpload(snap snapHelper, accounts string, downloadID, retry uint, file string) error {
+func snapUpload(snap snapHelper, accounts string, downloadID, retry uint, file string, timeout time.Duration) error {
 	snap.Task.Log("---------------------- 8 / 8 ----------------------")
 	snap.Task.LogStart(i18n.GetMsgByKey("SnapUpload"))
 
 	src := path.Join(global.Dir.LocalBackupDir, "tmp/system", path.Base(file))
 	dst := path.Join("system_snapshot", path.Base(file))
-	accountMap := NewBackupClientMap(strings.Split(accounts, ","))
+	ctx, cancel := snapshotUploadContext(snap.Task.TaskCtx, timeout)
+	defer cancel()
+	downloadAccount := fmt.Sprintf("%d", downloadID)
+	accountMap := NewBackupClientMapWithContext(ctx, []string{downloadAccount})
 	if !accountMap[fmt.Sprintf("%d", downloadID)].isOk {
 		return buserr.New(i18n.GetMsgWithDetail("LoadBackupFailed", accountMap[fmt.Sprintf("%d", downloadID)].message))
 	}
-	return uploadWithMap(snap.Task, accountMap, src, dst, accounts, downloadID, retry)
+	remainingAccounts := make([]string, 0)
+	for _, account := range strings.Split(accounts, ",") {
+		if account == "" || account == downloadAccount {
+			continue
+		}
+		remainingAccounts = append(remainingAccounts, account)
+	}
+	optionalMap := make(map[string]backupClientHelper)
+	if len(remainingAccounts) > 0 {
+		optionalMap = NewBackupClientMapWithContext(ctx, remainingAccounts)
+	}
+	return uploadSnapshotArtifacts(ctx, snap.Task, accountMap, optionalMap, src, dst, downloadAccount, remainingAccounts, downloadID, retry)
+}
+
+func snapshotUploadContext(parent context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+	if parent == nil {
+		parent = context.Background()
+	}
+	if timeout > 0 {
+		return context.WithTimeout(parent, timeout)
+	}
+	return context.WithCancel(parent)
+}
+
+func uploadSnapshotArtifacts(
+	ctx context.Context,
+	taskItem task.Task,
+	primaryMap, optionalMap map[string]backupClientHelper,
+	src, dst, primaryAccount string,
+	optionalAccounts []string,
+	downloadID, retry uint,
+) error {
+	rollback := func(uploadErr error) error {
+		allAccounts := make(map[string]backupClientHelper, len(primaryMap)+len(optionalMap))
+		for accountID, account := range primaryMap {
+			allAccounts[accountID] = account
+		}
+		for accountID, account := range optionalMap {
+			allAccounts[accountID] = account
+		}
+		if err := cleanupCronjobBackupArtifacts(allAccounts, src, dst, false); err != nil {
+			return task.MarkNonRetryable(errors.New("snapshot upload failed and remote rollback could not be confirmed"))
+		}
+		return uploadErr
+	}
+
+	if err := uploadWithMapWithContext(ctx, taskItem, primaryMap, src, dst, primaryAccount, downloadID, retry, false, false); err != nil {
+		return rollback(err)
+	}
+	if len(optionalAccounts) > 0 {
+		if err := uploadWithMapWithContext(ctx, taskItem, optionalMap, src, dst, strings.Join(optionalAccounts, ","), downloadID, retry, false, false); err != nil {
+			return rollback(err)
+		}
+	}
+	if err := os.RemoveAll(src); err != nil {
+		global.LOG.Errorf("remove uploaded snapshot source artifact %s failed", src)
+	}
+	return nil
 }

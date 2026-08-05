@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1371,7 +1372,9 @@ func (c *blockingBackupClient) ListBuckets() ([]interface{}, error) {
 func (c *blockingBackupClient) ListObjects(string) ([]string, error) { return nil, nil }
 func (c *blockingBackupClient) Exist(string) (bool, error)           { return false, nil }
 func (c *blockingBackupClient) Delete(string) (bool, error)          { return false, nil }
-func (c *blockingBackupClient) Upload(string, string) (bool, error)  { return false, nil }
+func (c *blockingBackupClient) Upload(context.Context, string, string) (bool, error) {
+	return false, nil
+}
 func (c *blockingBackupClient) Download(string, string) (bool, error) {
 	return false, nil
 }

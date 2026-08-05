@@ -603,7 +603,7 @@ func (c *ClamService) HandleOnce(id uint) error {
 	}
 	clamUtil.AddScanTask(taskItem, clamItem, record.StartTime.Format(constant.DateTimeSlimLayout))
 	go func() {
-		err := taskItem.Execute()
+		err := taskItem.ExecuteToCompletion()
 		taskRepo := repo.NewITaskRepo()
 		taskItem, _ := taskRepo.GetFirst(taskRepo.WithByID(record.TaskID))
 		if len(taskItem.ID) == 0 {

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -60,7 +61,7 @@ func (u *CronjobService) handleApp(cronjob model.Cronjob, startTime time.Time, t
 
 			src := path.Join(backupDir, record.FileName)
 			dst := strings.TrimPrefix(src, global.Dir.LocalBackupDir+"/tmp/")
-			if err := uploadWithMap(*task, accountMap, src, dst, cronjob.SourceAccountIDs, cronjob.DownloadAccountID, cronjob.RetryTimes); err != nil {
+			if err := uploadCronjobArtifact(task, accountMap, src, dst, cronjob.SourceAccountIDs, cronjob.DownloadAccountID); err != nil {
 				if retry < int(cronjob.RetryTimes) || !cronjob.IgnoreErr {
 					retry++
 					return err
@@ -72,7 +73,7 @@ func (u *CronjobService) handleApp(cronjob model.Cronjob, startTime time.Time, t
 			record.FileDir = path.Dir(dst)
 			if err := backupRepo.CreateRecord(&record); err != nil {
 				global.LOG.Errorf("save backup record failed, err: %v", err)
-				return err
+				return rollbackCronjobUploadAfterMetadataFailure(accountMap, src, dst, err)
 			}
 			cleanupErr := u.removeExpiredBackup(cronjob, accountMap, record)
 			cleanAccountMap(accountMap)
@@ -119,7 +120,7 @@ func (u *CronjobService) handleWebsite(cronjob model.Cronjob, startTime time.Tim
 
 			src := path.Join(backupDir, record.FileName)
 			dst := strings.TrimPrefix(src, global.Dir.LocalBackupDir+"/tmp/")
-			if err := uploadWithMap(*task, accountMap, src, dst, cronjob.SourceAccountIDs, cronjob.DownloadAccountID, cronjob.RetryTimes); err != nil {
+			if err := uploadCronjobArtifact(task, accountMap, src, dst, cronjob.SourceAccountIDs, cronjob.DownloadAccountID); err != nil {
 				if retry < int(cronjob.RetryTimes) || !cronjob.IgnoreErr {
 					retry++
 					return err
@@ -131,7 +132,7 @@ func (u *CronjobService) handleWebsite(cronjob model.Cronjob, startTime time.Tim
 			record.FileDir = path.Dir(dst)
 			if err := backupRepo.CreateRecord(&record); err != nil {
 				global.LOG.Errorf("save backup record failed, err: %v", err)
-				return err
+				return rollbackCronjobUploadAfterMetadataFailure(accountMap, src, dst, err)
 			}
 			cleanupErr := u.removeExpiredBackup(cronjob, accountMap, record)
 			cleanAccountMap(accountMap)
@@ -216,7 +217,7 @@ func (u *CronjobService) handleDatabase(cronjob model.Cronjob, startTime time.Ti
 
 			src := path.Join(backupDir, record.FileName)
 			dst := strings.TrimPrefix(src, global.Dir.LocalBackupDir+"/tmp/")
-			if err := uploadWithMap(*task, accountMap, src, dst, cronjob.SourceAccountIDs, cronjob.DownloadAccountID, cronjob.RetryTimes); err != nil {
+			if err := uploadCronjobArtifact(task, accountMap, src, dst, cronjob.SourceAccountIDs, cronjob.DownloadAccountID); err != nil {
 				if retry < int(cronjob.RetryTimes) || !cronjob.IgnoreErr {
 					retry++
 					return err
@@ -228,7 +229,7 @@ func (u *CronjobService) handleDatabase(cronjob model.Cronjob, startTime time.Ti
 			record.FileDir = path.Dir(dst)
 			if err := backupRepo.CreateRecord(&record); err != nil {
 				global.LOG.Errorf("save backup record failed, err: %v", err)
-				return err
+				return rollbackCronjobUploadAfterMetadataFailure(accountMap, src, dst, err)
 			}
 			cleanupErr := u.removeExpiredBackup(cronjob, accountMap, record)
 			cleanAccountMap(accountMap)
@@ -274,13 +275,13 @@ func (u *CronjobService) handleDirectory(cronjob model.Cronjob, startTime time.T
 
 		src := path.Join(backupDir, fileName)
 		dst := strings.TrimPrefix(src, global.Dir.LocalBackupDir+"/tmp/")
-		if err := uploadWithMap(*task, accountMap, src, dst, cronjob.SourceAccountIDs, cronjob.DownloadAccountID, cronjob.RetryTimes); err != nil {
+		if err := uploadCronjobArtifact(task, accountMap, src, dst, cronjob.SourceAccountIDs, cronjob.DownloadAccountID); err != nil {
 			return err
 		}
 		record.FileDir = path.Dir(dst)
 		record.FileName = fileName
 		if err := backupRepo.CreateRecord(&record); err != nil {
-			return err
+			return rollbackCronjobUploadAfterMetadataFailure(accountMap, src, dst, err)
 		}
 		return markRetentionCleanupNonRetryable(u.removeExpiredBackup(cronjob, accountMap, record))
 	}, nil, int(cronjob.RetryTimes), time.Duration(cronjob.Timeout)*time.Second)
@@ -309,13 +310,13 @@ func (u *CronjobService) handleSystemLog(cronjob model.Cronjob, startTime time.T
 
 		src := path.Join(path.Dir(backupDir), fileName)
 		dst := strings.TrimPrefix(src, global.Dir.LocalBackupDir+"/tmp/")
-		if err := uploadWithMap(*task, accountMap, src, dst, cronjob.SourceAccountIDs, cronjob.DownloadAccountID, cronjob.RetryTimes); err != nil {
+		if err := uploadCronjobArtifact(task, accountMap, src, dst, cronjob.SourceAccountIDs, cronjob.DownloadAccountID); err != nil {
 			return err
 		}
 		record.FileDir = path.Dir(dst)
 		record.FileName = fileName
 		if err := backupRepo.CreateRecord(&record); err != nil {
-			return err
+			return rollbackCronjobUploadAfterMetadataFailure(accountMap, src, dst, err)
 		}
 		return markRetentionCleanupNonRetryable(u.removeExpiredBackup(cronjob, accountMap, record))
 	}, nil, int(cronjob.RetryTimes), time.Duration(cronjob.Timeout)*time.Second)
@@ -370,16 +371,45 @@ func (u *CronjobService) handleSnapshot(cronjob model.Cronjob, jobRecord model.J
 		return err
 	}
 	record.FileName = req.Name + ".tar.gz"
+	markBackupArtifactsCreated(accountMap)
 
 	if err := backupRepo.CreateRecord(&record); err != nil {
 		global.LOG.Errorf("save backup record failed, err: %v", err)
-		return err
+		return rollbackCronjobUploadAfterMetadataFailure(accountMap, "", path.Join(record.FileDir, record.FileName), err)
 	}
 	return task.MarkNonRetryable(u.removeExpiredBackup(cronjob, accountMap, record))
 }
 
 func markRetentionCleanupNonRetryable(err error) error {
 	return task.MarkNonRetryable(err)
+}
+
+func uploadCronjobArtifact(
+	taskItem *task.Task,
+	accountMap map[string]backupClientHelper,
+	src, dst, accountIDs string,
+	downloadAccountID uint,
+) error {
+	// The surrounding cronjob subtask owns whole-operation retries. Keeping
+	// provider upload attempts at one prevents RetryTimes from multiplying.
+	return uploadWithMap(*taskItem, accountMap, src, dst, accountIDs, downloadAccountID, 0, true)
+}
+
+func rollbackCronjobUploadAfterMetadataFailure(accountMap map[string]backupClientHelper, src, dst string, metadataErr error) error {
+	if cleanupErr := cleanupCronjobBackupArtifacts(accountMap, src, dst, false); cleanupErr != nil {
+		return task.MarkNonRetryable(errors.New("backup metadata persistence failed and uploaded artifacts could not be cleaned safely"))
+	}
+	return metadataErr
+}
+
+func markBackupArtifactsCreated(accountMap map[string]backupClientHelper) {
+	for accountID, account := range accountMap {
+		if !account.isOk || account.client == nil {
+			continue
+		}
+		account.hasBackup = true
+		accountMap[accountID] = account
+	}
 }
 
 func loadAppsForJob(cronjob model.Cronjob) []model.AppInstall {

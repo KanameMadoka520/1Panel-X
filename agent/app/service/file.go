@@ -459,7 +459,7 @@ func (f *FileService) Compress(c request.FileCompress) error {
 			success = true
 			return nil
 		}, nil)
-		_ = taskItem.Execute()
+		_ = taskItem.ExecuteToCompletion()
 	}()
 	return nil
 }
@@ -485,7 +485,7 @@ func preflightDecompressTool(decompressType files.CompressType) error {
 }
 
 func (f *FileService) StopCompress(taskID string) error {
-	if cancel, ok := global.TaskCtxMap[taskID]; ok {
+	if cancel, ok := global.LoadTaskCancel(taskID); ok {
 		cancel()
 		return nil
 	}
@@ -493,7 +493,7 @@ func (f *FileService) StopCompress(taskID string) error {
 }
 
 func (f *FileService) StopDeCompress(taskID string) error {
-	if cancel, ok := global.TaskCtxMap[taskID]; ok {
+	if cancel, ok := global.LoadTaskCancel(taskID); ok {
 		cancel()
 		return nil
 	}
@@ -545,7 +545,7 @@ func (f *FileService) DeCompress(c request.FileDeCompress) error {
 			success = true
 			return nil
 		}, nil)
-		_ = taskItem.Execute()
+		_ = taskItem.ExecuteToCompletion()
 	}()
 	return nil
 }
@@ -621,8 +621,15 @@ func copyDecompressEntry(ctx context.Context, srcPath, dstPath string) (retErr e
 		return os.Chtimes(dstPath, info.ModTime(), info.ModTime())
 	}
 
-	if err := os.RemoveAll(dstPath); err != nil {
+	dstInfo, err := os.Lstat(dstPath)
+	keepExistingFile := err == nil && dstInfo.Mode().IsRegular()
+	if err != nil && !os.IsNotExist(err) {
 		return err
+	}
+	if !keepExistingFile {
+		if err := os.RemoveAll(dstPath); err != nil {
+			return err
+		}
 	}
 	if err := os.MkdirAll(filepath.Dir(dstPath), constant.DirPerm); err != nil {
 		return err
@@ -647,8 +654,10 @@ func copyDecompressEntry(ctx context.Context, srcPath, dstPath string) (retErr e
 	if _, err := io.Copy(dstFile, srcFile); err != nil {
 		return err
 	}
-	if err := applyDecompressOwnership(srcPath, dstPath); err != nil {
-		return err
+	if !keepExistingFile {
+		if err := applyDecompressOwnership(srcPath, dstPath); err != nil {
+			return err
+		}
 	}
 	return os.Chtimes(dstPath, info.ModTime(), info.ModTime())
 }
@@ -1376,7 +1385,7 @@ func (f *FileService) Convert(req request.FileConvertRequest) {
 		return nil
 	}, nil)
 	go func() {
-		_ = convertTask.Execute()
+		_ = convertTask.ExecuteToCompletion()
 	}()
 }
 

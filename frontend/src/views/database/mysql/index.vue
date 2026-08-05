@@ -29,12 +29,15 @@
                     v-if="currentDB && (currentDB.from !== 'local' || mysqlStatus === 'Running')"
                     v-permission
                     type="primary"
-                    @click="onOpenDialog()"
+                    @click="onCreateAction()"
                 >
                     {{ $t('commons.button.create') }}
                 </el-button>
                 <el-button v-if="currentDB" @click="onChangeConn()" type="primary" plain>
                     {{ $t('database.databaseConnInfo') }}
+                </el-button>
+                <el-button v-if="currentDB" @click="openUserDrawer()" type="primary" plain>
+                    {{ $t('commons.table.user') }}
                 </el-button>
                 <el-button
                     v-if="currentDB && (currentDB.from !== 'local' || mysqlStatus === 'Running')"
@@ -134,67 +137,16 @@
                             </div>
                         </template>
                     </el-table-column>
-                    <el-table-column :label="$t('commons.login.username')" show-overflow-tooltip prop="username">
+                    <el-table-column :label="$t('database.authorizedUsers')" min-width="130">
                         <template #default="{ row }">
-                            <div class="flex items-center" v-if="row.username">
-                                <span>
-                                    {{ row.username }}
-                                </span>
-                            </div>
-                            <div v-else>
-                                <el-button
-                                    :disabled="row.isDelete"
-                                    style="margin-left: -3px"
-                                    type="primary"
-                                    link
-                                    @click="onBind(row)"
-                                >
-                                    {{ $t('database.userBind') }}
-                                </el-button>
-                            </div>
-                        </template>
-                    </el-table-column>
-                    <el-table-column :label="$t('commons.login.password')" prop="password">
-                        <template #default="{ row }">
-                            <span v-if="row.username === ''">-</span>
-                            <div class="flex items-center flex-wrap" v-if="row.password && row.username">
-                                <div class="star-center" v-if="!row.showPassword">
-                                    <span>**********</span>
-                                </div>
-                                <div>
-                                    <span v-if="row.showPassword">
-                                        {{ row.password }}
-                                    </span>
-                                </div>
-                                <el-button
-                                    v-if="!row.showPassword"
-                                    link
-                                    @click="row.showPassword = true"
-                                    icon="View"
-                                    class="ml-1.5"
-                                ></el-button>
-                                <el-button
-                                    v-if="row.showPassword"
-                                    link
-                                    @click="row.showPassword = false"
-                                    icon="Hide"
-                                    class="ml-1.5"
-                                ></el-button>
-                                <div>
-                                    <CopyButton :content="row.password" />
-                                </div>
-                            </div>
-                            <div v-if="row.password === '' && row.username">
-                                <el-button
-                                    :disabled="row.isDelete"
-                                    style="margin-left: -3px"
-                                    link
-                                    type="primary"
-                                    @click="onChangePassword(row)"
-                                >
-                                    {{ $t('database.passwordHelper') }}
-                                </el-button>
-                            </div>
+                            <el-button
+                                link
+                                type="primary"
+                                :disabled="row.isDelete"
+                                @click="openAuthorizationManagement(row)"
+                            >
+                                {{ $t('database.authorizedUserCount', [row.authorizedUsers?.length || 0]) }}
+                            </el-button>
                         </template>
                     </el-table-column>
                     <el-table-column :label="$t('commons.table.description')" prop="description" show-overflow-tooltip>
@@ -260,8 +212,6 @@
             </template>
         </DialogPro>
 
-        <BindDialog ref="bindRef" @search="search" />
-        <PasswordDialog ref="passwordRef" @search="search" />
         <RootPasswordDialog ref="connRef" />
         <UploadDialog ref="uploadRef" />
         <OperateDialog @search="search" ref="dialogRef" />
@@ -270,14 +220,16 @@
         <DeleteDialog ref="deleteRef" @search="search" />
         <PortJumpDialog ref="dialogPortJumpRef" />
         <TerminalDialog ref="dialogTerminalRef" />
+        <UserDialog ref="userRef" @search="search" />
+        <BindDialog ref="bindRef" @search="onBindSearch" />
     </div>
 </template>
 
 <script lang="ts" setup>
 import BindDialog from '@/views/database/mysql/bind/index.vue';
+import UserDialog from '@/views/database/mysql/user/index.vue';
 import OperateDialog from '@/views/database/mysql/create/index.vue';
 import DeleteDialog from '@/views/database/mysql/delete/index.vue';
-import PasswordDialog from '@/views/database/mysql/password/index.vue';
 import RootPasswordDialog from '@/views/database/mysql/conn/index.vue';
 import TerminalDialog from '@/components/terminal/database.vue';
 import AppResources from '@/views/database/mysql/check/index.vue';
@@ -293,6 +245,7 @@ import {
     deleteCheckMysqlDB,
     listDatabases,
     loadDBFromRemote,
+    searchMysqlGrantSummary,
     searchMysqlDBs,
     updateMysqlDescription,
 } from '@/api/modules/database';
@@ -321,6 +274,7 @@ const currentDB = ref<Database.DatabaseOption>();
 const currentDBName = ref();
 
 const bindRef = ref();
+const userRef = ref();
 const checkRef = ref();
 const deleteRef = ref();
 const dialogTerminalRef = ref();
@@ -335,7 +289,8 @@ const appStatusRef = ref();
 
 const dialogPortJumpRef = ref();
 
-const data = ref();
+const data = ref<Database.MysqlDBInfo[]>([]);
+let grantSummaryRequestID = 0;
 const paginationConfig = reactive({
     cacheSizeKey: 'mysql-page-size',
     currentPage: 1,
@@ -352,13 +307,18 @@ const mysqlVersion = ref();
 
 const dialogRef = ref();
 const onOpenDialog = async () => {
+    if (!currentDB.value?.database) {
+        return;
+    }
     let params = {
         from: currentDB.value.from,
         type: currentDB.value.type,
-        database: currentDBName.value,
+        database: currentDB.value.database,
     };
     dialogRef.value!.acceptParams(params);
 };
+
+const onCreateAction = async () => onOpenDialog();
 
 const dialogBackupRef = ref();
 
@@ -366,10 +326,13 @@ const uploadRef = ref();
 
 const connRef = ref();
 const onChangeConn = async () => {
+    if (!currentDB.value?.database) {
+        return;
+    }
     connRef.value!.acceptParams({
         from: currentDB.value.from,
         type: currentDB.value.type,
-        database: currentDBName.value,
+        database: currentDB.value.database,
     });
 };
 
@@ -391,8 +354,6 @@ const goRemoteDB = async () => {
 const goTerminal = () => {
     dialogTerminalRef.value.acceptParams({ databaseType: currentDB.value.type, database: currentDB.value.database });
 };
-
-const passwordRef = ref();
 
 const onSetting = async () => {
     if (currentDB.value) {
@@ -425,6 +386,14 @@ const changeDatabase = async () => {
 };
 
 const search = async (column?: any) => {
+    await searchDatabases(column);
+};
+
+const searchDatabases = async (column?: any) => {
+    if (!currentDB.value?.database) {
+        return;
+    }
+    const requestID = ++grantSummaryRequestID;
     paginationConfig.orderBy = column?.order ? column.prop : paginationConfig.orderBy;
     paginationConfig.order = column?.order ? column.order : paginationConfig.order;
     let params = {
@@ -436,8 +405,50 @@ const search = async (column?: any) => {
         order: paginationConfig.order,
     };
     const res = await searchMysqlDBs(params);
+    if (requestID !== grantSummaryRequestID) {
+        return;
+    }
     data.value = res.data.items || [];
     paginationConfig.total = res.data.total;
+    loadGrantSummary(data.value, requestID);
+};
+
+const loadGrantSummary = async (items: Database.MysqlDBInfo[], requestID: number) => {
+    if (!currentDB.value?.database || items.length === 0) {
+        return;
+    }
+    try {
+        const res = await searchMysqlGrantSummary({
+            database: currentDB.value.database,
+            dbs: items.map((item) => item.name),
+        });
+        if (requestID !== grantSummaryRequestID) {
+            return;
+        }
+        for (const item of data.value) {
+            const users = res.data?.[item.name] || [];
+            item.authorizedUsers = users;
+        }
+    } catch {
+        return;
+    }
+};
+
+const openUserDrawer = async () => {
+    if (!currentDB.value?.database) {
+        return;
+    }
+    userRef.value!.acceptParams({ database: currentDB.value.database });
+};
+
+const openAuthorizationManagement = (row: Database.MysqlDBInfo) => {
+    if (!currentDB.value?.database) {
+        return;
+    }
+    bindRef.value!.acceptParams({
+        database: currentDB.value.database,
+        db: row.name,
+    });
 };
 
 const loadDB = async () => {
@@ -583,67 +594,7 @@ const onDelete = async (row: Database.MysqlDBInfo) => {
     }
 };
 
-const onBind = async (row: Database.MysqlDBInfo) => {
-    let param = {
-        database: currentDBName.value,
-        mysqlName: row.name,
-        from: row.from,
-    };
-    bindRef.value.acceptParams(param);
-};
-
-const onChangePassword = async (row: Database.MysqlDBInfo) => {
-    let param = {
-        id: row.id,
-        from: row.from,
-        type: currentDB.value.type,
-        database: currentDBName.value,
-        mysqlName: row.name,
-        operation: 'password',
-        username: row.username,
-        password: row.password,
-    };
-    passwordRef.value.acceptParams(param);
-};
-
 const buttons = [
-    {
-        label: i18n.global.t('database.changePassword'),
-        permission: true,
-        disabled: (row: Database.MysqlDBInfo) => {
-            return !row.username || row.isDelete;
-        },
-        click: (row: Database.MysqlDBInfo) => {
-            onChangePassword(row);
-        },
-    },
-    {
-        label: i18n.global.t('database.permission'),
-        permission: true,
-        disabled: (row: Database.MysqlDBInfo) => {
-            return !row.password || row.isDelete;
-        },
-        click: (row: Database.MysqlDBInfo) => {
-            let param = {
-                id: row.id,
-                from: row.from,
-                type: currentDB.value.type,
-                database: currentDBName.value,
-                mysqlName: row.name,
-                operation: 'privilege',
-                privilege: '',
-                privilegeIPs: '',
-                password: '',
-            };
-            if (row.permission === '%' || row.permission === 'localhost') {
-                param.privilege = row.permission;
-            } else {
-                param.privilegeIPs = row.permission;
-                param.privilege = 'ip';
-            }
-            passwordRef.value.acceptParams(param);
-        },
-    },
     {
         label: i18n.global.t('database.backupList'),
         permission: true,
@@ -683,6 +634,10 @@ const buttons = [
         },
     },
 ];
+
+const onBindSearch = async () => {
+    await search();
+};
 
 onMounted(() => {
     loadDBOptions();

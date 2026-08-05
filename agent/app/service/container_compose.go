@@ -238,7 +238,7 @@ func (u *ContainerService) CreateCompose(req dto.ComposeCreate) error {
 			_ = composeRepo.CreateRecord(&model.Compose{Name: strings.ToLower(req.Name), Path: req.Path})
 			return nil
 		}, nil)
-		_ = taskItem.Execute()
+		_ = taskItem.ExecuteToCompletion()
 	}()
 
 	return nil
@@ -321,7 +321,7 @@ func (u *ContainerService) ComposeUpdate(req dto.ComposeUpdate) error {
 
 			return nil
 		}, nil)
-		_ = taskItem.Execute()
+		_ = taskItem.ExecuteToCompletion()
 	}()
 
 	return nil

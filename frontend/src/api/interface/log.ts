@@ -43,6 +43,38 @@ export namespace Log {
         logType: string;
     }
 
+    export interface SystemLog {
+        source: string;
+        items: SystemLogItem[];
+        hasMore: boolean;
+        nextCursor: string;
+    }
+
+    export interface SystemLogStatus {
+        source: 'journalctl' | 'file';
+        version: string;
+        keywordFilterSupported: boolean;
+        message: string;
+    }
+
+    export interface SystemLogSearch {
+        pageSize: number;
+        cursor?: string;
+        startTime?: Date;
+        endTime?: Date;
+        keyword?: string;
+        priority?: string;
+        service?: string;
+    }
+
+    export interface SystemLogItem {
+        time: string;
+        priority: string;
+        service: string;
+        message: string;
+        raw: string;
+    }
+
     export interface SearchTaskReq extends ReqPage {
         type: string;
         status: string;

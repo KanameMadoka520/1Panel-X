@@ -122,7 +122,7 @@ func (u *AIToolService) Create(req dto.OllamaModelName) error {
 			}
 			return nil
 		}, nil)
-		if err := taskItem.Execute(); err != nil {
+		if err := taskItem.ExecuteToCompletion(); err != nil {
 			_ = aiRepo.Update(info.ID, map[string]interface{}{"status": constant.StatusFailed, "message": err.Error()})
 		}
 	}()
@@ -176,7 +176,7 @@ func (u *AIToolService) Recreate(req dto.OllamaModelName) error {
 			}
 			return nil
 		}, nil)
-		if err := taskItem.Execute(); err != nil {
+		if err := taskItem.ExecuteToCompletion(); err != nil {
 			_ = aiRepo.Update(modelInfo.ID, map[string]interface{}{"status": constant.StatusFailed, "message": err.Error()})
 		}
 	}()

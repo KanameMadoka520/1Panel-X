@@ -31,6 +31,7 @@
                 </el-button>
             </template>
             <template v-if="!openNginxConfig" #rightToolBar>
+                <TableViewSwitch v-model="viewMode" storage-key="website" />
                 <el-select class="p-w-200" v-model="req.type" @change="search()" :disabled="disabledConfig">
                     <template #prefix>{{ $t('commons.table.type') }}</template>
                     <el-option :label="$t('commons.table.all')" :value="''"></el-option>
@@ -66,6 +67,8 @@
             <template v-if="!openNginxConfig" #main>
                 <ComplexTable
                     :pagination-config="paginationConfig"
+                    :default-sort="tableSort.order ? tableSort : undefined"
+                    v-model:view-mode="viewMode"
                     :data="data"
                     @sort-change="changeSort"
                     @search="search()"
@@ -80,16 +83,38 @@
                         placement: 'bottom-start',
                     }"
                 >
-                    <el-table-column type="selection" width="30" />
+                    <el-table-column type="selection" width="32" />
                     <el-table-column
                         :label="$t('commons.table.name')"
                         fix
                         prop="primaryDomain"
                         min-width="250px"
                         sortable
+                        card-type="name"
                     >
-                        <template #default="{ row, $index }">
+                        <template #default="{ row, $index, viewMode: columnViewMode }">
+                            <div v-if="columnViewMode === 'card'" class="website-card-domain">
+                                <el-text
+                                    type="primary"
+                                    class="website-card-domain__name cursor-pointer"
+                                    @click="openConfig(row.id)"
+                                >
+                                    {{ row.primaryDomain }}
+                                </el-text>
+                                <Domain
+                                    class="website-card-domain__actions"
+                                    :row="row"
+                                    :is-hovered="true"
+                                    :defaultHttpPort="appStatusRef?.getHttpPort?.() || 0"
+                                    :defaultHttpsPort="appStatusRef?.getHttpsPort?.() || 0"
+                                    :hide-name="true"
+                                    :show-favorite="true"
+                                    @favorite-change="favoriteWebsite"
+                                    @domain-edit="handleDomainEdit"
+                                />
+                            </div>
                             <Domain
+                                v-else
                                 :row="row"
                                 :is-hovered="hoveredRowIndex === $index"
                                 :defaultHttpPort="appStatusRef?.getHttpPort?.() || 0"
@@ -106,6 +131,7 @@
                         show-overflow-tooltip
                         prop="type"
                         sortable
+                        card-type="content"
                     >
                         <template #default="{ row }">
                             <div v-if="row.type">
@@ -116,7 +142,7 @@
                             </div>
                         </template>
                     </el-table-column>
-                    <el-table-column :label="$t('website.sitePath')" prop="sitePath" width="90px">
+                    <el-table-column :label="$t('website.sitePath')" prop="sitePath" width="90px" card-type="content">
                         <template #default="{ row }">
                             <el-button
                                 v-permission:view="'host_file_view'"
@@ -136,6 +162,7 @@
                         width="120px"
                         sortable
                         align="center"
+                        card-type="status"
                     >
                         <template #default="{ row }">
                             <span v-if="row.type === 'stream'">
@@ -166,12 +193,14 @@
                         :label="$t('commons.table.protocol')"
                         prop="protocol"
                         width="90px"
+                        card-type="content"
                     ></el-table-column>
                     <el-table-column
                         :label="$t('website.expireDate')"
                         prop="expireDate"
                         :sortable="'custom'"
                         width="150px"
+                        card-type="description"
                     >
                         <template #default="{ row }">
                             <div v-if="row.showdate">
@@ -207,7 +236,12 @@
                             </div>
                         </template>
                     </el-table-column>
-                    <el-table-column :label="$t('website.sslExpireDate')" prop="sslExpireDate" width="160px">
+                    <el-table-column
+                        :label="$t('website.sslExpireDate')"
+                        prop="sslExpireDate"
+                        width="160px"
+                        card-type="description"
+                    >
                         <template #default="{ row }">
                             <el-tag v-if="row.protocol == 'HTTPS'" :type="row.sslStatus">
                                 {{ dateFormatSimple(row.sslExpireDate) }}
@@ -215,7 +249,12 @@
                             <span v-else></span>
                         </template>
                     </el-table-column>
-                    <el-table-column :label="$t('website.remark')" prop="remark" min-width="150px">
+                    <el-table-column
+                        :label="$t('website.remark')"
+                        prop="remark"
+                        min-width="150px"
+                        card-type="description"
+                    >
                         <template #default="{ row }">
                             <fu-read-write-switch v-permission>
                                 <template #read>
@@ -234,10 +273,18 @@
                         :label="$t('commons.table.operate')"
                         :fixed="isMobile ? false : 'right'"
                         fix
+                        card-type="button"
                     />
-                    <template #footerLeft>
-                        <div class="footer-left-button">
+                    <template #footerLeft="{ selected, toggleSelection }">
+                        <div class="footer-left-button" v-permission>
                             <el-select class="p-w-200" v-model="batchReq.operate">
+                                <template #prefix>
+                                    <el-checkbox
+                                        :model-value="selected"
+                                        @click.stop
+                                        @change="toggleSelection"
+                                    ></el-checkbox>
+                                </template>
                                 <el-option
                                     :label="$t('commons.button.start') + $t('menu.website')"
                                     value="start"
@@ -260,9 +307,7 @@
                                 ></el-option>
                             </el-select>
                             <el-button
-                                class="ml-2"
                                 type="primary"
-                                v-permission
                                 :disabled="selects.length == 0 || batchReq.operate == ''"
                                 @click="batchOp"
                             >
@@ -332,6 +377,7 @@ import { getWebsiteTypes } from '@/global/mimetype';
 import { routerToFileWithPath, routerToNameWithParams, routerToNameWithQuery } from '@/utils/router';
 import { useGlobalStore } from '@/composables/useGlobalStore';
 import { useOperateNodeContext } from '@/composables/useOperateNodeContext';
+import { usePageState } from '@/composables/usePageState';
 
 const { currentNode, isMobile } = useGlobalStore();
 useOperateNodeContext(currentNode);
@@ -353,6 +399,7 @@ const shortcuts = [
 ];
 const WebsiteTypes = getWebsiteTypes();
 const loading = ref(false);
+const viewMode = ref<'table' | 'card'>('table');
 const maskShow = ref(false);
 const createRef = ref();
 const deleteRef = ref();
@@ -383,21 +430,30 @@ const batchSetHttpsRef = ref();
 const nginxVersion = ref();
 const appStatusRef = ref();
 
-const paginationConfig = reactive({
-    cacheSizeKey: 'website-page-size',
-    currentPage: 1,
-    pageSize: Number(localStorage.getItem('website-page-size')) || 20,
-    total: 0,
-});
-let req = reactive({
-    name: '',
-    page: 1,
-    pageSize: 10,
-    orderBy: 'favorite',
-    order: 'descending',
-    websiteGroupId: 0,
-    type: '',
-});
+const pageState = usePageState(() => ({
+    paginationConfig: {
+        cacheSizeKey: 'website-page-size',
+        currentPage: 1,
+        pageSize: Number(localStorage.getItem('website-page-size')) || 20,
+        total: 0,
+    },
+    req: {
+        name: '',
+        page: 1,
+        pageSize: 10,
+        orderBy: 'favorite',
+        order: 'descending',
+        websiteGroupId: 0,
+        type: '',
+    },
+    tableSort: {
+        prop: '',
+        order: null as 'ascending' | 'descending' | null,
+    },
+}));
+const paginationConfig = pageState.paginationConfig;
+const req = pageState.req;
+const tableSort = pageState.tableSort;
 
 const goRouter = async (key: string) => {
     routerToNameWithQuery('AppAll', { install: key });
@@ -426,6 +482,8 @@ const disabledConfig = computed(() => {
 });
 
 const changeSort = ({ prop, order }) => {
+    tableSort.prop = prop || '';
+    tableSort.order = order || null;
     if (order) {
         switch (prop) {
             case 'primaryDomain':
@@ -462,9 +520,16 @@ const search = async () => {
         });
 };
 
-const listGroup = async () => {
+const listGroup = async (searchOnReset = true) => {
     const res = await getAgentGroupList('website');
     groups.value = res.data;
+    if (req.websiteGroupId !== 0 && !groups.value.some((group) => group.id === req.websiteGroupId)) {
+        req.websiteGroupId = 0;
+        paginationConfig.currentPage = 1;
+        if (searchOnReset) {
+            search();
+        }
+    }
 };
 
 const setting = () => {
@@ -688,8 +753,41 @@ const batchOp = () => {
     }
 };
 
-onMounted(() => {
+onMounted(async () => {
+    try {
+        await listGroup(false);
+    } catch {
+        // The request interceptor already reports the error; website loading should continue.
+    }
     search();
-    listGroup();
 });
 </script>
+
+<style scoped>
+.website-card-domain {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.website-card-domain__name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+:deep(.website-card-domain__actions) {
+    position: absolute;
+    bottom: 16px;
+    left: 16px;
+    z-index: 1;
+    width: auto;
+}
+
+:deep(.website-card-domain__actions > div:last-child) {
+    display: flex;
+    align-items: center;
+}
+</style>

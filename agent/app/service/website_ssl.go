@@ -991,7 +991,7 @@ func (w WebsiteSSLService) PushToNode(req request.WebsiteSSLPush) error {
 		return nil
 	}, nil)
 	go func() {
-		if err := pushTask.Execute(); err != nil {
+		if err := pushTask.ExecuteToCompletion(); err != nil {
 			global.LOG.Errorf("push ssl to node failed, sslID: %d, err: %v", websiteSSL.ID, err)
 		}
 	}()

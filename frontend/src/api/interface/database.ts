@@ -23,8 +23,9 @@ export namespace Database {
         username: string;
         password: string;
         permission: string;
-        isDelete: string;
+        isDelete: boolean;
         description: string;
+        authorizedUsers?: MysqlUser[];
     }
     export interface BaseInfo {
         name: string;
@@ -44,18 +45,78 @@ export namespace Database {
         from: string;
         database: string;
         format: string;
+        collation: string;
         username: string;
         password: string;
         permission: string;
         description: string;
     }
 
-    export interface BindUser {
+    export interface MysqlUser {
+        username: string;
+        host: string;
+        password: string;
+        description: string;
+        isDelete: boolean;
+    }
+
+    export interface MysqlGrant {
+        database: string;
+        username: string;
+        host: string;
+    }
+
+    export interface MysqlUserSearch {
+        database: string;
+    }
+
+    export interface MysqlGrantSummarySearch {
+        database: string;
+        dbs: string[];
+    }
+
+    export interface MysqlUserCreate {
+        database: string;
+        username: string;
+        password: string;
+        host: string;
+        description: string;
+        dbs?: string[];
+    }
+
+    export interface MysqlUserDelete {
+        database: string;
+        username: string;
+        host: string;
+    }
+
+    export interface MysqlUserUpdate {
+        database: string;
+        username: string;
+        host: string;
+        newHost: string;
+        description: string;
+    }
+
+    export interface MysqlUserPassword {
+        database: string;
+        username: string;
+        host: string;
+        password: string;
+    }
+
+    export interface MysqlGrantCreate {
         database: string;
         db: string;
         username: string;
-        password: string;
-        permission: string;
+        host: string;
+    }
+
+    export interface MysqlGrantDelete {
+        database: string;
+        db: string;
+        username: string;
+        host: string;
     }
 
     export interface MysqlLoadDB {

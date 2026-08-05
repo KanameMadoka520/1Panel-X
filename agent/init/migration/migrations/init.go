@@ -14,6 +14,7 @@ import (
 	"github.com/1Panel-dev/1Panel/agent/app/dto"
 	"github.com/1Panel-dev/1Panel/agent/app/dto/request"
 	"github.com/1Panel-dev/1Panel/agent/app/model"
+	providercatalog "github.com/1Panel-dev/1Panel/agent/app/provider"
 	"github.com/1Panel-dev/1Panel/agent/app/service"
 	"github.com/1Panel-dev/1Panel/agent/constant"
 	"github.com/1Panel-dev/1Panel/agent/global"
@@ -50,6 +51,8 @@ var AddTable = &gormigrate.Migration{
 			&model.Cronjob{},
 			&model.Database{},
 			&model.DatabaseMysql{},
+			&model.DatabaseUser{},
+			&model.DatabaseUserGrant{},
 			&model.DatabaseMongodb{},
 			&model.DatabasePostgresql{},
 			&model.Favorite{},
@@ -1248,6 +1251,57 @@ var AddAgentAccountMasterID = &gormigrate.Migration{
 	},
 }
 
+var NormalizeAgentAccountModelIDs = &gormigrate.Migration{
+	ID: "20260716-normalize-agent-account-model-ids",
+	Migrate: func(tx *gorm.DB) error {
+		return migrationutils.NormalizeAgentAccountModelIDs(tx)
+	},
+}
+
+var AddAgentAccountVerifyModel = &gormigrate.Migration{
+	ID: "20260716-add-agent-account-verify-model",
+	Migrate: func(tx *gorm.DB) error {
+		if err := tx.AutoMigrate(&model.AgentAccount{}); err != nil {
+			return err
+		}
+		var accounts []model.AgentAccount
+		if err := tx.Where("verify_model = '' OR verify_model IS NULL").Find(&accounts).Error; err != nil {
+			return err
+		}
+		for _, account := range accounts {
+			var accountModel model.AgentAccountModel
+			err := tx.Where("account_id = ?", account.ID).Order("sort_order ASC, id ASC").First(&accountModel).Error
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				continue
+			}
+			if err != nil {
+				return err
+			}
+			if err := tx.Model(&model.AgentAccount{}).Where("id = ?", account.ID).Update("verify_model", accountModel.Model).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	},
+}
+
+var AddAgentAccountAuthMode = &gormigrate.Migration{
+	ID: "20260716-add-agent-account-auth-mode",
+	Migrate: func(tx *gorm.DB) error {
+		if err := tx.AutoMigrate(&model.AgentAccount{}); err != nil {
+			return err
+		}
+		if err := tx.Model(&model.AgentAccount{}).
+			Where("api_type = ? AND (auth_mode IS NULL OR auth_mode = '') AND provider IN ?", "anthropic-messages", []string{"bailian-coding-plan", "ark-coding-plan", "xiaomi"}).
+			Update("auth_mode", providercatalog.AuthModeBearer).Error; err != nil {
+			return err
+		}
+		return tx.Model(&model.AgentAccount{}).
+			Where("api_type = ? AND (auth_mode IS NULL OR auth_mode = '')", "anthropic-messages").
+			Update("auth_mode", providercatalog.AuthModeXAPIKey).Error
+	},
+}
+
 var AddHostTable = &gormigrate.Migration{
 	ID: "20260318-add-host-table",
 	Migrate: func(tx *gorm.DB) error {
@@ -1427,7 +1481,7 @@ var AddAgentWebsiteBinding = &gormigrate.Migration{
 		if err := tx.Where("type = ? AND app_install_id > 0", constant.Deployment).Find(&websites).Error; err != nil {
 			return err
 		}
-		websiteMap := service.UniqueDeploymentWebsiteMapForMigration(websites)
+		websiteMap := service.UniqueDeploymentWebsiteMapByAppInstall(websites)
 		for _, agent := range agents {
 			if agent.WebsiteID != 0 || agent.AppInstallID == 0 {
 				continue
@@ -1501,6 +1555,105 @@ var AddFileHistoryTable = &gormigrate.Migration{
 	},
 }
 
+func loadDatabaseUserTypesForMigration(tx *gorm.DB, mysqlName string) []string {
+	var database model.Database
+	if err := tx.Where("name = ?", mysqlName).First(&database).Error; err == nil && len(database.Type) != 0 {
+		return []string{database.Type}
+	}
+
+	var appKey string
+	_ = tx.Table("app_installs").
+		Select("apps.`key`").
+		Joins("JOIN apps ON apps.id = app_installs.app_id").
+		Where("app_installs.name = ?", mysqlName).
+		Scan(&appKey).Error
+	switch appKey {
+	case constant.AppMariaDB, constant.AppMysqlCluster:
+		return []string{appKey}
+	case constant.AppMysql:
+		return []string{constant.AppMysql}
+	default:
+		return []string{constant.AppMysql, constant.AppMariaDB}
+	}
+}
+
+func normalizeDatabaseUserHostsForMigration(permission string) []string {
+	hostSet := make(map[string]struct{})
+	for _, host := range strings.Split(permission, ",") {
+		host = strings.TrimSpace(host)
+		if len(host) == 0 {
+			continue
+		}
+		hostSet[host] = struct{}{}
+	}
+	if len(hostSet) == 0 {
+		return []string{"%"}
+	}
+	hosts := make([]string, 0, len(hostSet))
+	for host := range hostSet {
+		hosts = append(hosts, host)
+	}
+	return hosts
+}
+
+func isDatabaseSystemUserForMigration(username string) bool {
+	switch strings.ToLower(username) {
+	case "root",
+		"mysql.session", "mysql.sys", "mysql.infoschema", "mysqlxsys",
+		"mariadb.sys", "mariadb-sys",
+		"debian-sys-maint":
+		return true
+	default:
+		return false
+	}
+}
+
+var AddDatabaseUserTable = &gormigrate.Migration{
+	ID: "20260703-add-database-user-table",
+	Migrate: func(tx *gorm.DB) error {
+		if err := tx.AutoMigrate(&model.DatabaseUser{}, &model.DatabaseUserGrant{}); err != nil {
+			return err
+		}
+		var mysqls []model.DatabaseMysql
+		if err := tx.Find(&mysqls).Error; err != nil {
+			return err
+		}
+		for _, item := range mysqls {
+			if len(item.Username) == 0 || isDatabaseSystemUserForMigration(item.Username) {
+				continue
+			}
+			for _, dbType := range loadDatabaseUserTypesForMigration(tx, item.MysqlName) {
+				if len(dbType) == 0 {
+					continue
+				}
+				for _, host := range normalizeDatabaseUserHostsForMigration(item.Permission) {
+					user := model.DatabaseUser{
+						Type:     dbType,
+						Database: item.MysqlName,
+						Username: item.Username,
+						Host:     host,
+						Password: item.Password,
+					}
+					if err := tx.Where("`type` = ? AND database = ? AND username = ? AND host = ?", dbType, item.MysqlName, item.Username, host).FirstOrCreate(&user).Error; err != nil {
+						return err
+					}
+					grant := model.DatabaseUserGrant{
+						Type:     dbType,
+						Database: item.MysqlName,
+						DBName:   item.Name,
+						Username: item.Username,
+						Host:     host,
+					}
+					if err := tx.Where("`type` = ? AND database = ? AND db_name = ? AND username = ? AND host = ?", dbType, item.MysqlName, item.Name, item.Username, host).FirstOrCreate(&grant).Error; err != nil {
+						return err
+					}
+				}
+			}
+		}
+		return nil
+	},
+}
+
 // MigrateLegoV5 normalizes data persisted under lego v4 so that lego v5 can read it.
 //
 // Two things changed in lego v5 that affect existing rows:
@@ -1551,5 +1704,12 @@ var MigrateLegoV5 = &gormigrate.Migration{
 		}
 
 		return nil
+	},
+}
+
+var AddMcpServerGatewayArgs = &gormigrate.Migration{
+	ID: "20260714-add-mcp-server-gateway-args",
+	Migrate: func(tx *gorm.DB) error {
+		return tx.AutoMigrate(&model.McpServer{})
 	},
 }

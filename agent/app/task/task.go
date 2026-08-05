@@ -8,6 +8,7 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/1Panel-dev/1Panel/agent/buserr"
@@ -63,15 +64,68 @@ type Task struct {
 }
 
 type SubTask struct {
-	RootTask  *Task
-	Name      string
-	StepAlias string
-	Retry     int
-	Timeout   time.Duration
-	Action    ActionFunc
-	Rollback  RollbackFunc
-	Error     error
-	IgnoreErr bool
+	RootTask      *Task
+	Name          string
+	StepAlias     string
+	Retry         int
+	Timeout       time.Duration
+	StopGrace     time.Duration
+	RetryInterval time.Duration
+	Action        ActionFunc
+	Rollback      RollbackFunc
+	Error         error
+	IgnoreErr     bool
+}
+
+const (
+	defaultSubTaskStopGrace     = 5 * time.Second
+	defaultSubTaskRetryInterval = time.Second
+)
+
+type subTaskTimeoutError struct{}
+
+func (*subTaskTimeoutError) Error() string {
+	return "timeout!"
+}
+
+func (*subTaskTimeoutError) Unwrap() error {
+	return context.DeadlineExceeded
+}
+
+type pendingAttemptError struct {
+	cause        error
+	done         <-chan error
+	attemptTask  *Task
+	rollback     RollbackFunc
+	finalized    chan struct{}
+	finalizeOnce sync.Once
+}
+
+func (e *pendingAttemptError) Error() string {
+	return e.cause.Error()
+}
+
+func (e *pendingAttemptError) Unwrap() error {
+	return e.cause
+}
+
+// IsPendingExecution reports whether Execute returned before a non-cooperative
+// action exited. The task remains executing and owns its resources until its
+// asynchronous finalization completes.
+func IsPendingExecution(err error) bool {
+	var pending *pendingAttemptError
+	return errors.As(err, &pending)
+}
+
+// WaitPendingExecution waits for the asynchronous task finalizer when err is a
+// pending execution error. Other errors are returned unchanged.
+func WaitPendingExecution(err error) error {
+	var pending *pendingAttemptError
+	if !errors.As(err, &pending) {
+		return err
+	}
+	<-pending.finalized
+	return pending.cause
 }
 
 const (
@@ -193,8 +247,8 @@ func NewTask(name, operate, taskScope, taskID string, resourceID uint) (*Task, e
 	}
 	taskRepo := repo.NewITaskRepo()
 	ctx, cancel := context.WithCancel(context.Background())
-	global.TaskCtxMap[taskID] = cancel
-	task := &Task{TaskCtx: ctx, Name: name, logFile: logFile, Logger: logger, taskRepo: taskRepo, Task: taskModel}
+	global.RegisterTaskCancel(taskID, cancel)
+	task := &Task{TaskCtx: ctx, TaskID: taskID, Name: name, logFile: logFile, Logger: logger, taskRepo: taskRepo, Task: taskModel}
 	return task, nil
 }
 
@@ -224,7 +278,9 @@ func ReNewTask(name, operate, taskScope, taskID string, resourceID uint) (*Task,
 	logger.SetOutput(logFile)
 	logger.Print("\n --------------------------------------------------- \n")
 	taskItem.Status = constant.StatusExecuting
-	task := &Task{Name: name, logFile: logFile, Logger: logger, taskRepo: taskRepo, Task: &taskItem}
+	ctx, cancel := context.WithCancel(context.Background())
+	global.RegisterTaskCancel(taskID, cancel)
+	task := &Task{TaskCtx: ctx, TaskID: taskID, Name: name, logFile: logFile, Logger: logger, taskRepo: taskRepo, Task: &taskItem}
 	task.updateTask(&taskItem)
 	return task, nil
 }
@@ -255,32 +311,95 @@ func (t *Task) AddSubTaskWithIgnoreErr(name string, action ActionFunc) {
 }
 
 func (s *SubTask) Execute() error {
-	defer delete(global.TaskCtxMap, s.RootTask.TaskID)
 	subTaskName := s.Name
 	if s.Name == "" {
 		subTaskName = i18n.GetMsgByKey("SubTask")
 	}
+	parentCtx := s.RootTask.TaskCtx
+	if parentCtx == nil {
+		parentCtx = context.Background()
+	}
 	var err error
 	for i := 0; i < s.Retry+1; i++ {
+		if parentErr := parentCtx.Err(); parentErr != nil {
+			return parentErr
+		}
 		if i > 0 {
 			s.RootTask.Log(i18n.GetWithName("TaskRetry", strconv.Itoa(i)))
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), s.Timeout)
+		var ctx context.Context
+		var cancel context.CancelFunc
 		if s.Timeout == 0 {
-			ctx, cancel = context.WithCancel(context.Background())
+			ctx, cancel = context.WithCancel(parentCtx)
+		} else {
+			ctx, cancel = context.WithTimeout(parentCtx, s.Timeout)
 		}
-		defer cancel()
+		attemptTask := s.newAttemptTask(ctx)
 
-		done := make(chan error)
+		done := make(chan error, 1)
 		go func() {
-			done <- s.Action(s.RootTask)
+			done <- s.Action(attemptTask)
 		}()
 
+		var stopCause error
 		select {
 		case <-ctx.Done():
-			s.RootTask.Log(i18n.GetWithName("TaskTimeout", subTaskName))
-			err = errors.New("timeout!")
+			stopCause = subTaskStopCause(parentCtx)
+			cancel()
+			timer := time.NewTimer(s.stopGrace())
+			select {
+			case err = <-done:
+				if !timer.Stop() {
+					select {
+					case <-timer.C:
+					default:
+					}
+				}
+				s.adoptAttemptTask(attemptTask)
+				if errors.Is(stopCause, context.Canceled) {
+					s.logAttemptStop(subTaskName, stopCause)
+				} else {
+					if err != nil {
+						s.logAttemptStop(subTaskName, stopCause)
+					}
+					stopCause = nil
+				}
+			case <-timer.C:
+				s.logAttemptStop(subTaskName, stopCause)
+				return &pendingAttemptError{
+					cause:       stopCause,
+					done:        done,
+					attemptTask: attemptTask,
+					rollback:    s.Rollback,
+					finalized:   make(chan struct{}),
+				}
+			}
 		case err = <-done:
+			ctxErr := ctx.Err()
+			cancel()
+			s.adoptAttemptTask(attemptTask)
+			if ctxErr != nil {
+				stopCause = subTaskStopCause(parentCtx)
+				if errors.Is(stopCause, context.Canceled) {
+					s.logAttemptStop(subTaskName, stopCause)
+				} else {
+					if err != nil {
+						s.logAttemptStop(subTaskName, stopCause)
+					}
+					stopCause = nil
+				}
+			}
+		}
+
+		if stopCause != nil {
+			err = stopCause
+			if errors.Is(stopCause, context.Canceled) {
+				if s.Rollback != nil {
+					s.Rollback(s.RootTask)
+				}
+				return err
+			}
+		} else {
 			if err != nil {
 				s.RootTask.Log(i18n.GetWithNameAndErr("SubTaskFailed", subTaskName, err))
 				if IsNonRetryable(err) {
@@ -302,10 +421,70 @@ func (s *SubTask) Execute() error {
 			if s.Rollback != nil {
 				s.Rollback(s.RootTask)
 			}
+			break
 		}
-		time.Sleep(1 * time.Second)
+		timer := time.NewTimer(s.retryInterval())
+		select {
+		case <-timer.C:
+		case <-parentCtx.Done():
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+			if s.Rollback != nil {
+				s.Rollback(s.RootTask)
+			}
+			return parentCtx.Err()
+		}
 	}
 	return err
+}
+
+func (s *SubTask) newAttemptTask(ctx context.Context) *Task {
+	attemptTask := *s.RootTask
+	attemptTask.TaskCtx = ctx
+	if s.RootTask.Task != nil {
+		attemptModel := *s.RootTask.Task
+		attemptTask.Task = &attemptModel
+	}
+	return &attemptTask
+}
+
+func (s *SubTask) adoptAttemptTask(attemptTask *Task) {
+	if s.RootTask.Task != nil && attemptTask.Task != nil {
+		*s.RootTask.Task = *attemptTask.Task
+	}
+}
+
+func (s *SubTask) stopGrace() time.Duration {
+	if s.StopGrace > 0 {
+		return s.StopGrace
+	}
+	return defaultSubTaskStopGrace
+}
+
+func (s *SubTask) retryInterval() time.Duration {
+	if s.RetryInterval > 0 {
+		return s.RetryInterval
+	}
+	return defaultSubTaskRetryInterval
+}
+
+func (s *SubTask) logAttemptStop(subTaskName string, cause error) {
+	if errors.Is(cause, context.Canceled) {
+		s.RootTask.Log(i18n.GetWithNameAndErr("SubTaskFailed", subTaskName, cause))
+		return
+	}
+	s.RootTask.Log(i18n.GetWithName("TaskTimeout", subTaskName))
+}
+
+func subTaskStopCause(parentCtx context.Context) error {
+	if errors.Is(parentCtx.Err(), context.Canceled) {
+		return context.Canceled
+	}
+	return &subTaskTimeoutError{}
 }
 
 func (t *Task) updateTask(task *model.Task) {
@@ -313,6 +492,12 @@ func (t *Task) updateTask(task *model.Task) {
 }
 
 func (t *Task) Execute() error {
+	cleanupOwned := true
+	defer func() {
+		if cleanupOwned {
+			t.cleanupExecution()
+		}
+	}()
 	if err := t.taskRepo.Save(context.Background(), t.Task); err != nil {
 		return err
 	}
@@ -327,12 +512,22 @@ func (t *Task) Execute() error {
 				t.Rollbacks = append(t.Rollbacks, subTask.Rollback)
 			}
 		} else {
-			if subTask.IgnoreErr {
+			var pending *pendingAttemptError
+			if errors.As(err, &pending) {
+				cleanupOwned = false
+				t.finalizePendingAttempt(pending)
+				return err
+			}
+			if subTask.IgnoreErr && !errors.Is(err, context.Canceled) {
 				err = nil
 				continue
 			}
 			t.Task.ErrorMsg = err.Error()
-			t.Task.Status = constant.StatusFailed
+			if errors.Is(err, context.Canceled) {
+				t.Task.Status = constant.StatusCanceled
+			} else {
+				t.Task.Status = constant.StatusFailed
+			}
 			for _, rollback := range t.Rollbacks {
 				rollback(t)
 			}
@@ -346,8 +541,58 @@ func (t *Task) Execute() error {
 	t.Log("[TASK-END]")
 	t.Task.EndAt = time.Now()
 	t.updateTask(t.Task)
-	_ = t.logFile.Close()
 	return err
+}
+
+// ExecuteToCompletion executes the task and, when an action outlives its stop
+// grace, waits for that action and all task finalization to finish. Background
+// workers should use this method before releasing locks, closing resources, or
+// updating business records derived from the task result.
+func (t *Task) ExecuteToCompletion() error {
+	return WaitPendingExecution(t.Execute())
+}
+
+func (t *Task) finalizePendingAttempt(pending *pendingAttemptError) {
+	finalizerTask := *t
+	if t.Task != nil {
+		finalizerModel := *t.Task
+		finalizerTask.Task = &finalizerModel
+	}
+	finalizerTask.Rollbacks = append([]RollbackFunc(nil), t.Rollbacks...)
+
+	pending.finalizeOnce.Do(func() {
+		go func() {
+			defer close(pending.finalized)
+			defer finalizerTask.cleanupExecution()
+			<-pending.done
+			if pending.attemptTask.Task != nil {
+				attemptModel := *pending.attemptTask.Task
+				finalizerTask.Task = &attemptModel
+			}
+			if pending.rollback != nil {
+				pending.rollback(&finalizerTask)
+			}
+			for _, rollback := range finalizerTask.Rollbacks {
+				rollback(&finalizerTask)
+			}
+			finalizerTask.Task.ErrorMsg = pending.cause.Error()
+			if errors.Is(pending.cause, context.Canceled) {
+				finalizerTask.Task.Status = constant.StatusCanceled
+			} else {
+				finalizerTask.Task.Status = constant.StatusFailed
+			}
+			finalizerTask.Log("[TASK-END]")
+			finalizerTask.Task.EndAt = time.Now()
+			finalizerTask.updateTask(finalizerTask.Task)
+		}()
+	})
+}
+
+func (t *Task) cleanupExecution() {
+	if t.logFile != nil {
+		_ = t.logFile.Close()
+	}
+	global.RemoveTaskCancel(t.TaskID)
 }
 
 func (t *Task) DeleteLogFile() {

@@ -2,12 +2,14 @@ package service
 
 import (
 	"bufio"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -551,7 +553,7 @@ func (u *BackupService) checkBackupConn(backup *model.BackupAccount) (bool, erro
 		targetPath = strings.TrimPrefix(targetPath, "/")
 	}
 
-	if _, err := client.Upload(fileItem, targetPath); err != nil {
+	if _, err := client.Upload(context.Background(), fileItem, targetPath); err != nil {
 		return false, err
 	}
 	_, _ = client.Delete(path.Join(backup.BackupPath, "test/1panel"))
@@ -616,6 +618,10 @@ type backupClientHelper struct {
 }
 
 func NewBackupClientMap(ids []string) map[string]backupClientHelper {
+	return NewBackupClientMapWithContext(context.Background(), ids)
+}
+
+func NewBackupClientMapWithContext(ctx context.Context, ids []string) map[string]backupClientHelper {
 	var accounts []model.BackupAccount
 	var idItems []uint
 	for i := 0; i < len(ids); i++ {
@@ -625,7 +631,7 @@ func NewBackupClientMap(ids []string) map[string]backupClientHelper {
 	accounts, _ = backupRepo.List(repo.WithByIDs(idItems))
 	clientMap := make(map[string]backupClientHelper)
 	for _, item := range accounts {
-		backClient, err := newClient(&item, true)
+		backClient, err := newClientWithContext(ctx, &item, true)
 		itemHelper := backupClientHelper{
 			client:      backClient,
 			name:        item.Name,
@@ -642,17 +648,31 @@ func NewBackupClientMap(ids []string) map[string]backupClientHelper {
 	return clientMap
 }
 
-func uploadWithMap(taskItem task.Task, accountMap map[string]backupClientHelper, src, dst, accountIDs string, downloadAccountID, retry uint) error {
+func uploadWithMap(taskItem task.Task, accountMap map[string]backupClientHelper, src, dst, accountIDs string, downloadAccountID, retry uint, cleanOnFailure bool) error {
+	ctx := taskItem.TaskCtx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return uploadWithMapWithContext(ctx, taskItem, accountMap, src, dst, accountIDs, downloadAccountID, retry, cleanOnFailure, true)
+}
+
+func uploadWithMapWithContext(ctx context.Context, taskItem task.Task, accountMap map[string]backupClientHelper, src, dst, accountIDs string, downloadAccountID, retry uint, cleanOnFailure, removeSrc bool) error {
 	accounts := strings.Split(accountIDs, ",")
 	var firstErr error
+	var requiredErr error
 	for _, account := range accounts {
 		if len(account) == 0 {
 			continue
 		}
 		itemBackup, ok := accountMap[account]
 		if !ok {
+			accountErr := fmt.Errorf("backup account %s is unavailable", account)
 			if firstErr == nil {
-				firstErr = fmt.Errorf("backup account %s is unavailable", account)
+				firstErr = accountErr
+			}
+			if account == fmt.Sprintf("%d", downloadAccountID) {
+				requiredErr = accountErr
+				break
 			}
 			continue
 		}
@@ -661,8 +681,13 @@ func uploadWithMap(taskItem task.Task, accountMap map[string]backupClientHelper,
 		}
 		if !itemBackup.isOk {
 			taskItem.LogFailed(i18n.GetMsgWithDetail("LoadBackupFailed", itemBackup.message))
+			accountErr := errors.New(itemBackup.message)
 			if firstErr == nil {
-				firstErr = errors.New(itemBackup.message)
+				firstErr = accountErr
+			}
+			if account == fmt.Sprintf("%d", downloadAccountID) {
+				requiredErr = accountErr
+				break
 			}
 			continue
 		}
@@ -676,7 +701,7 @@ func uploadWithMap(taskItem task.Task, accountMap map[string]backupClientHelper,
 		}))
 		var uploadErr error
 		for i := 0; i < int(retry)+1; i++ {
-			_, uploadErr = itemBackup.client.Upload(src, path.Join(itemBackup.backupPath, dst))
+			_, uploadErr = itemBackup.client.Upload(ctx, src, path.Join(itemBackup.backupPath, dst))
 			taskItem.LogWithStatus(i18n.GetMsgByKey("Upload"), uploadErr)
 			if uploadErr == nil {
 				break
@@ -687,17 +712,110 @@ func uploadWithMap(taskItem task.Task, accountMap map[string]backupClientHelper,
 				firstErr = uploadErr
 			}
 			if account == fmt.Sprintf("%d", downloadAccountID) {
-				return uploadErr
+				requiredErr = uploadErr
 			}
 		}
 		itemBackup.hasBackup = uploadErr == nil
 		accountMap[account] = itemBackup
+		if requiredErr != nil {
+			break
+		}
 	}
-	os.RemoveAll(src)
-	return firstErr
+	if requiredErr != nil {
+		firstErr = requiredErr
+	}
+	if firstErr != nil {
+		if cleanOnFailure {
+			if cleanupErr := cleanupCronjobBackupArtifacts(accountMap, src, dst, true); cleanupErr != nil {
+				return task.MarkNonRetryable(errors.New("backup upload failed and failed artifacts could not be cleaned safely"))
+			}
+		}
+		return firstErr
+	}
+	if removeSrc {
+		_ = os.RemoveAll(src)
+	}
+	return nil
+}
+
+func cleanupCronjobBackupArtifacts(accountMap map[string]backupClientHelper, src, dst string, removeSource bool) error {
+	cleanupFailed := false
+	if removeSource {
+		if err := os.RemoveAll(src); err != nil {
+			cleanupFailed = true
+			global.LOG.Errorf("remove failed local cronjob backup artifact %s", src)
+		}
+	}
+	for accountID, account := range accountMap {
+		if !account.isOk || account.client == nil || !account.hasBackup {
+			continue
+		}
+		target := path.Join(account.backupPath, dst)
+		_, _ = account.client.Delete(target)
+		exists, err := account.client.Exist(target)
+		if err != nil || exists {
+			cleanupFailed = true
+			global.LOG.Errorf("remote cronjob backup artifact cleanup could not be confirmed for account %d", account.id)
+			continue
+		}
+		account.hasBackup = false
+		accountMap[accountID] = account
+	}
+	if cleanupFailed {
+		return errors.New("failed backup artifacts could not be cleaned safely")
+	}
+	return nil
+}
+
+func markBackupFailed(recordID uint, backupErr error) {
+	_ = backupRepo.UpdateRecordByMap(recordID, map[string]interface{}{"status": constant.StatusFailed, "message": backupErr.Error()})
+
+	record, err := backupRepo.GetRecord(repo.WithByID(recordID))
+	if err != nil || record.ID == 0 {
+		global.LOG.Errorf("load failed backup record %d for cleanup failed, err: %v", recordID, err)
+		return
+	}
+
+	localPath, err := failedBackupLocalArtifactPath(global.Dir.LocalBackupDir, record.FileDir, record.FileName)
+	if err != nil {
+		global.LOG.Errorf("refuse unsafe local backup artifact cleanup for record %d", recordID)
+		return
+	}
+	if err := os.Remove(localPath); err != nil && !os.IsNotExist(err) {
+		global.LOG.Errorf("remove failed local backup artifact for record %d, err: %v", recordID, err)
+	}
+}
+
+func failedBackupLocalArtifactPath(root, fileDir, fileName string) (string, error) {
+	if strings.TrimSpace(root) == "" || strings.TrimSpace(fileName) == "" {
+		return "", errors.New("backup artifact path is empty")
+	}
+	if filepath.IsAbs(fileDir) || filepath.IsAbs(fileName) {
+		return "", errors.New("backup artifact path must be relative")
+	}
+
+	cleanRoot, err := filepath.Abs(filepath.Clean(root))
+	if err != nil {
+		return "", errors.New("backup root is invalid")
+	}
+	relativePath := filepath.Clean(filepath.Join(fileDir, fileName))
+	if relativePath == "." {
+		return "", errors.New("backup artifact path resolves to the backup root")
+	}
+
+	target := filepath.Clean(filepath.Join(cleanRoot, relativePath))
+	rel, err := filepath.Rel(cleanRoot, target)
+	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", errors.New("backup artifact path escapes the backup root")
+	}
+	return target, nil
 }
 
 func newClient(account *model.BackupAccount, isEncrypt bool) (cloud_storage.CloudStorageClient, error) {
+	return newClientWithContext(context.Background(), account, isEncrypt)
+}
+
+func newClientWithContext(ctx context.Context, account *model.BackupAccount, isEncrypt bool) (cloud_storage.CloudStorageClient, error) {
 	if account == nil {
 		return nil, errors.New("backup account is unavailable")
 	}
@@ -756,7 +874,7 @@ func newClient(account *model.BackupAccount, isEncrypt bool) (cloud_storage.Clou
 		varMap["password"] = account.Credential
 	}
 
-	client, err := cloud_storage.NewCloudStorageClient(account.Type, varMap)
+	client, err := cloud_storage.NewCloudStorageClientWithContext(ctx, account.Type, varMap)
 	if err != nil {
 		return nil, err
 	}
@@ -824,13 +942,13 @@ func (c *publicBackupLeaseClient) Delete(target string) (bool, error) {
 	return c.client.Delete(target)
 }
 
-func (c *publicBackupLeaseClient) Upload(source, target string) (bool, error) {
+func (c *publicBackupLeaseClient) Upload(ctx context.Context, source, target string) (bool, error) {
 	release, err := c.acquire()
 	if err != nil {
 		return false, err
 	}
 	defer release()
-	return c.client.Upload(source, target)
+	return c.client.Upload(ctx, source, target)
 }
 
 func (c *publicBackupLeaseClient) Download(source, target string) (bool, error) {

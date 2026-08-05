@@ -98,7 +98,7 @@ func (u *BackupService) ComposeBackup(req dto.CommonBackup) error {
 		return err
 	}
 	if err := handleComposeBackup(req, nil, record.ID, backupDir, fileName); err != nil {
-		backupRepo.UpdateRecordByMap(record.ID, map[string]interface{}{"status": constant.StatusFailed, "message": err.Error()})
+		markBackupFailed(record.ID, err)
 		return err
 	}
 	return nil
@@ -162,8 +162,8 @@ func handleComposeBackup(req dto.CommonBackup, parentTask *task.Task, recordID u
 	}
 	go func() {
 		defer composeCtx.close()
-		if err := backupTask.Execute(); err != nil {
-			backupRepo.UpdateRecordByMap(recordID, map[string]interface{}{"status": constant.StatusFailed, "message": err.Error()})
+		if err := backupTask.ExecuteToCompletion(); err != nil {
+			markBackupFailed(recordID, err)
 			return
 		}
 		backupRepo.UpdateRecordByMap(recordID, map[string]interface{}{"status": constant.StatusSuccess})
@@ -300,7 +300,7 @@ func handleComposeRecover(req dto.CommonRecover, parentTask *task.Task) error {
 		return nil
 	}
 	go func() {
-		_ = recoverTask.Execute()
+		_ = recoverTask.ExecuteToCompletion()
 	}()
 	return nil
 }

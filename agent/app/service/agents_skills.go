@@ -171,7 +171,7 @@ func (a AgentService) InstallSkill(req dto.AgentSkillInstallReq) error {
 			return installLocalSkillPackage(mgr, install.ContainerName, agent.AgentType, agent.ConfigPath, hostPath, skillName)
 		}, nil)
 		go func() {
-			if err := installTask.Execute(); err != nil {
+			if err := installTask.ExecuteToCompletion(); err != nil {
 				global.LOG.Errorf("install local skill failed: %v", err)
 			}
 		}()
@@ -187,7 +187,7 @@ func (a AgentService) InstallSkill(req dto.AgentSkillInstallReq) error {
 			return mgr.Run("docker", buildHermesDockerExecArgs(install.ContainerName, "skills", "install", req.Slug, "--yes")...)
 		}, nil)
 		go func() {
-			if err := installTask.Execute(); err != nil {
+			if err := installTask.ExecuteToCompletion(); err != nil {
 				global.LOG.Errorf("install hermes skill failed: %v", err)
 			}
 		}()
@@ -201,7 +201,7 @@ func (a AgentService) InstallSkill(req dto.AgentSkillInstallReq) error {
 		return installOpenclawSkill(mgr, install.ContainerName, req.Source, req.Slug)
 	}, nil)
 	go func() {
-		if err := installTask.Execute(); err != nil {
+		if err := installTask.ExecuteToCompletion(); err != nil {
 			global.LOG.Errorf("install openclaw skill failed: %v", err)
 		}
 	}()

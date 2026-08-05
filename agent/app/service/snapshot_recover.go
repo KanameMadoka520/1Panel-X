@@ -234,7 +234,7 @@ func (u *SnapshotService) SnapshotRecover(req dto.SnapshotRecover) error {
 			req.IsNew = true
 		}
 
-		if err := taskItem.Execute(); err != nil {
+		if err := taskItem.ExecuteToCompletion(); err != nil {
 			_ = settingRepo.Update("SystemStatus", "Free")
 			_ = snapshotRepo.Update(req.ID, map[string]interface{}{"recover_status": constant.StatusFailed, "recover_message": err.Error(), "interrupt_step": taskItem.Task.CurrentStep})
 			return

@@ -390,7 +390,7 @@ func (a AgentService) InstallPlugin(req dto.AgentPluginInstallReq) error {
 		return writeOpenclawConfigRaw(agent.ConfigPath, conf)
 	}, nil)
 	go func() {
-		if err := installTask.Execute(); err != nil {
+		if err := installTask.ExecuteToCompletion(); err != nil {
 			global.LOG.Errorf("install openclaw plugin failed: %v", err)
 		}
 	}()
@@ -430,7 +430,7 @@ func (a AgentService) UpgradePlugin(req dto.AgentPluginUpgradeReq) error {
 		return writeOpenclawConfigRaw(agent.ConfigPath, conf)
 	}, nil)
 	go func() {
-		if err := upgradeTask.Execute(); err != nil {
+		if err := upgradeTask.ExecuteToCompletion(); err != nil {
 			global.LOG.Errorf("upgrade openclaw plugin failed: %v", err)
 		}
 	}()
@@ -466,7 +466,7 @@ func (a AgentService) UninstallPlugin(req dto.AgentPluginUninstallReq) error {
 		return writeOpenclawConfigRaw(agent.ConfigPath, conf)
 	}, nil)
 	go func() {
-		if err := uninstallTask.Execute(); err != nil {
+		if err := uninstallTask.ExecuteToCompletion(); err != nil {
 			global.LOG.Errorf("uninstall openclaw plugin failed: %v", err)
 		}
 	}()
@@ -499,7 +499,7 @@ func (a AgentService) LoginWeixinChannel(req dto.AgentWeixinLoginReq) error {
 		}, nil)
 	}
 	go func() {
-		if err := loginTask.Execute(); err != nil {
+		if err := loginTask.ExecuteToCompletion(); err != nil {
 			global.LOG.Errorf("login openclaw weixin channel failed: %v", err)
 		}
 	}()

@@ -245,7 +245,7 @@ func startRuntimeCreateTask(create request.RuntimeCreate, runtime *model.Runtime
 		return executeRuntimeCreateTask(create, runtime, app, appDetail, appVersionDir, t)
 	}, nil)
 	go func() {
-		_ = createTask.Execute()
+		_ = createTask.ExecuteToCompletion()
 	}()
 	return nil
 }
@@ -398,7 +398,7 @@ func startRuntimeDeleteTask(runtimeDelete request.RuntimeDelete, runtime *model.
 		return executeRuntimeDeleteTask(runtimeDelete, runtime, t)
 	}, nil)
 	go func() {
-		_ = deleteTask.Execute()
+		_ = deleteTask.ExecuteToCompletion()
 	}()
 	return nil
 }
@@ -975,7 +975,7 @@ func (r *RuntimeService) InstallPHPExtension(req request.PHPExtensionInstallReq)
 		return nil
 	}, nil)
 	go func() {
-		err = installTask.Execute()
+		err = installTask.ExecuteToCompletion()
 		if err == nil {
 			envs, err := gotenv.Unmarshal(runtime.Env)
 			if err != nil {

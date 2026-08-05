@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="light" />
     <link rel="icon" href="data:," />
-    <title>1Panel-X P0.1 公共备份同步可靠性报告</title>
+    <title>1Panel-X v2.2.4 同步与 P0 稳定基线报告</title>
     <style>
         :root {
             color-scheme: light;
@@ -653,20 +653,20 @@
     <header class="masthead">
         <div class="shell masthead-inner">
             <div>
-                <p class="eyebrow">1Panel-X / P0.1 Reliability Delivery</p>
-                <h1>公共备份账号持久化同步与离线协调</h1>
+                <p class="eyebrow">1Panel-X / v2.2.4 Stable Baseline</p>
+                <h1>官方 v2.2.4 安全同步与 P0 能力保全</h1>
                 <p class="subtitle">
-                    本轮完成持久化 outbox、单调 revision、Agent 幂等应用、删除 tombstone、离线节点 reconciliation、
-                    聚合同步状态 API 与界面，以及故障、重启和 race 自动化验证。
+                    本轮以普通 merge 吸收官方正式版 v2.2.4，同时保留公共备份同步、执行租约与 OAuth 隔离能力；
+                    手工收口 OneDrive Graph、Redis 单次执行与可恢复回滚、备份失败清理和任务超时生命周期。
                 </p>
             </div>
             <div class="release-mark" aria-label="报告版本">
-                <strong>P0.1 同步可靠性</strong>
-                <span>报告日期：2026-08-04</span>
-                <span>开发基线：d715111</span>
-                <span>实现提交：32fafd35a</span>
+                <strong>v2.2.4 稳定基线</strong>
+                <span>报告日期：2026-08-06</span>
+                <span>1Panel-X 父提交：85e17a988</span>
+                <span>官方父提交：c04848a92（v2.2.4）</span>
                 <span>目标：origin/main</span>
-                <span>报告 QA：桌面/移动与复制交互通过</span>
+                <span>方式：普通 merge，不改写历史</span>
             </div>
         </div>
     </header>
@@ -675,19 +675,19 @@
         <div class="shell status-grid">
             <div class="status-item">
                 <span>代码状态</span>
-                <strong>实现与自动验证完成</strong>
+                <strong>合并审计与自动验证通过</strong>
             </div>
             <div class="status-item">
-                <span>同步协议</span>
-                <strong>持久化 revision + 精确 ACK</strong>
+                <span>官方基线</span>
+                <strong>正式版 v2.2.4</strong>
             </div>
             <div class="status-item">
-                <span>管理界面</span>
-                <strong>pending / partially synced</strong>
+                <span>P0 能力</span>
+                <strong>同步、租约、OAuth 均保留</strong>
             </div>
             <div class="status-item">
                 <span>剩余验收</span>
-                <strong>真实多节点与 provider UAT</strong>
+                <strong>真实多节点与 OAuth provider UAT</strong>
             </div>
         </div>
     </div>
@@ -708,30 +708,30 @@
                 <div class="section-index">01 / Executive Summary</div>
                 <div>
                     <h2>执行摘要</h2>
-                    <p class="lead">30-60 秒结论：本轮目标已达到代码级交付标准，但没有把自动测试等同于真实生产环境 UAT。</p>
+                    <p class="lead">30-60 秒结论：v2.2.4 已形成可测试的新基线，P0 安全边界未被官方更新覆盖；除已记录的全仓 TypeScript 基线债务外，本轮验证通过。</p>
                 </div>
             </div>
             <div class="summary-grid">
                 <article class="panel progress">
                     <h3>Progress</h3>
                     <p>
-                        Core 以数据库 outbox 和单调 revision 管理公共备份账号期望状态；每个 Agent 持久化最近应用的
-                        authority、generation、target epoch、revision 和 digest，重复、乱序与重启后仍可收敛。
+                        官方 v2.2.4 的 Core、Agent、前端与文档改动已通过普通 merge 审查；持久化 outbox、单调
+                        revision、Agent 幂等应用、tombstone、离线 reconciliation、同步状态 API、执行租约和 OAuth 隔离均保留。
+                        Redis、cron snapshot、OneDrive 与 pending Action 的阻断问题已经修复并加入自动测试。
                     </p>
                 </article>
                 <article class="panel plan">
                     <h3>Plans</h3>
                     <p>
-                        下一步应在可回滚 Linux 环境中演练真实 Core + 多 Agent 断网、重启、删除与恢复，并使用隔离的
-                        Microsoft Entra 和 Google Cloud 测试应用确认 OAuth 备份实际执行链路。
+                        稳定基线落地后，应先做真实 Linux 多节点与隔离 OAuth 测试应用 UAT；正式版之后的 dev-v2 提交
+                        只做独立审计，不直接追随或混入本次基线，也不跳去扩展 WAF 或其他新模块。
                     </p>
                 </article>
                 <article class="panel problem">
                     <h3>Problems</h3>
                     <p>
-                        当前没有可登录的完整多节点部署，因此尚无浏览器网络面板与真实节点级证据。全仓
-                        <code>vue-tsc</code> 仍被本轮范围外的既有错误阻断；snapshot digest 目前是内部 unkeyed SHA-256，
-                        不是 HMAC。
+                        当前没有真实 Microsoft/Google 测试应用和可回滚多节点环境，因此 provider 与节点级 UAT 仍待执行。
+                        全仓 <code>vue-tsc</code> 继续被合并前已记录的 AppMain、Monaco、network、process、WAF 与 domain 类型债务阻断。
                     </p>
                 </article>
             </div>
@@ -739,37 +739,37 @@
 
         <section id="architecture">
             <div class="section-head">
-                <div class="section-index">02 / State Flow</div>
+                <div class="section-index">02 / Merge Flow</div>
                 <div>
-                    <h2>同步机制</h2>
-                    <p class="lead">敏感凭据不写入 outbox。Core 在投递时从加密源表构建完整快照，经 Unix socket 或固定证书 mTLS 发送。</p>
+                    <h2>合并与安全收口流程</h2>
+                    <p class="lead">只吸收官方正式版，以 1Panel-X 已有安全边界为约束处理冲突；不恢复托管自动化、共享 OAuth 凭据或浏览器敏感状态。</p>
                 </div>
             </div>
             <div class="flow" aria-label="公共备份同步流程">
                 <div class="flow-step">
                     <span>STEP 1</span>
-                    <strong>业务事务提交</strong>
-                    <p>创建、更新、删除、OAuth 清除或刷新与 revision 在同一事务提交；outbox 失败则业务回滚。</p>
+                    <strong>锁定正式版父项</strong>
+                    <p>以 1Panel-X <code>85e17a988</code> 和官方标签 <code>v2.2.4</code> 对应提交为两个 merge parent。</p>
                 </div>
                 <div class="flow-step">
                     <span>STEP 2</span>
-                    <strong>持久化协调状态</strong>
-                    <p>outbox 只含 generation、revision、账号名、操作和状态；每个 target 保留 desired/applied 元组。</p>
+                    <strong>逐项保留 P0</strong>
+                    <p>检查 outbox、revision、幂等、tombstone、reconciliation、同步状态、执行租约和 OAuth API 脱敏。</p>
                 </div>
                 <div class="flow-step">
                     <span>STEP 3</span>
-                    <strong>有界并行投递</strong>
-                    <p>最多四个不同目标并发，同一目标串行；内存 wake 仅加速，数据库状态负责重试和重启恢复。</p>
+                    <strong>手工吸收 Graph 改进</strong>
+                    <p>保留官方 Graph API 能力，但拒绝重定向、跨源分页和 signed URL 泄漏，secret 仅进入服务端 POST form。</p>
                 </div>
                 <div class="flow-step">
                     <span>STEP 4</span>
-                    <strong>Agent 原子应用</strong>
-                    <p>校验 authority、generation、target epoch、revision 和 digest 后，在单事务替换公共账号快照。</p>
+                    <strong>修复执行竞态</strong>
+                    <p>Redis 备份/恢复只执行一次；超时 Action 不与重试或回滚重叠，失败清理不重跑已完成备份。</p>
                 </div>
                 <div class="flow-step">
                     <span>STEP 5</span>
-                    <strong>精确 ACK 与完成</strong>
-                    <p>Core 只接受精确元组 ACK；全部活动目标确认后才完成 outbox 并关闭删除 tombstone。</p>
+                    <strong>全量验证与卫生检查</strong>
+                    <p>执行 Core/Agent 全量测试、race、vet、迁移、前端测试和 Linux 构建，并清理生成物后再提交。</p>
                 </div>
             </div>
         </section>
@@ -778,63 +778,67 @@
             <div class="section-head">
                 <div class="section-index">03 / Delivered</div>
                 <div>
-                    <h2>已交付能力</h2>
-                    <p class="lead">以下是本轮真实实现的行为，不表示已经完成完整 1Panel Pro 或 Enterprise 功能对齐。</p>
+                    <h2>本轮稳定基线</h2>
+                    <p class="lead">以下是 v2.2.4 同步后实际保留或新增的行为，不表示完整 1Panel Pro 或 Enterprise 功能对齐。</p>
                 </div>
             </div>
             <div class="capability-grid">
                 <article class="panel">
                     <span class="badge done">已完成</span>
-                    <h3>持久化 outbox 与 revision</h3>
+                    <h3>P0 同步协议完整保留</h3>
                     <ul>
-                        <li>安装级 authority、generation 和 uint64 revision。</li>
-                        <li>并发入队保持 revision 唯一、单调，事务回滚不遗留事件。</li>
-                        <li>启动 bootstrap reconciliation，待同步状态可跨进程重启。</li>
+                        <li>持久化 outbox、单调 revision、精确 ACK 和重启恢复仍在。</li>
+                        <li>Agent 幂等、乱序拒绝、删除 tombstone 与离线 reconciliation 未被覆盖。</li>
+                        <li><code>sync_pending</code>、<code>partially_synced</code> 与重试界面继续可用。</li>
                     </ul>
                 </article>
                 <article class="panel">
                     <span class="badge done">已完成</span>
-                    <h3>Agent 幂等与乱序保护</h3>
+                    <h3>OAuth 隔离边界完整保留</h3>
                     <ul>
-                        <li>相同元组可重复应用并返回 <code>already_applied</code>。</li>
-                        <li>旧 revision 不覆盖新状态，相同 revision 不同 digest 被拒绝。</li>
-                        <li>authority、generation 或 target epoch 冲突时 fail-closed。</li>
+                        <li>新安装不写入官方共享 Google/Microsoft 应用凭据。</li>
+                        <li>client secret 只写不读，refresh token 不进入浏览器状态。</li>
+                        <li>旧默认应用迁移识别、重新配置/授权状态与服务端加密仍保留。</li>
                     </ul>
                 </article>
                 <article class="panel">
                     <span class="badge done">已完成</span>
-                    <h3>删除 tombstone</h3>
+                    <h3>OneDrive Graph 安全吸收</h3>
                     <ul>
-                        <li>删除元数据保留到所有活动目标确认删除 revision。</li>
-                        <li>离线节点重新上线后仍会收到删除快照。</li>
-                        <li>被 revoke 或删除的节点停用 target，不会永久阻塞完成条件。</li>
+                        <li>保留官方 Graph 上传、下载、分页与 refresh token 改进。</li>
+                        <li>拒绝 HTTP 重定向和跨源 <code>@odata.nextLink</code>，错误不泄漏 URL/query。</li>
+                        <li>下载采用同目录临时文件和原子替换，上传显式拒绝静默重命名。</li>
+                        <li>小文件上传的 MIME 从本地源文件检测，不再把远端目标名误当成本地路径。</li>
                     </ul>
                 </article>
                 <article class="panel">
                     <span class="badge done">已完成</span>
-                    <h3>离线 reconciliation</h3>
+                    <h3>Redis 恰好一次执行</h3>
                     <ul>
-                        <li>每分钟扫描到期 target，并允许探测标记 offline 的已登记节点。</li>
-                        <li>同步成功后仅在节点仍是 offline 且已登记时标记 online。</li>
-                        <li>明确 offline 不阻止 tombstone；online 但不可达继续 fail-closed。</li>
+                        <li>parent task 路径只注册子任务，不再立即重复执行。</li>
+                        <li>standalone backup/recover 只注册一次并只启动一次 Execute。</li>
+                        <li>恢复模式在停容器前冻结；失败回滚不再向已停止的 Redis 查询配置。</li>
+                        <li>主恢复和回滚均失败时返回脱敏 non-retryable 错误，并保留预恢复备份供人工恢复。</li>
                     </ul>
                 </article>
                 <article class="panel">
                     <span class="badge done">已完成</span>
-                    <h3>聚合 API 与界面</h3>
+                    <h3>任务超时与取消收口</h3>
                     <ul>
-                        <li>浏览器只收到账号名、状态与 succeeded/pending/total。</li>
-                        <li>显示 <code>sync_pending</code>、<code>partially_synced</code> 与单账号/批量重试。</li>
-                        <li>未知状态或接口异常不伪装为成功。</li>
+                        <li>每次 Action 接收继承 root cancel/deadline 的独立 TaskCtx。</li>
+                        <li>超时后先等待有界停止宽限期，旧 Action 未退出时绝不重试或回滚。</li>
+                        <li>后台业务 worker 等待唯一 finalizer 完成后，才释放锁、清理文件或更新业务记录。</li>
                     </ul>
                 </article>
                 <article class="panel">
                     <span class="badge done">已完成</span>
-                    <h3>执行与清理 fail-closed</h3>
+                    <h3>备份清理保持 non-retryable</h3>
                     <ul>
-                        <li>公共账号必须持有新鲜五分钟同步租约。</li>
-                        <li>同步 apply 与实际存储操作通过读写锁串行。</li>
-                        <li>远端删除未确认时保留记录/快照元数据，不重跑已完成备份。</li>
+                        <li>每次外层重试只发起一次 provider 上传，避免 RetryTimes 被内层循环放大。</li>
+                        <li>元数据落库失败会回滚所有已确认创建的远端目标。</li>
+                        <li>cron snapshot 多账户落库失败会逐对象删除并用 <code>Exist</code> 确认，不留下无记录快照。</li>
+                        <li>清理状态未知时返回 non-retryable，避免重新执行整份已成功备份。</li>
+                        <li>本地失败产物删除限制在备份根目录内，拒绝绝对路径和目录逃逸。</li>
                     </ul>
                 </article>
             </div>
@@ -861,63 +865,72 @@
                     <tbody>
                         <tr>
                             <td>Core Go 测试</td>
-                            <td>backupsync、multi-node helper、service、API、router、migration、cron</td>
+                            <td><code>go test ./... -count=1</code></td>
                             <td class="result-pass">通过</td>
-                            <td>覆盖 outbox、revision、ACK、tombstone、离线恢复、撤销竞态与 API 脱敏。</td>
+                            <td>全包通过，包含 service、API、router、migration、backupsync、OAuth 与节点同步测试。</td>
                         </tr>
                         <tr>
                             <td>Agent Go 测试</td>
-                            <td>task、service、enrollment、middleware、provider client、API、migration、router</td>
+                            <td><code>go test ./... -count=1</code></td>
                             <td class="result-pass">通过</td>
-                            <td>覆盖幂等、乱序、重启、target epoch、租约、清理失败与 enrollment。</td>
+                            <td>全包通过，包含 task、service、migration、OneDrive client、Redis 单次执行和备份清理。</td>
                         </tr>
                         <tr>
                             <td>Go 静态检查</td>
-                            <td>Core 与 Agent 相关包 <code>go vet</code></td>
+                            <td>Agent：<code>go vet ./app/service ./app/task ./utils/cloud_storage/client ./utils/cloud_storage</code></td>
                             <td class="result-pass">通过</td>
-                            <td>相关包无新增 vet 问题。</td>
+                            <td>本轮 Agent 改动的 service、task 和 cloud storage 包无 vet 问题。</td>
                         </tr>
                         <tr>
                             <td>并发检测</td>
-                            <td>Docker Go 1.26.1，只读挂载；相关包 <code>go test -race</code></td>
+                            <td>
+                                Core：<code>go test -race ./app/service ./app/api/v2 ./utils/backupsync ./utils/xpack/helper ./utils/oauthflow ./init/migration/migrations -count=1</code><br />
+                                Agent：<code>go test -race ./app/service ./app/task ./utils/cloud_storage/client ./utils/oauthflow ./utils/xpack/helper -count=1</code>
+                            </td>
                             <td class="result-pass">通过</td>
-                            <td>覆盖并发 revision、目标 ACK、Agent apply/operation 串行与清理任务。</td>
+                            <td>Go 1.26.1 + CGO/GCC 容器中的定向 race 集通过；覆盖 outbox/revision、任务超时 finalizer、Redis 调用次数与清理竞态。</td>
                         </tr>
                         <tr>
                             <td>Linux AMD64 构建</td>
                             <td>Core + Agent，<code>CGO_ENABLED=0</code></td>
                             <td class="result-pass">通过</td>
-                            <td>均验证为静态链接 ELF；只在受控 <code>/tmp</code> 目录生成并已清理。</td>
+                            <td>两侧构建成功；产物只写入一次性 Linux 容器的 <code>/tmp</code>。</td>
                         </tr>
                         <tr>
                             <td>前端单元测试</td>
-                            <td>Vitest：API 与同步/OAuth 状态逻辑，共 18 个用例</td>
+                            <td><code>npm run test:unit</code>：3 个测试文件、21 个用例</td>
                             <td class="result-pass">通过</td>
-                            <td>覆盖字段清洗、未知状态 fail-closed、操作反馈和敏感字段过滤。</td>
+                            <td>同步/OAuth 状态与 v2.2.4 新增页面状态缓存测试全部通过。</td>
                         </tr>
                         <tr>
-                            <td>前端质量</td>
-                            <td>本轮文件 ESLint + Prettier check</td>
+                            <td>前端依赖</td>
+                            <td><code>npm ci</code></td>
                             <td class="result-pass">通过</td>
-                            <td>未执行会改写全仓的自动修复。</td>
+                            <td>严格按合并后的 lockfile 安装 733 个包；未运行会改写全仓的 lint fix。</td>
                         </tr>
                         <tr>
                             <td>前端生产构建</td>
                             <td><code>npm run build:pro</code></td>
                             <td class="result-pass">通过</td>
-                            <td>Vite 构建完成，生成物未进入 git diff。</td>
+                            <td>Vite 8 构建完成；Web assets、stats 与构建器生成的临时文档变更已清理。</td>
+                        </tr>
+                        <tr>
+                            <td>进度报告交互</td>
+                            <td>本地 <code>file://</code> + Playwright / Chromium，1440px 与 390px</td>
+                            <td class="result-pass">通过</td>
+                            <td>生成、选择、备注、复制、重置均通过；无横向溢出、console/page error 或外部网络请求。</td>
                         </tr>
                         <tr>
                             <td>全仓类型检查</td>
                             <td><code>npm run type-check</code></td>
                             <td class="result-known">既有基线阻断</td>
-                            <td>错误位于 AppMain、Monaco diff、network、process、WAF、domain 等本轮外文件；本轮文件未出现错误。</td>
+                            <td>26 条主错误与合并前 HEAD 一致：14 条存在于官方 v2.2.4，12 条是已有 WAF 类型债务；本轮新增 0 条。</td>
                         </tr>
                         <tr>
                             <td>敏感信息与卫生</td>
-                            <td>gitleaks 脱敏扫描、关键字复核、<code>git diff --check</code>、定向 <code>gofmt -l</code></td>
-                            <td class="result-pass">人工分类通过</td>
-                            <td>19 个扫描命中均为 SHA-256 指纹、ACME 枚举或合成测试密钥；未发现可用 OAuth 凭据、workflow、二进制或构建产物。</td>
+                            <td>Git 索引/工作树关键字复核、<code>git diff --check</code>、<code>gofmt</code> 与生成物检查</td>
+                            <td class="result-pass">通过</td>
+                            <td>未恢复 GitHub workflow/Dependabot；未提交构建产物，OAuth 测试值均为合成数据或不可逆指纹。</td>
                         </tr>
                         <tr>
                             <td>真实浏览器/多节点 UAT</td>
@@ -928,20 +941,27 @@
                     </tbody>
                 </table>
             </div>
+            <p class="muted">
+                测试夹具说明：Core 全量测试使用同时包含 sibling <code>core</code> 与 <code>agent</code> 的一次性可写副本；
+                Agent race 使用一次性可写容器副本，因为备份清理测试需要验证真实删除语义。源码只读挂载导致的删除失败不计为代码回归，
+                最终可写副本中的全量与 race 结果均为通过。
+            </p>
         </section>
 
         <section id="security">
             <div class="section-head">
                 <div class="section-index">05 / Security</div>
                 <div>
-                    <h2>浏览器与内部通道边界</h2>
-                    <p class="lead">内部快照含执行所需凭据，但浏览器读取 API 和 UI 状态不含 secret、token、内部节点信息或 revision。</p>
+                    <h2>OAuth 与 OneDrive 安全边界</h2>
+                    <p class="lead">官方 Graph 改进只在服务端/受控 Agent 内吸收；浏览器读取 API 和 UI 状态继续不含 client secret、refresh token 或内部同步元组。</p>
                 </div>
             </div>
             <div class="privacy-grid">
                 <article class="panel">
-                    <h3>浏览器允许字段</h3>
+                    <h3>浏览器可见信息</h3>
                     <ul>
+                        <li>provider、configured 与迁移/重新授权状态</li>
+                        <li>安全展示的 client ID 与更新时间</li>
                         <li><code>accountName</code></li>
                         <li><code>status</code></li>
                         <li><code>succeeded</code></li>
@@ -950,12 +970,12 @@
                     </ul>
                 </article>
                 <article class="panel">
-                    <h3>浏览器禁止字段</h3>
+                    <h3>禁止离开服务端的内容</h3>
                     <ul>
-                        <li>client secret、refresh token、ciphertext</li>
+                        <li>client secret、refresh token、密文与旧默认应用完整值</li>
                         <li>authority、generation、target epoch、snapshot digest</li>
                         <li>target key、节点 ID/名称、desired/applied revision</li>
-                        <li>attempts、内部错误、重试时间和成功时间</li>
+                        <li>signed URL/query、provider 原始错误与跨源 Graph nextLink</li>
                     </ul>
                 </article>
             </div>
@@ -966,14 +986,14 @@
                 <div class="section-index">06 / Risks & Rollback</div>
                 <div>
                     <h2>风险、迁移与回滚</h2>
-                    <p class="lead">迁移新增协调状态表，不删除既有备份账号、任务、记录或历史；但旧二进制不理解新协议。</p>
+                    <p class="lead">本轮是普通 merge，可通过 revert merge 回退代码；但 v2.2.4 与 P0 数据库迁移已执行的环境仍应先备份 Core/Agent 数据库再降级。</p>
                 </div>
             </div>
             <div class="risk-grid">
                 <article class="panel">
                     <span class="badge pending">环境缺口</span>
-                    <h3>真实多节点 UAT</h3>
-                    <p>仍需演练节点断网、Core/Agent 重启、删除账号、节点恢复、revoke、重注册和滚动升级。</p>
+                    <h3>真实环境 UAT</h3>
+                    <p>仍需演练节点断网/恢复、Core/Agent 重启、删除 tombstone、revoke、重注册与滚动升级。</p>
                 </article>
                 <article class="panel">
                     <span class="badge pending">Provider 缺口</span>
@@ -982,18 +1002,18 @@
                 </article>
                 <article class="panel">
                     <span class="badge risk">回滚注意</span>
-                    <h3>旧版本不消费新状态</h3>
-                    <p>降级前应停止公共账号变更并备份 Core/Agent 数据库；旧版本不会消费 outbox、target epoch 或租约。</p>
+                    <h3>数据库降级不是自动回滚</h3>
+                    <p>降级前应停止公共账号和备份任务变更并备份数据库；旧二进制不理解新增 outbox、target epoch、租约或 v2.2.4 schema。</p>
                 </article>
                 <article class="panel">
                     <span class="badge pending">维护项</span>
-                    <h3>outbox 长期保留</h3>
-                    <p>完成事件当前保留用于审计；未来可增加按 revision 或时间窗口的安全压缩，避免无限增长。</p>
+                    <h3>超时 Action 的延迟收尾</h3>
+                    <p>若底层 Action 完全忽略 context，前台异步请求不被长期占用，但任务、业务状态和执行锁保持 Executing；只有 Action 退出后才回滚、清理和关闭日志。永久不退出时需要运维确认或重启，系统不会自动并发重试。</p>
                 </article>
                 <article class="panel">
                     <span class="badge pending">安全债务</span>
-                    <h3>digest 不是消息认证码</h3>
-                    <p>它不返回浏览器，通道由 Unix socket/mTLS 保护。若要抵抗内部摘要泄露后的低熵猜测，需先设计密钥轮换再升级 HMAC。</p>
+                    <h3>依赖审计仍需单独维护</h3>
+                    <p><code>npm ci</code> 报告 5 项依赖告警；本轮没有运行可能升级大版本或改写 lockfile 的自动修复，应独立评估后处理。</p>
                 </article>
                 <article class="panel">
                     <span class="badge pending">仓库基线</span>
@@ -1002,8 +1022,8 @@
                 </article>
                 <article class="panel">
                     <span class="badge done">不在本轮</span>
-                    <h3>完整 Pro parity</h3>
-                    <p>本轮只完成公共备份账号一致性层 P0.1，不应表述为完整复刻专业版。</p>
+                    <h3>dev-v2 与完整 Pro parity</h3>
+                    <p>本轮只形成 v2.2.4 + 既有 P0 的稳定基线；正式版后的 dev-v2 提交需另行审计，不能表述为完整复刻专业版。</p>
                 </article>
             </div>
         </section>
@@ -1027,10 +1047,10 @@
                         <legend>1. 对本轮实现的决定</legend>
                         <div class="option-list">
                             <label class="option">
-                                <input type="radio" name="decision" value="接受本轮 P0.1 代码级实现，进入真实环境 UAT（推荐）" checked />
+                                <input type="radio" name="decision" value="接受官方 v2.2.4 + 1Panel-X P0 稳定基线，进入真实环境 UAT（推荐）" checked />
                                 <span>
-                                    <strong>接受并进入 UAT（推荐）</strong>
-                                    <small>保留已知环境缺口，不把 UAT 缺失误报成代码未完成。</small>
+                                    <strong>接受稳定基线并进入 UAT（推荐）</strong>
+                                    <small>确认本轮 merge 与自动化验证结果，保留真实环境验收缺口。</small>
                                 </span>
                             </label>
                             <label class="option">
@@ -1048,10 +1068,10 @@
                                 </span>
                             </label>
                             <label class="option">
-                                <input type="radio" name="decision" value="暂不接受，需要重新设计本轮同步协议" />
+                                <input type="radio" name="decision" value="暂不接受，需要重新处理本轮 merge、安全边界或可靠性实现" />
                                 <span>
-                                    <strong>要求重新设计</strong>
-                                    <small>请在补充意见中指出不可接受的安全或一致性边界。</small>
+                                    <strong>要求返工本轮基线</strong>
+                                    <small>请在补充意见中指出不可接受的合并、安全或可靠性问题。</small>
                                 </span>
                             </label>
                         </div>
@@ -1075,10 +1095,10 @@
                                 </span>
                             </label>
                             <label class="option">
-                                <input type="checkbox" name="priority" value="outbox 压缩、指标与管理员诊断能力" />
+                                <input type="checkbox" name="priority" value="独立审计正式版 v2.2.4 之后的 upstream/dev-v2 提交" />
                                 <span>
-                                    <strong>outbox 运维能力</strong>
-                                    <small>完成事件压缩、指标、诊断和安全运维入口。</small>
+                                    <strong>审计正式版后的 dev-v2 提交</strong>
+                                    <small>逐项评估，不直接追随，也不混入本次稳定基线。</small>
                                 </span>
                             </label>
                             <label class="option">
@@ -1093,7 +1113,7 @@
 
                     <fieldset>
                         <legend for="notes">3. 其他意见或修改要求</legend>
-                        <textarea id="notes" data-testid="notes" placeholder="例如：希望先补哪种故障场景、界面状态是否需要更明显、是否接受当前五分钟租约。"></textarea>
+                        <textarea id="notes" data-testid="notes" placeholder="例如：是否接受当前稳定基线、先做哪组真实 UAT、dev-v2 审计范围或 TypeScript 清理优先级。"></textarea>
                     </fieldset>
 
                     <div class="actions">
@@ -1133,7 +1153,7 @@
             const priorities = selectedPriorities();
             const noteText = notes.value.trim() || '无补充意见';
             output.value = [
-                '1Panel-X P0.1 公共备份同步可靠性评审反馈',
+                '1Panel-X 官方 v2.2.4 + P0 稳定基线评审反馈',
                 `报告：${reportName}`,
                 '',
                 `本轮决定：${selectedDecision()}`,

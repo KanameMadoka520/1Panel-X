@@ -257,7 +257,7 @@ func (u *ImageService) ImageBuild(req dto.ImageBuild) error {
 			return nil
 		}, nil)
 
-		_ = taskItem.Execute()
+		_ = taskItem.ExecuteToCompletion()
 	}()
 
 	return nil
@@ -315,7 +315,7 @@ func (u *ImageService) ImagePull(req dto.ImagePull) error {
 		}, nil)
 	}
 	go func() {
-		_ = taskItem.Execute()
+		_ = taskItem.ExecuteToCompletion()
 	}()
 	return nil
 }
@@ -359,7 +359,7 @@ func (u *ImageService) ImageLoad(req dto.ImageLoad) error {
 				return nil
 			}, nil)
 		}
-		_ = taskItem.Execute()
+		_ = taskItem.ExecuteToCompletion()
 	}()
 	return nil
 }
@@ -393,7 +393,7 @@ func (u *ImageService) ImageSave(req dto.ImageSave) error {
 		return nil
 	}, nil)
 	go func() {
-		_ = taskItem.Execute()
+		_ = taskItem.ExecuteToCompletion()
 	}()
 	return nil
 }
@@ -490,7 +490,7 @@ func (u *ImageService) ImagePush(req dto.ImagePush) error {
 			}
 			return nil
 		}, nil)
-		_ = taskItem.Execute()
+		_ = taskItem.ExecuteToCompletion()
 	}()
 
 	return nil
@@ -501,9 +501,9 @@ func (u *ImageService) ImageRemove(req dto.BatchDelete) error {
 	if err != nil {
 		return err
 	}
-	defer client.Close()
 	taskItem, err := task.NewTaskWithOps(strings.Join(req.Names, ","), task.TaskDelete, task.TaskScopeImage, req.TaskID, 1)
 	if err != nil {
+		_ = client.Close()
 		global.LOG.Errorf("new task for create container failed, err: %v", err)
 		return err
 	}
@@ -531,10 +531,20 @@ func (u *ImageService) ImageRemove(req dto.BatchDelete) error {
 		}, nil)
 	}
 	if len(req.TaskID) == 0 {
-		return taskItem.Execute()
+		err = taskItem.Execute()
+		if task.IsPendingExecution(err) {
+			go func() {
+				defer client.Close()
+				_ = task.WaitPendingExecution(err)
+			}()
+			return err
+		}
+		_ = client.Close()
+		return err
 	}
 	go func() {
-		_ = taskItem.Execute()
+		defer client.Close()
+		_ = taskItem.ExecuteToCompletion()
 	}()
 	return nil
 }

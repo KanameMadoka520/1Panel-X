@@ -124,6 +124,7 @@ var WebUrlMap = map[string]struct{}{
 
 	"/logs":           {},
 	"/logs/operation": {},
+	"/logs/host":      {},
 	"/logs/login":     {},
 	"/logs/website":   {},
 	"/logs/system":    {},
@@ -223,6 +224,7 @@ var DynamicRoutes = []string{
 	`^/databases/mysql/setting/[^/]+/[^/]+$`,
 	`^/databases/postgresql/setting/[^/]+/[^/]+$`,
 	`^/websites/[^/]+/config/[^/]+$`,
+	`^/xpack/waf/websites/[^/]+$`,
 	`^/s/[A-Za-z0-9]{10,16}$`,
 }
 

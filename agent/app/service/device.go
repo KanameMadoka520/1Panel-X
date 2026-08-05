@@ -279,7 +279,7 @@ func (u *DeviceService) UpdateSwap(req dto.SwapHelper) error {
 		return operateSwapWithFile(false, req)
 	}, nil)
 	go func() {
-		_ = taskItem.Execute()
+		_ = taskItem.ExecuteToCompletion()
 	}()
 	return nil
 }

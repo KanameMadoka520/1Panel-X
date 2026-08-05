@@ -54,7 +54,7 @@ func (u *BackupService) MongodbBackup(req dto.CommonBackup) error {
 	}
 
 	if err := handleMongodbBackup(req, nil, record.ID, targetDir, fileName); err != nil {
-		backupRepo.UpdateRecordByMap(record.ID, map[string]interface{}{"status": constant.StatusFailed, "message": err.Error()})
+		markBackupFailed(record.ID, err)
 		return err
 	}
 	return nil
@@ -97,8 +97,8 @@ func handleMongodbBackup(req dto.CommonBackup, parentTask *task.Task, recordID u
 		3*time.Hour,
 	)
 	go func() {
-		if err := backupTask.Execute(); err != nil {
-			backupRepo.UpdateRecordByMap(recordID, map[string]interface{}{"status": constant.StatusFailed, "message": err.Error()})
+		if err := backupTask.ExecuteToCompletion(); err != nil {
+			markBackupFailed(recordID, err)
 			return
 		}
 		backupRepo.UpdateRecordByMap(recordID, map[string]interface{}{"status": constant.StatusSuccess})
@@ -182,7 +182,7 @@ func handleMongodbRecover(req dto.CommonRecover, parentTask *task.Task, isRollba
 	}
 	recoverTask.AddSubTaskWithOps(i18n.GetMsgByKey("TaskRecover"), recoverDatabase, nil, 0, timeout)
 	go func() {
-		_ = recoverTask.Execute()
+		_ = recoverTask.ExecuteToCompletion()
 	}()
 	return nil
 }

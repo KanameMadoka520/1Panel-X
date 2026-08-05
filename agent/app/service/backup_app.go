@@ -65,7 +65,7 @@ func (u *BackupService) AppBackup(req dto.CommonBackup) (*model.BackupRecord, er
 
 	if !req.IsImmediate {
 		if err = handleAppBackup(&install, nil, record.ID, backupDir, fileName, "", req.Secret, req.TaskID); err != nil {
-			backupRepo.UpdateRecordByMap(record.ID, map[string]interface{}{"status": constant.StatusFailed, "message": err.Error()})
+			markBackupFailed(record.ID, err)
 			global.LOG.Errorf("backup app %s failed, err: %v", req.DetailName, err)
 			return nil, err
 		}
@@ -74,13 +74,13 @@ func (u *BackupService) AppBackup(req dto.CommonBackup) (*model.BackupRecord, er
 
 	backupTask, err := task.NewTaskWithOps(install.Name, task.TaskBackup, task.TaskScopeBackup, req.TaskID, install.ID)
 	if err != nil {
-		backupRepo.UpdateRecordByMap(record.ID, map[string]interface{}{"status": constant.StatusFailed, "message": err.Error()})
+		markBackupFailed(record.ID, err)
 		record.Status = constant.StatusFailed
 		record.Message = err.Error()
 		return nil, err
 	}
 	if err = doAppBackup(&install, backupTask, backupDir, fileName, "", req.Secret); err != nil {
-		backupRepo.UpdateRecordByMap(record.ID, map[string]interface{}{"status": constant.StatusFailed, "message": err.Error()})
+		markBackupFailed(record.ID, err)
 		record.Status = constant.StatusFailed
 		record.Message = err.Error()
 		return nil, err
@@ -161,8 +161,8 @@ func handleAppBackup(install *model.AppInstall, parentTask *task.Task, recordID 
 
 	backupTask.AddSubTaskWithOps(task.GetTaskName(install.Name, task.TaskBackup, task.TaskScopeBackup), func(t *task.Task) error { return itemHandler() }, nil, 3, time.Hour)
 	go func() {
-		if err := backupTask.Execute(); err != nil {
-			backupRepo.UpdateRecordByMap(recordID, map[string]interface{}{"status": constant.StatusFailed, "message": err.Error()})
+		if err := backupTask.ExecuteToCompletion(); err != nil {
+			markBackupFailed(recordID, err)
 			return
 		}
 		backupRepo.UpdateRecordByMap(recordID, map[string]interface{}{"status": constant.StatusSuccess})
@@ -280,7 +280,7 @@ func handleAppRecover(install *model.AppInstall, parentTask *task.Task, recoverF
 				if err != nil {
 					return err
 				}
-				newDB, err := reCreateDB(db.ID, database, backupEnvMap)
+				newDB, err := reCreateDB(db.ID, database, backupEnvMap, install.Name)
 				if err != nil {
 					return err
 				}
@@ -365,7 +365,7 @@ func handleAppRecover(install *model.AppInstall, parentTask *task.Task, recoverF
 	}
 	recoverTask.AddSubTask(task.GetTaskName(install.Name, task.TaskRecover, task.TaskScopeBackup), recoverApp, rollBackApp)
 	go func() {
-		_ = recoverTask.Execute()
+		_ = recoverTask.ExecuteToCompletion()
 	}()
 	return nil
 }
@@ -408,10 +408,16 @@ func doAppBackup(install *model.AppInstall, parentTask *task.Task, backupDir, fi
 	return nil
 }
 
-func reCreateDB(dbID uint, database model.Database, envMap map[string]interface{}) (*model.DatabaseMysql, error) {
+func reCreateDB(dbID uint, database model.Database, envMap map[string]interface{}, appInstallName string) (*model.DatabaseMysql, error) {
 	mysqlService := NewIMysqlService()
 	ctx := context.Background()
-	_ = mysqlService.Delete(ctx, dto.MysqlDBDelete{ID: dbID, Database: database.Name, Type: database.Type, DeleteBackup: false, ForceDelete: true})
+	if err := deleteMysqlDatabaseForResourceOwner(
+		ctx,
+		dto.MysqlDBDelete{ID: dbID, Database: database.Name, Type: database.Type, DeleteBackup: false, ForceDelete: true},
+		dto.DBResource{Type: constant.TypeApp, Name: appInstallName},
+	); err != nil {
+		return nil, err
+	}
 
 	dbInfo := getDBCreateInfoFromEnv(envMap, "utf8mb4")
 	createDB, err := mysqlService.Create(context.Background(), dto.MysqlDBCreate{
@@ -419,15 +425,55 @@ func reCreateDB(dbID uint, database model.Database, envMap map[string]interface{
 		From:       database.From,
 		Database:   database.Name,
 		Format:     dbInfo.Format,
-		Username:   dbInfo.User,
-		Password:   dbInfo.Password,
 		Permission: "%",
 	})
 	if err != nil {
 		return nil, err
 	}
+	if len(dbInfo.User) != 0 {
+		if err := ensureMysqlDBUser(mysqlService, database, dbInfo); err != nil {
+			return nil, err
+		}
+	}
 	updateCronjobsDBRef(dbID, createDB.ID)
 	return createDB, nil
+}
+
+func ensureMysqlDBUser(mysqlService IMysqlService, database model.Database, dbInfo dbRecreateInfo) error {
+	const host = "%"
+	users, err := mysqlService.ListUsers(dto.MysqlUserSearch{Database: database.Name})
+	if err != nil {
+		return err
+	}
+	var oldUser dto.MysqlUser
+	exists := false
+	for _, user := range users {
+		if user.Username == dbInfo.User && user.Host == host && !user.IsDelete {
+			oldUser = user
+			exists = true
+			break
+		}
+	}
+	if exists {
+		if len(oldUser.Password) != 0 && oldUser.Password != dbInfo.Password {
+			return buserr.New("ErrDbUserNotValid")
+		}
+	} else {
+		if err := mysqlService.CreateUser(dto.MysqlUserCreate{
+			Database: database.Name,
+			Username: dbInfo.User,
+			Host:     host,
+			Password: dbInfo.Password,
+		}); err != nil {
+			return err
+		}
+	}
+	return mysqlService.GrantUser(dto.MysqlGrantCreate{
+		Database: database.Name,
+		DB:       dbInfo.Name,
+		Username: dbInfo.User,
+		Host:     host,
+	})
 }
 
 func reCreatePostgresqlDB(dbID uint, database model.Database, envMap map[string]interface{}) (*model.DatabasePostgresql, error) {

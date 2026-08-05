@@ -712,11 +712,18 @@ func (w WebsiteService) DeleteWebsite(req request.WebsiteDelete) error {
 			if mysqlDB.ID > 0 {
 				deleteReq := dto.MysqlDBDelete{
 					ID:          mysqlDB.ID,
+					Type:        website.DbType,
 					Database:    mysqlDB.MysqlName,
 					ForceDelete: req.ForceDelete,
 				}
-				if err = NewIMysqlService().Delete(context.TODO(), deleteReq); err != nil && !req.ForceDelete {
-					return err
+				if err = deleteMysqlDatabaseForResourceOwner(
+					context.TODO(),
+					deleteReq,
+					dto.DBResource{Type: constant.TypeWebsite, Name: website.PrimaryDomain},
+				); err != nil {
+					if isMysqlDatabaseResourceInUseError(err) || !req.ForceDelete {
+						return err
+					}
 				}
 			}
 		case constant.AppPostgresql, constant.AppPostgres:
@@ -2404,7 +2411,7 @@ func (w WebsiteService) ExecComposer(req request.ExecComposerReq) error {
 		return nil
 	}, nil)
 	go func() {
-		_ = composerTask.Execute()
+		_ = composerTask.ExecuteToCompletion()
 	}()
 	return nil
 }

@@ -52,7 +52,7 @@ func (w WebsiteService) BatchOpWebsite(req request.BatchWebsiteOp) error {
 	opTask.AddSubTask("", opWebsiteTask, nil)
 
 	go func() {
-		_ = opTask.Execute()
+		_ = opTask.ExecuteToCompletion()
 	}()
 	return nil
 }
@@ -120,7 +120,7 @@ func (w WebsiteService) BatchSetHttps(ctx context.Context, req request.BatchWebs
 
 	opTask.AddSubTask("", opWebsiteTask, nil)
 	go func() {
-		_ = opTask.Execute()
+		_ = opTask.ExecuteToCompletion()
 	}()
 	return nil
 }

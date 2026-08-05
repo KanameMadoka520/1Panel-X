@@ -110,7 +110,7 @@ func (u *SnapshotService) SnapshotRollback(req dto.SnapshotRecover) error {
 			},
 			nil,
 		)
-		if err := taskItem.Execute(); err != nil {
+		if err := taskItem.ExecuteToCompletion(); err != nil {
 			_ = snapshotRepo.Update(req.ID, map[string]interface{}{"rollback_status": constant.StatusFailed, "rollback_message": err.Error()})
 			return
 		}

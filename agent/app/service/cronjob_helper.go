@@ -75,7 +75,7 @@ func (u *CronjobService) HandleJob(cronjob *model.Cronjob) {
 		return
 	}
 	go func() {
-		if err := taskItem.Execute(); err != nil {
+		if err := taskItem.ExecuteToCompletion(); err != nil {
 			taskItem, _ := taskRepo.GetFirst(taskRepo.WithByID(record.TaskID))
 			if len(taskItem.ID) == 0 {
 				record.TaskID = ""
